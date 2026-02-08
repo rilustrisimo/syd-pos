@@ -1,0 +1,221 @@
+'use client'
+
+import { useState } from 'react'
+import Link from 'next/link'
+import { useProducts, useCategories } from '@/hooks/useProducts'
+import { formatCurrency } from '@/lib/utils/formatting'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { Search, Plus, Package, ChevronLeft, ChevronRight } from 'lucide-react'
+
+export default function ProductsPage() {
+  const [search, setSearch] = useState('')
+  const [categoryId, setCategoryId] = useState<string>('')
+  const [page, setPage] = useState(1)
+  const limit = 20
+
+  const { data: productsData, isLoading } = useProducts({
+    search: search || undefined,
+    categoryId: categoryId || undefined,
+    page,
+    limit,
+  })
+
+  const { data: categories } = useCategories()
+
+  const products = productsData?.data || []
+  const totalPages = productsData?.totalPages || 1
+  const total = productsData?.total || 0
+
+  return (
+    <div className="space-y-6">
+      {/* Page header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Products</h1>
+          <p className="text-muted-foreground">
+            Manage your product catalog ({total} products)
+          </p>
+        </div>
+        <Link href="/products/new">
+          <Button>
+            <Plus className="mr-2 h-4 w-4" />
+            Add Product
+          </Button>
+        </Link>
+      </div>
+
+      {/* Filters */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Filters</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-wrap gap-4">
+            <div className="relative flex-1 min-w-[200px]">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Search by name or code..."
+                value={search}
+                onChange={(e) => {
+                  setSearch(e.target.value)
+                  setPage(1)
+                }}
+                className="pl-9"
+              />
+            </div>
+            <Select
+              value={categoryId}
+              onValueChange={(value) => {
+                setCategoryId(value === 'all' ? '' : value)
+                setPage(1)
+              }}
+            >
+              <SelectTrigger className="w-[200px]">
+                <SelectValue placeholder="All Categories" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Categories</SelectItem>
+                {categories?.map((cat) => (
+                  <SelectItem key={cat.id} value={cat.id}>
+                    {cat.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Products table */}
+      <Card>
+        <CardContent className="p-0">
+          {isLoading ? (
+            <div className="flex h-64 items-center justify-center">
+              <div className="text-muted-foreground">Loading products...</div>
+            </div>
+          ) : products.length === 0 ? (
+            <div className="flex h-64 flex-col items-center justify-center gap-2">
+              <Package className="h-12 w-12 text-muted-foreground" />
+              <p className="text-muted-foreground">No products found</p>
+              {(search || categoryId) && (
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setSearch('')
+                    setCategoryId('')
+                  }}
+                >
+                  Clear filters
+                </Button>
+              )}
+            </div>
+          ) : (
+            <>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Code</TableHead>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Category</TableHead>
+                    <TableHead>Unit</TableHead>
+                    <TableHead className="text-right">Cost</TableHead>
+                    <TableHead className="text-right">Markup</TableHead>
+                    <TableHead className="text-right">Selling Price</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {products.map((product) => (
+                    <TableRow key={product.id}>
+                      <TableCell>
+                        <Link
+                          href={`/products/${product.id}`}
+                          className="font-mono text-sm text-primary hover:underline"
+                        >
+                          {product.code}
+                        </Link>
+                      </TableCell>
+                      <TableCell>
+                        <Link
+                          href={`/products/${product.id}`}
+                          className="font-medium hover:underline"
+                        >
+                          {product.name}
+                        </Link>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline">
+                          {product.category?.name || 'Uncategorized'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {product.selling_uom?.code || product.base_uom?.code || '-'}
+                      </TableCell>
+                      <TableCell className="text-right font-mono">
+                        {formatCurrency(product.latest_cogs)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Badge
+                          variant={product.markup_percentage >= 20 ? 'default' : 'secondary'}
+                        >
+                          {product.markup_percentage.toFixed(1)}%
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right font-mono font-semibold">
+                        {formatCurrency(product.current_selling_price)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+
+              {/* Pagination */}
+              <div className="flex items-center justify-between border-t px-4 py-3">
+                <p className="text-sm text-muted-foreground">
+                  Showing {(page - 1) * limit + 1} to {Math.min(page * limit, total)} of {total}
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={page === 1}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                    Previous
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={page >= totalPages}
+                  >
+                    Next
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
