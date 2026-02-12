@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -29,7 +29,6 @@ import {
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Separator } from '@/components/ui/separator'
 
 import { useCategories, useSubcategories, useUnitsOfMeasure, useCreateProduct, useUpdateProduct } from '@/hooks/useProducts'
 import type { Product } from '@/lib/supabase/queries/products'
@@ -38,7 +37,7 @@ const productFormSchema = z.object({
   code: z.string().min(1, 'Product code is required'),
   name: z.string().min(1, 'Product name is required'),
   category_id: z.string().uuid('Please select a category'),
-  subcategory_id: z.string().uuid().optional().nullable(),
+  subcategory_id: z.string().optional(),
   base_uom_id: z.string().uuid('Please select a base unit'),
   selling_uom_id: z.string().uuid('Please select a selling unit'),
   latest_cogs: z.string().refine((val) => !isNaN(Number(val)) && Number(val) >= 0, {
@@ -95,16 +94,52 @@ export function ProductForm({ product, mode }: ProductFormProps) {
     },
   })
 
-  // Watch for changes in cost and markup to calculate selling price
+  // Track which field was last edited to avoid circular updates
+  const lastEditedField = useRef<'cost' | 'markup' | 'price' | null>(null)
+
+  // Watch for changes in cost and markup
   const watchCost = form.watch('latest_cogs')
   const watchMarkup = form.watch('markup_percentage')
 
+  // Calculate selling price when cost or markup changes
   useEffect(() => {
+    if (lastEditedField.current === 'price') {
+      lastEditedField.current = null
+      return
+    }
     const cost = Number(watchCost) || 0
     const markup = Number(watchMarkup) || 0
-    const sellingPrice = cost * (1 + markup / 100)
-    form.setValue('current_selling_price', sellingPrice.toFixed(2))
+    if (cost > 0) {
+      const sellingPrice = cost * (1 + markup / 100)
+      form.setValue('current_selling_price', sellingPrice.toFixed(2))
+    }
   }, [watchCost, watchMarkup, form])
+
+  // Calculate markup when selling price is manually changed
+  const handlePriceChange = (value: string) => {
+    lastEditedField.current = 'price'
+    form.setValue('current_selling_price', value)
+
+    const cost = Number(watchCost) || 0
+    const price = Number(value) || 0
+
+    if (cost > 0 && price > 0) {
+      const markup = ((price - cost) / cost) * 100
+      form.setValue('markup_percentage', markup.toFixed(2))
+    }
+  }
+
+  // Mark field as edited when cost changes
+  const handleCostChange = (value: string) => {
+    lastEditedField.current = 'cost'
+    form.setValue('latest_cogs', value)
+  }
+
+  // Mark field as edited when markup changes
+  const handleMarkupChange = (value: string) => {
+    lastEditedField.current = 'markup'
+    form.setValue('markup_percentage', value)
+  }
 
   // Update subcategory options when category changes
   const handleCategoryChange = (value: string) => {
@@ -366,7 +401,11 @@ export function ProductForm({ product, mode }: ProductFormProps) {
                         type="number"
                         step="0.01"
                         placeholder="0.00"
-                        {...field}
+                        value={field.value}
+                        onChange={(e) => handleCostChange(e.target.value)}
+                        onBlur={field.onBlur}
+                        name={field.name}
+                        ref={field.ref}
                       />
                     </FormControl>
                     <FormDescription>
@@ -382,17 +421,21 @@ export function ProductForm({ product, mode }: ProductFormProps) {
                 name="markup_percentage"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Markup % *</FormLabel>
+                    <FormLabel>Markup %</FormLabel>
                     <FormControl>
                       <Input
                         type="number"
                         step="0.01"
                         placeholder="20"
-                        {...field}
+                        value={field.value}
+                        onChange={(e) => handleMarkupChange(e.target.value)}
+                        onBlur={field.onBlur}
+                        name={field.name}
+                        ref={field.ref}
                       />
                     </FormControl>
                     <FormDescription>
-                      Profit margin percentage
+                      Auto-adjusts with price
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -404,18 +447,21 @@ export function ProductForm({ product, mode }: ProductFormProps) {
                 name="current_selling_price"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Selling Price</FormLabel>
+                    <FormLabel>Selling Price *</FormLabel>
                     <FormControl>
                       <Input
                         type="number"
                         step="0.01"
                         placeholder="0.00"
-                        {...field}
-                        disabled
+                        value={field.value}
+                        onChange={(e) => handlePriceChange(e.target.value)}
+                        onBlur={field.onBlur}
+                        name={field.name}
+                        ref={field.ref}
                       />
                     </FormControl>
                     <FormDescription>
-                      Auto-calculated
+                      Editable - markup adjusts
                     </FormDescription>
                     <FormMessage />
                   </FormItem>

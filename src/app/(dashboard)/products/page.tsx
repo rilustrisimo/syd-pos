@@ -23,7 +23,7 @@ import {
 } from '@/components/ui/table'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Search, Plus, Package, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Search, Plus, Package, ChevronLeft, ChevronRight, FolderTree } from 'lucide-react'
 
 export default function ProductsPage() {
   const [search, setSearch] = useState('')
@@ -54,12 +54,20 @@ export default function ProductsPage() {
             Manage your product catalog ({total} products)
           </p>
         </div>
-        <Link href="/products/new">
-          <Button>
-            <Plus className="mr-2 h-4 w-4" />
-            Add Product
-          </Button>
-        </Link>
+        <div className="flex gap-2">
+          <Link href="/products/categories">
+            <Button variant="outline">
+              <FolderTree className="mr-2 h-4 w-4" />
+              Categories
+            </Button>
+          </Link>
+          <Link href="/products/new">
+            <Button>
+              <Plus className="mr-2 h-4 w-4" />
+              Add Product
+            </Button>
+          </Link>
+        </div>
       </div>
 
       {/* Filters */}

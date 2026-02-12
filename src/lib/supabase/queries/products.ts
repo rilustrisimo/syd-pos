@@ -87,7 +87,7 @@ export async function createProduct(product: InsertTables<'products'>) {
 
   const { data, error } = await supabase
     .from('products')
-    .insert(product)
+    .insert(product as any)
     .select()
     .single()
 
@@ -101,7 +101,7 @@ export async function updateProduct(id: string, updates: UpdateTables<'products'
 
   const { data, error } = await supabase
     .from('products')
-    .update(updates)
+    .update(updates as any)
     .eq('id', id)
     .select()
     .single()
@@ -116,7 +116,7 @@ export async function deleteProduct(id: string) {
 
   const { error } = await supabase
     .from('products')
-    .update({ is_active: false })
+    .update({ is_active: false } as any)
     .eq('id', id)
 
   if (error) throw error
@@ -175,7 +175,7 @@ export async function createCategory(category: InsertTables<'product_categories'
 
   const { data, error } = await supabase
     .from('product_categories')
-    .insert(category)
+    .insert(category as any)
     .select()
     .single()
 
@@ -189,7 +189,7 @@ export async function updateCategory(id: string, updates: UpdateTables<'product_
 
   const { data, error } = await supabase
     .from('product_categories')
-    .update(updates)
+    .update(updates as any)
     .eq('id', id)
     .select()
     .single()
@@ -204,7 +204,7 @@ export async function deleteCategory(id: string) {
 
   const { error } = await supabase
     .from('product_categories')
-    .update({ is_active: false })
+    .update({ is_active: false } as any)
     .eq('id', id)
 
   if (error) throw error

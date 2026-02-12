@@ -1,0 +1,389 @@
+# SYD Construction Supplies - Project Tracker
+
+## Project Overview
+Modern inventory management and point-of-sale system for SYD Construction Supplies Trading.
+
+**Tech Stack:** Next.js 16 + Supabase + TailwindCSS + Shadcn/ui + TanStack Query + Zustand
+
+---
+
+## Overall Progress: ~95% Complete
+
+| Phase | Status | Progress |
+|-------|--------|----------|
+| Phase 1: Foundation | Complete | 100% |
+| Phase 2: Inventory | Complete | 100% |
+| Phase 3: POS Core | Complete | 100% |
+| Phase 4: Advanced POS | Complete | 100% |
+| Phase 5: Analytics | In Progress | 90% |
+| Phase 6: Polish & Deploy | Not Started | 0% |
+
+---
+
+## Phase 1: Foundation (COMPLETE)
+
+### Database Schema
+- [x] Enums (`00001_create_enums.sql`)
+  - user_role, customer_type, delivery_type, payment_method, payment_status, po_status, movement_type, transaction_type
+- [x] Branches (`00002_create_branches.sql`)
+- [x] Users (`00003_create_users.sql`) - extends Supabase auth
+- [x] Categories & Subcategories (`00004_create_categories.sql`)
+- [x] Units of Measure (`00005_create_uom.sql`)
+- [x] Products, Variants, Images, Unit Conversions (`00006_create_products.sql`)
+- [x] Suppliers (`00007_create_suppliers.sql`)
+- [x] Customers (`00008_create_customers.sql`)
+- [x] Inventory & Movements (`00009_create_inventory.sql`)
+- [x] Purchase Orders & Lines (`00010_create_purchases.sql`)
+- [x] Transactions, Lines, Payments (`00011_create_transactions.sql`)
+- [x] RLS Policy Fix (`00012_fix_rls_policies.sql`) - Fixed infinite recursion with SECURITY DEFINER function
+
+### Authentication
+- [x] Supabase Auth integration
+- [x] Login page (`/login`)
+- [x] Auth middleware
+- [x] Role-based access (RLS policies)
+- [x] Auth store (Zustand)
+
+### Product Catalog
+- [x] Products list page (`/products`)
+- [x] Product detail page (`/products/[id]`)
+- [x] Create product page (`/products/new`)
+- [x] Edit product page (`/products/[id]/edit`)
+- [x] Product form component
+- [x] Category management page (`/products/categories`)
+- [x] Product queries & hooks
+
+### Core Infrastructure
+- [x] Supabase client setup
+- [x] TanStack Query provider
+- [x] Dashboard layout with sidebar
+- [x] Header component
+- [x] 20+ Shadcn UI components installed
+
+---
+
+## Phase 2: Inventory (COMPLETE)
+
+### Supplier Management
+- [x] Suppliers list page (`/suppliers`)
+- [x] Create/Edit supplier dialog
+- [x] Delete supplier (soft delete)
+- [x] Supplier search
+- [x] Supplier queries & hooks
+
+### Purchase Orders
+- [x] PO list page (`/purchases`)
+- [x] Create PO page (`/purchases/new`) - Save as draft, redirect to detail
+- [x] PO detail page (`/purchases/[id]`) - Print PO, Receive All, line-by-line receive
+- [x] Simplified PO workflow (Draft → Print PDF → Receive → Prices Auto-Update)
+- [x] Add line items with cost
+- [x] Receive PO lines (quantity received tracking)
+- [x] Receive All bulk action (receive all remaining items at once)
+- [x] Auto-update product COGS on receive (DB trigger)
+- [x] Auto-recalculate selling price on receive (markup % preserved)
+- [x] Price impact preview in receive dialog
+- [x] PO PDF print template (`/components/print/po-template.tsx`)
+- [x] PO stats cards (counts by status)
+- [x] Purchase queries & hooks
+
+### Stock Management
+- [x] Inventory list page (`/inventory`)
+- [x] Stock levels by branch
+- [x] Low stock alerts page (`/inventory/alerts`)
+- [x] Inventory movements page (`/inventory/movements`)
+- [x] Inventory adjustment page (`/inventory/adjust`)
+- [x] Inventory queries & hooks
+
+---
+
+## Phase 3: POS Core (COMPLETE)
+
+### Customer Management
+- [x] Customers list page (`/customers`)
+- [x] Create/Edit customer dialog
+- [x] Customer type (Cash, Credit, Wholesale, Retail)
+- [x] Credit limit tracking
+- [x] Outstanding balance display
+- [x] Customer search & filtering
+- [x] Customer stats cards
+- [x] Customer queries & hooks
+
+### POS Interface
+- [x] POS page (`/pos`)
+- [x] Branch selection
+- [x] Customer selection with search
+- [x] Walk-in customer default
+- [x] Product search (code & name)
+- [x] Product grid display
+- [x] Stock availability display
+- [x] POS Zustand store (cart management)
+
+### Shopping Cart
+- [x] Add to cart
+- [x] Quantity adjustment (+/-)
+- [x] Remove item
+- [x] Line totals
+- [x] Subtotal calculation
+- [x] Order discount (amount or percentage)
+- [x] Cart persistence (Zustand persist)
+
+### Checkout Flow
+- [x] Checkout dialog
+- [x] Order summary
+- [x] Delivery type selection (Pickup/Delivery)
+- [x] Delivery address & phone fields
+- [x] Multiple payment methods:
+  - [x] Cash
+  - [x] GCash
+  - [x] Maya
+  - [x] Bank Transfer
+  - [x] Credit/AR
+- [x] Split payments (multiple payment records)
+- [x] Payment reference numbers
+- [x] Quick amount buttons (Exact, Round Up, +500)
+- [x] Balance calculation
+- [x] Transaction creation
+- [x] Inventory deduction on sale
+- [x] Customer balance update for credit sales
+
+### Printing (COMPLETE)
+- [x] Thermal receipt printing (58mm/80mm)
+- [x] A4 invoice printing
+- [x] Receipt template component
+- [x] Invoice template component
+- [x] Print dialog with preview
+- [x] Transaction history page (`/pos/history`)
+- [x] Reprint functionality
+
+---
+
+## Phase 4: Advanced POS (COMPLETE)
+
+### Delivery Management
+- [x] Delivery type toggle
+- [x] Delivery address capture
+- [x] Delivery phone capture
+- [x] Delivery receipt printing (via invoice template)
+- [x] Packing slip printing
+
+### Returns & Refunds
+- [x] Return transaction type
+- [x] Link to original transaction
+- [x] Partial refund
+- [x] Full refund
+- [x] Restock to inventory
+- [x] Reason codes (defective, wrong item, customer changed mind, damaged, other)
+- [x] Returns page (`/pos/returns`)
+- [x] Refund methods (cash, gcash, maya, bank transfer, store credit)
+
+### Credit/AR Tracking
+- [x] Credit limit on customer
+- [x] Outstanding balance tracking
+- [x] Credit payment method
+- [x] Credit balance reduced on refunds
+- [x] Credit limit enforcement on checkout
+- [x] AR aging report
+- [x] Payment collection tracking
+
+### Today's Summary (Basic)
+- [x] Today's sales total
+- [x] Transaction count
+- [x] Unpaid count
+- [x] Top products today
+- [x] Hourly breakdown
+
+---
+
+## Phase 5: Analytics (90% COMPLETE)
+
+### Dashboards
+- [x] Sales dashboard
+- [x] Monthly trend chart
+- [x] Low stock alerts widget
+- [x] AR aging summary
+
+### Reports
+- [x] Sales by product report
+- [x] Sales by category report
+- [x] AR aging report with payment collection
+- [x] Inventory turnover report
+- [x] Profit margin analysis
+- [x] Supplier purchase history
+
+### Forecasting
+- [x] Demand prediction & reorder suggestions
+- [x] Sales velocity analysis
+- [ ] Seasonal adjustments (future enhancement)
+
+---
+
+## Phase 6: Polish & Deploy (NOT STARTED)
+
+### Mobile Responsiveness
+- [ ] POS mobile layout
+- [ ] Inventory mobile layout
+- [ ] Touch-friendly buttons
+
+### Performance
+- [ ] Query optimization
+- [ ] Image optimization
+- [ ] Loading states
+
+### Security
+- [ ] RLS policy audit
+- [ ] Input validation
+- [ ] Error handling
+
+### Deployment
+- [ ] Vercel setup
+- [ ] Environment variables
+- [ ] Production database
+- [ ] Domain configuration
+
+### Documentation
+- [ ] User training docs
+- [ ] Admin guide
+- [ ] API documentation
+
+---
+
+## File Structure
+
+```
+src/
+├── app/
+│   ├── (auth)/
+│   │   ├── layout.tsx
+│   │   └── login/page.tsx
+│   ├── (dashboard)/
+│   │   ├── layout.tsx
+│   │   ├── page.tsx (Dashboard home)
+│   │   ├── customers/page.tsx
+│   │   ├── inventory/
+│   │   │   ├── page.tsx
+│   │   │   ├── adjust/page.tsx
+│   │   │   ├── alerts/page.tsx
+│   │   │   └── movements/page.tsx
+│   │   ├── pos/
+│   │   │   ├── page.tsx
+│   │   │   ├── history/page.tsx
+│   │   │   └── returns/page.tsx
+│   │   ├── reports/
+│   │   │   └── ar-aging/page.tsx
+│   │   ├── products/
+│   │   │   ├── page.tsx
+│   │   │   ├── new/page.tsx
+│   │   │   ├── categories/page.tsx
+│   │   │   └── [id]/
+│   │   │       ├── page.tsx
+│   │   │       └── edit/page.tsx
+│   │   ├── purchases/
+│   │   │   ├── page.tsx
+│   │   │   ├── new/page.tsx
+│   │   │   └── [id]/page.tsx
+│   │   └── suppliers/page.tsx
+│   └── layout.tsx
+├── components/
+│   ├── forms/product-form.tsx
+│   ├── layout/
+│   │   ├── header.tsx
+│   │   └── sidebar.tsx
+│   ├── providers/query-provider.tsx
+│   └── ui/ (20+ Shadcn components)
+├── hooks/
+│   ├── useCustomers.ts
+│   ├── useInventory.ts
+│   ├── useProducts.ts
+│   ├── usePurchases.ts
+│   ├── useSuppliers.ts
+│   └── useTransactions.ts
+├── lib/
+│   ├── stores/
+│   │   ├── auth.ts
+│   │   ├── cart.ts
+│   │   └── posStore.ts
+│   ├── supabase/
+│   │   ├── client.ts
+│   │   ├── middleware.ts
+│   │   ├── server.ts
+│   │   └── queries/
+│   │       ├── customers.ts
+│   │       ├── inventory.ts
+│   │       ├── products.ts
+│   │       ├── purchases.ts
+│   │       ├── suppliers.ts
+│   │       └── transactions.ts
+│   └── utils/
+│       ├── calculations.ts
+│       └── formatting.ts
+├── types/
+│   ├── database.ts
+│   └── index.ts
+└── middleware.ts
+
+supabase/
+├── migrations/
+│   ├── 00001_create_enums.sql
+│   ├── 00002_create_branches.sql
+│   ├── 00003_create_users.sql
+│   ├── 00004_create_categories.sql
+│   ├── 00005_create_uom.sql
+│   ├── 00006_create_products.sql
+│   ├── 00007_create_suppliers.sql
+│   ├── 00008_create_customers.sql
+│   ├── 00009_create_inventory.sql
+│   ├── 00010_create_purchases.sql
+│   ├── 00011_create_transactions.sql
+│   └── 00012_fix_rls_policies.sql
+└── fix_markup_percentages.sql (utility script)
+```
+
+---
+
+## Known Issues & Fixes Applied
+
+### RLS Infinite Recursion (FIXED)
+- **Issue:** RLS policies on tables checked user role by querying the `users` table, but the `users` table itself had RLS that queried `users` again.
+- **Fix:** Created `get_current_user_role()` SECURITY DEFINER function that bypasses RLS. All policies now use this function.
+
+### TypeScript Type Inference (FIXED)
+- **Issue:** Supabase client with `Database` generic caused `never` type inference on insert/update.
+- **Fix:** Removed `Database` generic from `createBrowserClient`, using untyped client with `as any` assertions where needed.
+
+---
+
+## Next Priority Tasks
+
+1. ~~**Receipt/Invoice Printing** - Thermal (58mm/80mm) and A4 invoice~~ ✅
+2. ~~**Returns & Refunds** - Link to original transaction, restock~~ ✅
+3. ~~**Credit Limit Enforcement** - Block checkout if over limit~~ ✅
+4. ~~**AR Aging Report** - Customer payment tracking~~ ✅
+5. ~~**Sales Dashboard** - Charts and analytics~~ ✅
+6. **Mobile Responsiveness** - Touch-friendly POS
+7. **Packing Slips** - For delivery orders
+8. **Payment Collection Tracking** - Record payments against AR
+9. **Sales Reports** - Sales by product/category
+
+---
+
+## Quick Commands
+
+```bash
+# Development
+npm run dev
+
+# Build
+npm run build
+
+# Supabase
+npx supabase db push          # Push migrations
+npx supabase db reset         # Reset local DB
+npx supabase gen types        # Generate TypeScript types
+
+# Add UI Components
+npx shadcn@latest add [component]
+```
+
+---
+
+*Last Updated: February 11, 2026*

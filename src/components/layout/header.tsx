@@ -1,8 +1,12 @@
 'use client'
 
-import { Bell, Search, User } from 'lucide-react'
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { Bell, Search, User, LogOut, Settings, UserCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Badge } from '@/components/ui/badge'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,11 +15,22 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { useAuthStore } from '@/lib/stores/auth'
+import { getClient } from '@/lib/supabase/client'
+import { toast } from 'sonner'
 
 export function Header() {
+  const router = useRouter()
   const user = useAuthStore((state) => state.user)
+  const clear = useAuthStore((state) => state.clear)
+  const [profileOpen, setProfileOpen] = useState(false)
 
   const getInitials = (name: string) => {
     return name
@@ -26,60 +41,106 @@ export function Header() {
       .slice(0, 2)
   }
 
+  const handleSignOut = async () => {
+    try {
+      const supabase = getClient()
+      await supabase.auth.signOut()
+      clear()
+      router.push('/login')
+    } catch {
+      toast.error('Failed to sign out')
+    }
+  }
+
   return (
-    <header className="flex h-16 items-center justify-between border-b bg-white px-6">
-      {/* Search */}
-      <div className="flex flex-1 items-center gap-4">
-        <div className="relative w-96">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Search products, customers..."
-            className="pl-9"
-          />
+    <>
+      <header className="flex h-16 items-center justify-between border-b bg-white px-6">
+        {/* Search */}
+        <div className="flex flex-1 items-center gap-4">
+          <div className="relative w-96">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Search products, customers..."
+              className="pl-9"
+            />
+          </div>
         </div>
-      </div>
 
-      {/* Right side */}
-      <div className="flex items-center gap-4">
-        {/* Notifications */}
-        <Button variant="ghost" size="icon" className="relative">
-          <Bell className="h-5 w-5" />
-          <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-medium text-white">
-            3
-          </span>
-        </Button>
+        {/* Right side */}
+        <div className="flex items-center gap-4">
+          {/* User menu */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" className="flex items-center gap-2">
+                <Avatar className="h-8 w-8">
+                  <AvatarFallback>
+                    {user ? getInitials(user.fullName) : <User className="h-4 w-4" />}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="hidden text-left md:block">
+                  <p className="text-sm font-medium">
+                    {user?.fullName || 'Guest'}
+                  </p>
+                  <p className="text-xs text-muted-foreground capitalize">
+                    {user?.role?.replace('_', ' ') || 'Not signed in'}
+                  </p>
+                </div>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuLabel>My Account</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => setProfileOpen(true)}>
+                <UserCircle className="mr-2 h-4 w-4" />
+                Profile
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => router.push('/settings')}>
+                <Settings className="mr-2 h-4 w-4" />
+                Settings
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem className="text-red-600" onClick={handleSignOut}>
+                <LogOut className="mr-2 h-4 w-4" />
+                Sign out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </header>
 
-        {/* User menu */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="flex items-center gap-2">
-              <Avatar className="h-8 w-8">
-                <AvatarFallback>
-                  {user ? getInitials(user.fullName) : <User className="h-4 w-4" />}
+      {/* Profile Dialog */}
+      <Dialog open={profileOpen} onOpenChange={setProfileOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>My Profile</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="flex items-center gap-4">
+              <Avatar className="h-16 w-16">
+                <AvatarFallback className="text-lg">
+                  {user ? getInitials(user.fullName) : <User className="h-8 w-8" />}
                 </AvatarFallback>
               </Avatar>
-              <div className="hidden text-left md:block">
-                <p className="text-sm font-medium">
-                  {user?.fullName || 'Guest'}
-                </p>
-                <p className="text-xs text-muted-foreground capitalize">
-                  {user?.role?.replace('_', ' ') || 'Not signed in'}
-                </p>
+              <div>
+                <h3 className="text-lg font-semibold">{user?.fullName || 'Guest'}</h3>
+                <Badge variant="secondary" className="capitalize">
+                  {user?.role?.replace('_', ' ') || 'No role'}
+                </Badge>
               </div>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuLabel>My Account</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem>Profile</DropdownMenuItem>
-            <DropdownMenuItem>Settings</DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem className="text-red-600">
-              Sign out
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-    </header>
+            </div>
+            <div className="space-y-3 rounded-lg border p-4">
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Email</Label>
+                <p className="text-sm">{user?.email || '-'}</p>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Role</Label>
+                <p className="text-sm capitalize">{user?.role?.replace('_', ' ') || '-'}</p>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }

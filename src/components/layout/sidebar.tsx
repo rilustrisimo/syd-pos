@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import {
   LayoutDashboard,
@@ -14,19 +14,49 @@ import {
   BarChart3,
   Settings,
   LogOut,
+  History,
+  RotateCcw,
+  Clock,
+  TrendingUp,
+  RefreshCw,
+  BarChart,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
+import { getClient } from '@/lib/supabase/client'
+import { useAuthStore } from '@/lib/stores/auth'
+import { toast } from 'sonner'
 
 const navigation = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
-  { name: 'Point of Sale', href: '/pos', icon: ShoppingCart },
+  {
+    name: 'Point of Sale',
+    href: '/pos',
+    icon: ShoppingCart,
+    children: [
+      { name: 'New Sale', href: '/pos', icon: ShoppingCart },
+      { name: 'History', href: '/pos/history', icon: History },
+      { name: 'Returns', href: '/pos/returns', icon: RotateCcw },
+    ],
+  },
   { name: 'Products', href: '/products', icon: Package },
   { name: 'Inventory', href: '/inventory', icon: Boxes },
   { name: 'Purchases', href: '/purchases', icon: ClipboardList },
   { name: 'Customers', href: '/customers', icon: Users },
   { name: 'Suppliers', href: '/suppliers', icon: Truck },
-  { name: 'Reports', href: '/reports', icon: BarChart3 },
+  {
+    name: 'Reports',
+    href: '/reports',
+    icon: BarChart3,
+    children: [
+      { name: 'Sales', href: '/reports/sales', icon: TrendingUp },
+      { name: 'AR Aging', href: '/reports/ar-aging', icon: Clock },
+      { name: 'Inventory Turnover', href: '/reports/inventory-turnover', icon: RefreshCw },
+      { name: 'Profit Margin', href: '/reports/profit-margin', icon: TrendingUp },
+      { name: 'Supplier History', href: '/reports/supplier-history', icon: Truck },
+      { name: 'Demand Forecast', href: '/reports/demand-forecast', icon: BarChart },
+    ],
+  },
 ]
 
 const bottomNavigation = [
@@ -35,6 +65,19 @@ const bottomNavigation = [
 
 export function Sidebar() {
   const pathname = usePathname()
+  const router = useRouter()
+  const clear = useAuthStore((state) => state.clear)
+
+  const handleSignOut = async () => {
+    try {
+      const supabase = getClient()
+      await supabase.auth.signOut()
+      clear()
+      router.push('/login')
+    } catch {
+      toast.error('Failed to sign out')
+    }
+  }
 
   return (
     <div className="flex h-full w-64 flex-col bg-slate-900 text-white">
@@ -44,10 +87,50 @@ export function Sidebar() {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 space-y-1 px-3 py-4">
+      <nav className="flex-1 space-y-1 px-3 py-4 overflow-y-auto">
         {navigation.map((item) => {
+          const hasChildren = 'children' in item && item.children
           const isActive = pathname === item.href ||
             (item.href !== '/' && pathname.startsWith(item.href))
+
+          if (hasChildren) {
+            return (
+              <div key={item.name}>
+                <div
+                  className={cn(
+                    'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium',
+                    isActive
+                      ? 'text-white'
+                      : 'text-slate-400'
+                  )}
+                >
+                  <item.icon className="h-5 w-5" />
+                  {item.name}
+                </div>
+                <div className="ml-4 mt-1 space-y-1">
+                  {item.children.map((child: any) => {
+                    const isChildActive = pathname === child.href
+                    return (
+                      <Link
+                        key={child.href}
+                        href={child.href}
+                        className={cn(
+                          'flex items-center gap-3 rounded-lg px-3 py-1.5 text-sm transition-colors',
+                          isChildActive
+                            ? 'bg-slate-800 text-white'
+                            : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+                        )}
+                      >
+                        <child.icon className="h-4 w-4" />
+                        {child.name}
+                      </Link>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          }
+
           return (
             <Link
               key={item.name}
@@ -90,6 +173,7 @@ export function Sidebar() {
         <Button
           variant="ghost"
           className="w-full justify-start gap-3 text-slate-400 hover:bg-slate-800 hover:text-white"
+          onClick={handleSignOut}
         >
           <LogOut className="h-5 w-5" />
           Sign Out

@@ -124,3 +124,32 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Interactive elements get pointer cursor */
+@layer components {
+  a,
+  label[for],
+  [role="button"],
+  [role="link"],
+  [role="menuitem"],
+  [role="option"],
+  [role="tab"] {
+    @apply cursor-pointer;
+  }
+
+  /* Loading spinner animation */
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  .animate-spin {
+    animation: spin 1s linear infinite;
+  }
+
+  /* Active/pressed state feedback */
+  .active-press:active:not(:disabled) {
+    transform: scale(0.98);
+  }
+}
