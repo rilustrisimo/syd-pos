@@ -63,7 +63,7 @@ const bottomNavigation = [
   { name: 'Settings', href: '/settings', icon: Settings },
 ]
 
-export function Sidebar() {
+export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname()
   const router = useRouter()
   const clear = useAuthStore((state) => state.clear)
@@ -80,7 +80,7 @@ export function Sidebar() {
   }
 
   return (
-    <div className="flex h-full w-64 flex-col bg-slate-900 text-white">
+    <>
       {/* Logo */}
       <div className="flex h-16 items-center justify-center border-b border-slate-800">
         <h1 className="text-xl font-bold">SYD POS</h1>
@@ -114,6 +114,7 @@ export function Sidebar() {
                       <Link
                         key={child.href}
                         href={child.href}
+                        onClick={onNavigate}
                         className={cn(
                           'flex items-center gap-3 rounded-lg px-3 py-1.5 text-sm transition-colors',
                           isChildActive
@@ -135,6 +136,7 @@ export function Sidebar() {
             <Link
               key={item.name}
               href={item.href}
+              onClick={onNavigate}
               className={cn(
                 'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
                 isActive
@@ -157,6 +159,7 @@ export function Sidebar() {
             <Link
               key={item.name}
               href={item.href}
+              onClick={onNavigate}
               className={cn(
                 'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
                 isActive
@@ -179,6 +182,14 @@ export function Sidebar() {
           Sign Out
         </Button>
       </div>
+    </>
+  )
+}
+
+export function Sidebar() {
+  return (
+    <div className="hidden lg:flex h-full w-64 flex-col bg-slate-900 text-white">
+      <SidebarContent />
     </div>
   )
 }

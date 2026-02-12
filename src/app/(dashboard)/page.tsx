@@ -70,7 +70,7 @@ function StatCard({
         <Icon className={`h-5 w-5 ${iconColor || 'text-muted-foreground'}`} />
       </CardHeader>
       <CardContent>
-        <div className="text-2xl font-bold">{value}</div>
+        <div className="text-xl sm:text-2xl font-bold">{value}</div>
         <p className="text-xs text-muted-foreground">
           {description}
           {trend && <span className="ml-2 text-green-600">{trend}</span>}
@@ -171,9 +171,9 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       {/* Page header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Dashboard</h1>
           <p className="text-muted-foreground">
             Welcome to SYD Construction Supplies POS System
           </p>
@@ -194,7 +194,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Stats grid */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         <StatCard
           title="Today's Sales"
           value={stats ? formatCurrency(stats.todaySales) : '₱0.00'}

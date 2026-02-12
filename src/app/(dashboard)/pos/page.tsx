@@ -60,6 +60,11 @@ import { Textarea } from '@/components/ui/textarea'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import {
+  Sheet,
+  SheetContent,
+  SheetTitle,
+} from '@/components/ui/sheet'
+import {
   Command,
   CommandEmpty,
   CommandGroup,
@@ -99,6 +104,7 @@ export default function POSPage() {
   const [paymentReference, setPaymentReference] = useState('')
   const [isPrintDialogOpen, setIsPrintDialogOpen] = useState(false)
   const [completedTransaction, setCompletedTransaction] = useState<any>(null)
+  const [isCartOpen, setIsCartOpen] = useState(false)
 
   // Store
   const {
@@ -463,35 +469,35 @@ export default function POSPage() {
   const itemCount = getItemCount()
 
   return (
-    <div className="h-[calc(100vh-4rem)] flex gap-4">
+    <div className="h-[calc(100vh-4rem)] flex flex-col lg:flex-row gap-4">
       {/* Left Panel - Product Search & List */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col min-h-0">
         {/* Today's Summary */}
-        <div className="grid grid-cols-3 gap-4 mb-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-4">
           <Card className="p-4">
             <div className="text-sm text-muted-foreground">Today's Sales</div>
-            <div className="text-2xl font-bold">
+            <div className="text-xl sm:text-2xl font-bold">
               {formatCurrency(todaysSummary?.netSales || 0)}
             </div>
           </Card>
           <Card className="p-4">
             <div className="text-sm text-muted-foreground">Transactions</div>
-            <div className="text-2xl font-bold">
+            <div className="text-xl sm:text-2xl font-bold">
               {todaysSummary?.totalTransactions || 0}
             </div>
           </Card>
           <Card className="p-4">
             <div className="text-sm text-muted-foreground">Unpaid</div>
-            <div className="text-2xl font-bold text-orange-600">
+            <div className="text-xl sm:text-2xl font-bold text-orange-600">
               {todaysSummary?.unpaidTransactions || 0}
             </div>
           </Card>
         </div>
 
         {/* Branch & Customer Selection */}
-        <div className="flex gap-4 mb-4">
+        <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 mb-4">
           <Select value={branchId || ''} onValueChange={setBranchId}>
-            <SelectTrigger className="w-[200px]">
+            <SelectTrigger className="w-full sm:w-[200px]">
               <SelectValue placeholder="Select Branch" />
             </SelectTrigger>
             <SelectContent>
@@ -515,7 +521,7 @@ export default function POSPage() {
                 )}
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-[400px] p-0" align="start">
+            <PopoverContent className="w-[min(400px,calc(100vw-2rem))] p-0" align="start">
               <Command>
                 <CommandInput
                   placeholder="Search customers..."
@@ -633,8 +639,173 @@ export default function POSPage() {
         </Card>
       </div>
 
-      {/* Right Panel - Cart */}
-      <Card className="w-[400px] flex flex-col">
+      {/* Floating Cart Button - Mobile Only */}
+      <div className="fixed bottom-20 right-4 z-30 lg:hidden">
+        <Button
+          size="lg"
+          className="h-14 w-14 rounded-full shadow-lg relative"
+          onClick={() => setIsCartOpen(true)}
+        >
+          <ShoppingCart className="h-6 w-6" />
+          {itemCount > 0 && (
+            <Badge
+              variant="destructive"
+              className="absolute -top-2 -right-2 h-6 w-6 rounded-full p-0 flex items-center justify-center text-xs"
+            >
+              {itemCount}
+            </Badge>
+          )}
+        </Button>
+      </div>
+
+      {/* Mobile Cart Sheet */}
+      <Sheet open={isCartOpen} onOpenChange={setIsCartOpen}>
+        <SheetContent side="right" className="w-full sm:w-[400px] flex flex-col p-4">
+          <SheetTitle className="flex items-center gap-2">
+            <ShoppingCart className="h-5 w-5" />
+            Cart
+            {itemCount > 0 && (
+              <Badge variant="secondary" className="ml-auto">
+                {itemCount} items
+              </Badge>
+            )}
+          </SheetTitle>
+
+          <ScrollArea className="flex-1 -mx-4 px-4">
+            {items.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
+                <ShoppingCart className="h-12 w-12 mb-2" />
+                <p>Cart is empty</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {items.map((item) => (
+                  <div
+                    key={item.id}
+                    className="flex items-start gap-3 p-3 rounded-lg border"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="font-mono text-xs text-muted-foreground">
+                        {item.product_code}
+                      </div>
+                      <div className="font-medium text-sm truncate">
+                        {item.product_name}
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        {formatCurrency(item.unit_price)} / {item.uom_name}
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end gap-2">
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={() =>
+                            updateItemQuantity(item.id, item.quantity - 1)
+                          }
+                        >
+                          <Minus className="h-3 w-3" />
+                        </Button>
+                        <Input
+                          type="number"
+                          value={item.quantity}
+                          onChange={(e) =>
+                            updateItemQuantity(item.id, parseFloat(e.target.value) || 1)
+                          }
+                          className="w-16 h-7 text-center"
+                          min="0.01"
+                          step="1"
+                        />
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={() =>
+                            updateItemQuantity(item.id, item.quantity + 1)
+                          }
+                        >
+                          <Plus className="h-3 w-3" />
+                        </Button>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold">
+                          {formatCurrency(item.quantity * item.unit_price - item.discount_amount)}
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-destructive"
+                          onClick={() => removeItem(item.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </ScrollArea>
+
+          <Separator />
+
+          <div className="space-y-2 py-2">
+            <div className="flex justify-between text-sm">
+              <span>Subtotal</span>
+              <span>{formatCurrency(subtotal)}</span>
+            </div>
+            {totalDiscount > 0 && (
+              <div className="flex justify-between text-sm text-green-600">
+                <span>Discount</span>
+                <span>-{formatCurrency(totalDiscount)}</span>
+              </div>
+            )}
+            <Separator />
+            <div className="flex justify-between text-lg font-bold">
+              <span>Total</span>
+              <span>{formatCurrency(total)}</span>
+            </div>
+          </div>
+
+          <div className="flex gap-2 mb-3">
+            <Button
+              variant={deliveryType === 'pickup' ? 'default' : 'outline'}
+              size="sm"
+              className="flex-1"
+              onClick={() => setDeliveryType('pickup')}
+            >
+              <Package className="mr-2 h-4 w-4" />
+              Pickup
+            </Button>
+            <Button
+              variant={deliveryType === 'delivery' ? 'default' : 'outline'}
+              size="sm"
+              className="flex-1"
+              onClick={() => setDeliveryType('delivery')}
+            >
+              <Truck className="mr-2 h-4 w-4" />
+              Delivery
+            </Button>
+          </div>
+
+          <Button
+            className="w-full"
+            size="lg"
+            disabled={items.length === 0}
+            onClick={() => {
+              setIsCartOpen(false)
+              setIsCheckoutOpen(true)
+            }}
+          >
+            <Receipt className="mr-2 h-5 w-5" />
+            Checkout
+          </Button>
+        </SheetContent>
+      </Sheet>
+
+      {/* Right Panel - Cart (Desktop Only) */}
+      <Card className="hidden lg:flex w-[400px] flex-col">
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2">
             <ShoppingCart className="h-5 w-5" />
@@ -786,7 +957,7 @@ export default function POSPage() {
 
       {/* Checkout Dialog */}
       <Dialog open={isCheckoutOpen} onOpenChange={setIsCheckoutOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Checkout</DialogTitle>
             <DialogDescription>
@@ -794,7 +965,7 @@ export default function POSPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="grid grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Left: Order Summary */}
             <div className="space-y-4">
               <h3 className="font-semibold">Order Summary</h3>

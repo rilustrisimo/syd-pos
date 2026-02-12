@@ -227,9 +227,9 @@ export default function TransactionHistoryPage() {
   return (
     <div className="space-y-6">
       {/* Page Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Transaction History</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Transaction History</h1>
           <p className="text-muted-foreground">
             View past transactions and reprint receipts or invoices
           </p>
@@ -323,7 +323,7 @@ export default function TransactionHistoryPage() {
             </div>
           ) : (
             <>
-              <div className="border rounded-lg">
+              <div className="border rounded-lg overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>

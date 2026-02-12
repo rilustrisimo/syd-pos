@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Bell, Search, User, LogOut, Settings, UserCircle } from 'lucide-react'
+import { Bell, Menu, Search, User, LogOut, Settings, UserCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/dialog'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { useAuthStore } from '@/lib/stores/auth'
+import { useSidebarStore } from '@/lib/stores/sidebar'
 import { getClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 
@@ -30,6 +31,7 @@ export function Header() {
   const router = useRouter()
   const user = useAuthStore((state) => state.user)
   const clear = useAuthStore((state) => state.clear)
+  const toggleSidebar = useSidebarStore((state) => state.toggle)
   const [profileOpen, setProfileOpen] = useState(false)
 
   const getInitials = (name: string) => {
@@ -54,10 +56,22 @@ export function Header() {
 
   return (
     <>
-      <header className="flex h-16 items-center justify-between border-b bg-white px-6">
-        {/* Search */}
-        <div className="flex flex-1 items-center gap-4">
-          <div className="relative w-96">
+      <header className="flex h-16 items-center justify-between border-b bg-white px-4 lg:px-6">
+        {/* Left side: hamburger + search */}
+        <div className="flex flex-1 items-center gap-3">
+          {/* Hamburger - mobile only */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="lg:hidden shrink-0"
+            onClick={toggleSidebar}
+            aria-label="Toggle navigation menu"
+          >
+            <Menu className="h-5 w-5" />
+          </Button>
+
+          {/* Search - responsive */}
+          <div className="relative hidden sm:block w-full max-w-96">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="Search products, customers..."
