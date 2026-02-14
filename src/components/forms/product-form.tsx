@@ -565,24 +565,6 @@ export function ProductForm({ product, mode }: ProductFormProps) {
           </CardContent>
         </Card>
 
-        {/* Product Images */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Product Images</CardTitle>
-            <CardDescription>
-              Upload images of the product. The first image will be the primary image.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ProductImageUpload
-              productId={product?.id}
-              images={productImages}
-              onImagesChange={setProductImages}
-              maxImages={5}
-            />
-          </CardContent>
-        </Card>
-
         {/* Additional Information */}
         <Card>
           <CardHeader>

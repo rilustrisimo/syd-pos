@@ -3,6 +3,7 @@
 import { use } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import Image from 'next/image'
 import { useProduct, useDeleteProduct } from '@/hooks/useProducts'
 import { formatCurrency } from '@/lib/utils/formatting'
 import { toast } from 'sonner'
@@ -16,7 +17,8 @@ import {
   AlertTriangle,
   CheckCircle2,
   XCircle,
-  Loader2
+  Loader2,
+  Image as ImageIcon
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -24,6 +26,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { cn } from '@/lib/utils'
 
 interface ProductDetailPageProps {
   params: Promise<{ id: string }>
@@ -142,6 +145,63 @@ export default function ProductDetailPage({ params }: ProductDetailPageProps) {
           )}
         </Badge>
       </div>
+
+      {/* Product Images */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <ImageIcon className="h-5 w-5" />
+            Product Images
+          </CardTitle>
+          <CardDescription>
+            {(product as any).images?.length > 0 
+              ? `${(product as any).images.length} image(s) uploaded`
+              : 'No images uploaded yet'
+            }
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {(product as any).images && (product as any).images.length > 0 ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+              {(product as any).images.map((image: any) => (
+                <div
+                  key={image.id}
+                  className={cn(
+                    'relative aspect-square rounded-lg overflow-hidden border-2',
+                    image.is_primary ? 'border-primary' : 'border-border'
+                  )}
+                >
+                  <Image
+                    src={image.url}
+                    alt={image.alt_text || product.name}
+                    fill
+                    className="object-cover"
+                    sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, (max-width: 1024px) 25vw, 20vw"
+                  />
+                  {image.is_primary && (
+                    <div className="absolute top-2 left-2 bg-primary text-primary-foreground px-2 py-1 rounded-md text-xs font-medium">
+                      Primary
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-12 border-2 border-dashed rounded-lg">
+              <div className="relative w-32 h-32 mb-4 opacity-20">
+                <ImageIcon className="w-full h-full" />
+              </div>
+              <p className="text-muted-foreground text-sm mb-4">No product images uploaded</p>
+              <Link href={`/products/${id}/edit`}>
+                <Button variant="outline" size="sm">
+                  <ImageIcon className="mr-2 h-4 w-4" />
+                  Add Images
+                </Button>
+              </Link>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <div className="grid gap-6 md:grid-cols-2">
         {/* Basic Information */}
