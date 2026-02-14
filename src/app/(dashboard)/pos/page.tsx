@@ -582,13 +582,15 @@ export default function POSPage() {
             <PopoverContent className="w-[min(400px,calc(100vw-2rem))] p-0" align="start">
               <Command>
                 <CommandInput
-                  placeholder="Search customers..."
+                  placeholder="Search customers by name or phone..."
                   value={customerSearch}
                   onValueChange={setCustomerSearch}
                 />
                 <CommandList>
-                  <CommandEmpty>No customers found</CommandEmpty>
-                  <CommandGroup>
+                  <CommandEmpty>
+                    No customers found. Try a different search or add a new customer.
+                  </CommandEmpty>
+                  <CommandGroup heading={customerSearch ? 'Search Results' : 'All Customers'}>
                     {walkInCustomer && (
                       <CommandItem
                         onSelect={() => handleSelectCustomer(walkInCustomer)}

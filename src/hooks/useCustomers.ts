@@ -49,7 +49,7 @@ export function useSearchCustomers(query: string, limit = 10) {
   return useQuery({
     queryKey: customerKeys.search(query),
     queryFn: () => searchCustomers(query, limit),
-    enabled: query.length >= 2,
+    enabled: true, // Always enabled, will show recent customers when query is empty
     staleTime: 10000, // 10 seconds
   })
 }

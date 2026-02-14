@@ -94,11 +94,18 @@ export async function getCustomer(id: string) {
 export async function searchCustomers(query: string, limit = 10) {
   const supabase = createClient()
 
-  const { data, error } = await supabase
+  let dbQuery = supabase
     .from('customers')
     .select('id, name, phone, customer_type, outstanding_balance, credit_limit')
     .eq('is_active', true)
-    .or(`name.ilike.%${query}%,phone.ilike.%${query}%`)
+
+  // If query is provided, search by name or phone
+  if (query && query.trim().length > 0) {
+    dbQuery = dbQuery.or(`name.ilike.%${query}%,phone.ilike.%${query}%`)
+  }
+
+  // Order by name for empty queries (recent customers), or by relevance for search
+  const { data, error } = await dbQuery
     .order('name')
     .limit(limit)
 
