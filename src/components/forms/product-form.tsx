@@ -589,7 +589,7 @@ export function ProductForm({ product, mode }: ProductFormProps) {
           <CardHeader>
             <CardTitle>Inventory Settings</CardTitle>
             <CardDescription>
-              Configure reorder points and stock alerts
+              Configure reorder points and stock alerts (tracked in base units)
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -599,7 +599,7 @@ export function ProductForm({ product, mode }: ProductFormProps) {
                 name="reorder_point"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Reorder Point *</FormLabel>
+                    <FormLabel>Reorder Point ({baseUnitName}) *</FormLabel>
                     <FormControl>
                       <Input
                         type="number"
@@ -609,7 +609,8 @@ export function ProductForm({ product, mode }: ProductFormProps) {
                       />
                     </FormControl>
                     <FormDescription>
-                      Alert when stock falls below this level
+                      Alert when stock falls below this quantity
+                      {isDifferentUnits && ` (inventory tracked in ${baseUnitName}s)`}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -621,7 +622,7 @@ export function ProductForm({ product, mode }: ProductFormProps) {
                 name="reorder_quantity"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Reorder Quantity *</FormLabel>
+                    <FormLabel>Reorder Quantity ({baseUnitName}) *</FormLabel>
                     <FormControl>
                       <Input
                         type="number"
@@ -631,7 +632,8 @@ export function ProductForm({ product, mode }: ProductFormProps) {
                       />
                     </FormControl>
                     <FormDescription>
-                      Suggested quantity to order
+                      Suggested quantity to reorder
+                      {isDifferentUnits && ` (in ${baseUnitName}s)`}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
