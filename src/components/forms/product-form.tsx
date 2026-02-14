@@ -46,6 +46,9 @@ const productFormSchema = z.object({
   conversion_factor: z.string().refine((val) => !isNaN(Number(val)) && Number(val) > 0, {
     message: 'Conversion factor must be greater than 0',
   }),
+  base_unit_cost: z.string().refine((val) => !isNaN(Number(val)) && Number(val) >= 0, {
+    message: 'Base unit cost must be a valid number',
+  }),
   latest_cogs: z.string().refine((val) => !isNaN(Number(val)) && Number(val) >= 0, {
     message: 'Cost must be a valid number',
   }),
@@ -94,6 +97,7 @@ export function ProductForm({ product, mode }: ProductFormProps) {
       base_uom_id: product?.base_uom_id || '',
       selling_uom_id: product?.selling_uom_id || '',
       conversion_factor: (product as any)?.conversion_factor?.toString() || '1',
+      base_unit_cost: product?.latest_cogs?.toString() || '0',
       latest_cogs: product?.latest_cogs?.toString() || '0',
       markup_percentage: product?.markup_percentage?.toString() || '20',
       current_selling_price: product?.current_selling_price?.toString() || '0',
@@ -108,6 +112,7 @@ export function ProductForm({ product, mode }: ProductFormProps) {
   const lastEditedField = useRef<'cost' | 'markup' | 'price' | null>(null)
 
   // Watch for changes in cost and markup
+  const watchBaseUnitCost = form.watch('base_unit_cost')
   const watchCost = form.watch('latest_cogs')
   const watchMarkup = form.watch('markup_percentage')
   const watchBaseUom = form.watch('base_uom_id')
@@ -120,6 +125,27 @@ export function ProductForm({ product, mode }: ProductFormProps) {
   // Get unit names for display
   const baseUnitName = units?.find(u => u.id === watchBaseUom)?.name || 'base unit'
   const sellingUnitName = units?.find(u => u.id === watchSellingUom)?.name || 'selling unit'
+
+  // Auto-calculate COGS from base unit cost and conversion factor
+  useEffect(() => {
+    const baseUnitCost = Number(watchBaseUnitCost) || 0
+    const conversionFactor = Number(watchConversionFactor) || 1
+
+    if (baseUnitCost >= 0) {
+      let calculatedCogs: number
+      
+      if (isDifferentUnits && conversionFactor > 0) {
+        // Calculate cost per selling unit: base cost / conversion factor
+        // Example: 1100 per box / 20 kg = 55 per kg
+        calculatedCogs = baseUnitCost / conversionFactor
+      } else {
+        // Same units, no conversion
+        calculatedCogs = baseUnitCost
+      }
+      
+      form.setValue('latest_cogs', calculatedCogs.toFixed(4))
+    }
+  }, [watchBaseUnitCost, watchConversionFactor, isDifferentUnits, form])
 
   // Calculate selling price when cost or markup changes
   useEffect(() => {
@@ -149,10 +175,9 @@ export function ProductForm({ product, mode }: ProductFormProps) {
     }
   }
 
-  // Mark field as edited when cost changes
-  const handleCostChange = (value: string) => {
-    lastEditedField.current = 'cost'
-    form.setValue('latest_cogs', value)
+  // Handle base unit cost change
+  const handleBaseUnitCostChange = (value: string) => {
+    form.setValue('base_unit_cost', value)
   }
 
   // Mark field as edited when markup changes
@@ -449,35 +474,61 @@ export function ProductForm({ product, mode }: ProductFormProps) {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <FormField
                 control={form.control}
-                name="latest_cogs"
+                name="base_unit_cost"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Cost (COGS) *</FormLabel>
+                    <FormLabel>Base Unit Cost ({baseUnitName}) *</FormLabel>
                     <FormControl>
                       <Input
                         type="number"
                         step="0.01"
                         placeholder="0.00"
                         value={field.value}
-                        onChange={(e) => handleCostChange(e.target.value)}
+                        onChange={(e) => handleBaseUnitCostChange(e.target.value)}
                         onBlur={field.onBlur}
                         name={field.name}
                         ref={field.ref}
                       />
                     </FormControl>
                     <FormDescription>
-                      {isDifferentUnits 
-                        ? `Cost per ${sellingUnitName} (auto-calculated from purchase)` 
-                        : 'Cost of goods sold'}
+                      Cost per {baseUnitName} {isDifferentUnits ? '(will be converted)' : ''}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
               />
 
+              <FormField
+                control={form.control}
+                name="latest_cogs"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>COGS per {sellingUnitName}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        step="0.0001"
+                        placeholder="0.00"
+                        value={field.value}
+                        disabled
+                        className="bg-muted"
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {isDifferentUnits 
+                        ? `Auto-calculated: ${watchBaseUnitCost || 0} ÷ ${watchConversionFactor || 1}` 
+                        : 'Same as base unit cost'}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <FormField
                 control={form.control}
                 name="markup_percentage"
