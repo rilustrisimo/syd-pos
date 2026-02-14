@@ -13,6 +13,9 @@ import {
   createCategory,
   updateCategory,
   deleteCategory,
+  createSubcategory,
+  updateSubcategory,
+  deleteSubcategory,
 } from '@/lib/supabase/queries/products'
 import type { InsertTables, UpdateTables } from '@/types/database'
 
@@ -117,6 +120,41 @@ export function useDeleteCategory() {
     mutationFn: (id: string) => deleteCategory(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['categories'] })
+    },
+  })
+}
+
+// Subcategories hooks
+export function useCreateSubcategory() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (subcategory: InsertTables<'product_subcategories'>) => createSubcategory(subcategory),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['subcategories'] })
+    },
+  })
+}
+
+export function useUpdateSubcategory() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ id, updates }: { id: string; updates: UpdateTables<'product_subcategories'> }) =>
+      updateSubcategory(id, updates),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['subcategories'] })
+    },
+  })
+}
+
+export function useDeleteSubcategory() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (id: string) => deleteSubcategory(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['subcategories'] })
     },
   })
 }

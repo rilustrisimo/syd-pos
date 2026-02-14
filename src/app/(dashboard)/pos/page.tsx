@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { usePOSStore } from '@/lib/stores/posStore'
 import { usePOSProductSearch, useCreateTransaction, useTodaysSummary } from '@/hooks/useTransactions'
-import { useSearchCustomers, useWalkInCustomer } from '@/hooks/useCustomers'
+import { useSearchCustomers, useWalkInCustomer, useCreateCustomer } from '@/hooks/useCustomers'
 import { useBranches } from '@/hooks/useInventory'
 import { toast } from 'sonner'
 import {
@@ -24,6 +24,7 @@ import {
   Loader2,
   Receipt,
   Printer,
+  UserPlus,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -105,6 +106,10 @@ export default function POSPage() {
   const [isPrintDialogOpen, setIsPrintDialogOpen] = useState(false)
   const [completedTransaction, setCompletedTransaction] = useState<any>(null)
   const [isCartOpen, setIsCartOpen] = useState(false)
+  const [isNewCustomerOpen, setIsNewCustomerOpen] = useState(false)
+  const [newCustomerName, setNewCustomerName] = useState('')
+  const [newCustomerPhone, setNewCustomerPhone] = useState('')
+  const [newCustomerType, setNewCustomerType] = useState<'cash' | 'credit'>('cash')
 
   // Store
   const {
@@ -155,6 +160,7 @@ export default function POSPage() {
   const { data: todaysSummary } = useTodaysSummary(branchId || undefined)
 
   const createTransaction = useCreateTransaction()
+  const createCustomer = useCreateCustomer()
 
   // Set default branch and walk-in customer
   useEffect(() => {
@@ -211,6 +217,41 @@ export default function POSPage() {
     setCustomerSearch('')
   }, [setCustomer])
 
+  // Handle new customer creation
+  const handleCreateCustomer = useCallback(async () => {
+    if (!newCustomerName.trim()) {
+      toast.error('Customer name is required')
+      return
+    }
+
+    try {
+      const result = await createCustomer.mutateAsync({
+        name: newCustomerName.trim(),
+        phone: newCustomerPhone.trim() || null,
+        customer_type: newCustomerType,
+      })
+
+      // Auto-select the newly created customer
+      setCustomer({
+        id: (result as any).id,
+        name: (result as any).name,
+        phone: (result as any).phone,
+        customer_type: (result as any).customer_type,
+        credit_limit: (result as any).credit_limit || 0,
+        outstanding_balance: (result as any).outstanding_balance || 0,
+      })
+
+      toast.success(`Customer "${newCustomerName.trim()}" created`)
+      setIsNewCustomerOpen(false)
+      setIsCustomerOpen(false)
+      setNewCustomerName('')
+      setNewCustomerPhone('')
+      setNewCustomerType('cash')
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to create customer')
+    }
+  }, [newCustomerName, newCustomerPhone, newCustomerType, createCustomer, setCustomer])
+
   // Handle add payment
   const handleAddPayment = useCallback(() => {
     const amount = parseFloat(paymentAmount)
@@ -251,8 +292,18 @@ export default function POSPage() {
       return
     }
 
-    if (!customer) {
-      toast.error('Please select a customer')
+    // Use walk-in customer as fallback if none selected
+    const checkoutCustomer = customer || (walkInCustomer ? {
+      id: walkInCustomer.id,
+      name: walkInCustomer.name,
+      phone: walkInCustomer.phone,
+      customer_type: walkInCustomer.customer_type,
+      credit_limit: walkInCustomer.credit_limit,
+      outstanding_balance: walkInCustomer.outstanding_balance,
+    } : null)
+
+    if (!checkoutCustomer) {
+      toast.error('No customer available')
       return
     }
 
@@ -287,7 +338,7 @@ export default function POSPage() {
       // Store current items and payments before reset
       const currentItems = [...items]
       const currentPayments = [...payments]
-      const currentCustomer = customer
+      const currentCustomer = checkoutCustomer
       const currentSubtotal = subtotal
       const currentTotalDiscount = totalDiscount
       const currentTotal = total
@@ -296,7 +347,7 @@ export default function POSPage() {
       const result = await createTransaction.mutateAsync({
         input: {
           branch_id: branchId,
-          customer_id: customer.id,
+          customer_id: checkoutCustomer.id,
           transaction_type: 'sale',
           delivery_type: deliveryType,
           delivery_address: deliveryAddress || null,
@@ -567,6 +618,16 @@ export default function POSPage() {
                         </Badge>
                       </CommandItem>
                     ))}
+                  </CommandGroup>
+                  <Separator />
+                  <CommandGroup>
+                    <CommandItem
+                      onSelect={() => setIsNewCustomerOpen(true)}
+                      className="cursor-pointer"
+                    >
+                      <UserPlus className="mr-2 h-4 w-4" />
+                      <span>Add New Customer</span>
+                    </CommandItem>
                   </CommandGroup>
                 </CommandList>
               </Command>
@@ -961,7 +1022,7 @@ export default function POSPage() {
           <DialogHeader>
             <DialogTitle>Checkout</DialogTitle>
             <DialogDescription>
-              Complete the transaction for {customer?.name}
+              Complete the transaction for {customer?.name || 'Walk-in Customer'}
             </DialogDescription>
           </DialogHeader>
 
@@ -1189,6 +1250,82 @@ export default function POSPage() {
                 <Check className="mr-2 h-4 w-4" />
               )}
               Complete Transaction
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* New Customer Dialog */}
+      <Dialog open={isNewCustomerOpen} onOpenChange={setIsNewCustomerOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add New Customer</DialogTitle>
+            <DialogDescription>
+              Create a new customer to use in this transaction.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="customer-name">
+                Customer Name <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="customer-name"
+                placeholder="e.g., Juan Dela Cruz"
+                value={newCustomerName}
+                onChange={(e) => setNewCustomerName(e.target.value)}
+                autoFocus
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="customer-phone">Phone Number</Label>
+              <Input
+                id="customer-phone"
+                placeholder="e.g., 09171234567"
+                value={newCustomerPhone}
+                onChange={(e) => setNewCustomerPhone(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Customer Type</Label>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant={newCustomerType === 'cash' ? 'default' : 'outline'}
+                  size="sm"
+                  className="flex-1"
+                  onClick={() => setNewCustomerType('cash')}
+                >
+                  <Banknote className="mr-2 h-4 w-4" />
+                  Cash
+                </Button>
+                <Button
+                  type="button"
+                  variant={newCustomerType === 'credit' ? 'default' : 'outline'}
+                  size="sm"
+                  className="flex-1"
+                  onClick={() => setNewCustomerType('credit')}
+                >
+                  <CreditCard className="mr-2 h-4 w-4" />
+                  Credit
+                </Button>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsNewCustomerOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCreateCustomer}
+              disabled={createCustomer.isPending || !newCustomerName.trim()}
+            >
+              {createCustomer.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <UserPlus className="mr-2 h-4 w-4" />
+              )}
+              Create Customer
             </Button>
           </DialogFooter>
         </DialogContent>

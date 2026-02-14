@@ -209,3 +209,44 @@ export async function deleteCategory(id: string) {
 
   if (error) throw error
 }
+
+// Create subcategory
+export async function createSubcategory(subcategory: InsertTables<'product_subcategories'>) {
+  const supabase = getClient()
+
+  const { data, error } = await supabase
+    .from('product_subcategories')
+    .insert(subcategory as any)
+    .select()
+    .single()
+
+  if (error) throw error
+  return data
+}
+
+// Update subcategory
+export async function updateSubcategory(id: string, updates: UpdateTables<'product_subcategories'>) {
+  const supabase = getClient()
+
+  const { data, error } = await supabase
+    .from('product_subcategories')
+    .update(updates as any)
+    .eq('id', id)
+    .select()
+    .single()
+
+  if (error) throw error
+  return data
+}
+
+// Delete (soft) subcategory
+export async function deleteSubcategory(id: string) {
+  const supabase = getClient()
+
+  const { error } = await supabase
+    .from('product_subcategories')
+    .update({ is_active: false } as any)
+    .eq('id', id)
+
+  if (error) throw error
+}

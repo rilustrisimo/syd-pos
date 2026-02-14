@@ -3,11 +3,11 @@
 ## Project Overview
 Modern inventory management and point-of-sale system for SYD Construction Supplies Trading.
 
-**Tech Stack:** Next.js 16 + Supabase + TailwindCSS + Shadcn/ui + TanStack Query + Zustand
+**Tech Stack:** Next.js 16 + Supabase + TailwindCSS 4 + Shadcn/ui + TanStack Query 5 + Zustand 5
 
 ---
 
-## Overall Progress: ~95% Complete
+## Overall Progress: ~97% Complete
 
 | Phase | Status | Progress |
 |-------|--------|----------|
@@ -15,8 +15,8 @@ Modern inventory management and point-of-sale system for SYD Construction Suppli
 | Phase 2: Inventory | Complete | 100% |
 | Phase 3: POS Core | Complete | 100% |
 | Phase 4: Advanced POS | Complete | 100% |
-| Phase 5: Analytics | In Progress | 90% |
-| Phase 6: Polish & Deploy | Not Started | 0% |
+| Phase 5: Analytics | Complete | 100% |
+| Phase 6: Polish & Deploy | In Progress | 80% |
 
 ---
 
@@ -39,10 +39,13 @@ Modern inventory management and point-of-sale system for SYD Construction Suppli
 
 ### Authentication
 - [x] Supabase Auth integration
-- [x] Login page (`/login`)
-- [x] Auth middleware
+- [x] Login page (`/login`) with error handling
+- [x] Auth middleware with user profile validation
 - [x] Role-based access (RLS policies)
-- [x] Auth store (Zustand)
+- [x] Auth store (Zustand with persist middleware)
+- [x] Auth provider with session expiry tracking
+- [x] Complete sign-out flow (clears cookies, localStorage, React Query cache)
+- [x] Hydration mismatch prevention in header
 
 ### Product Catalog
 - [x] Products list page (`/products`)
@@ -51,13 +54,15 @@ Modern inventory management and point-of-sale system for SYD Construction Suppli
 - [x] Edit product page (`/products/[id]/edit`)
 - [x] Product form component
 - [x] Category management page (`/products/categories`)
+- [x] Subcategory management (expandable rows with CRUD)
 - [x] Product queries & hooks
 
 ### Core Infrastructure
-- [x] Supabase client setup
+- [x] Supabase client setup (supports `sb_publishable_*` key format)
 - [x] TanStack Query provider
 - [x] Dashboard layout with sidebar
-- [x] Header component
+- [x] Header component with user menu
+- [x] Settings page (`/settings`)
 - [x] 20+ Shadcn UI components installed
 
 ---
@@ -75,7 +80,7 @@ Modern inventory management and point-of-sale system for SYD Construction Suppli
 - [x] PO list page (`/purchases`)
 - [x] Create PO page (`/purchases/new`) - Save as draft, redirect to detail
 - [x] PO detail page (`/purchases/[id]`) - Print PO, Receive All, line-by-line receive
-- [x] Simplified PO workflow (Draft → Print PDF → Receive → Prices Auto-Update)
+- [x] Simplified PO workflow (Draft -> Print PDF -> Receive -> Prices Auto-Update)
 - [x] Add line items with cost
 - [x] Receive PO lines (quantity received tracking)
 - [x] Receive All bulk action (receive all remaining items at once)
@@ -107,11 +112,12 @@ Modern inventory management and point-of-sale system for SYD Construction Suppli
 - [x] Customer search & filtering
 - [x] Customer stats cards
 - [x] Customer queries & hooks
+- [x] Quick "Add New Customer" modal in POS
 
 ### POS Interface
 - [x] POS page (`/pos`)
 - [x] Branch selection
-- [x] Customer selection with search
+- [x] Customer selection with search (optional - defaults to Walk-in)
 - [x] Walk-in customer default
 - [x] Product search (code & name)
 - [x] Product grid display
@@ -130,6 +136,7 @@ Modern inventory management and point-of-sale system for SYD Construction Suppli
 ### Checkout Flow
 - [x] Checkout dialog
 - [x] Order summary
+- [x] Customer optional (auto-defaults to Walk-in Customer)
 - [x] Delivery type selection (Pickup/Delivery)
 - [x] Delivery address & phone fields
 - [x] Multiple payment methods:
@@ -151,6 +158,7 @@ Modern inventory management and point-of-sale system for SYD Construction Suppli
 - [x] A4 invoice printing
 - [x] Receipt template component
 - [x] Invoice template component
+- [x] Packing slip template component
 - [x] Print dialog with preview
 - [x] Transaction history page (`/pos/history`)
 - [x] Reprint functionality
@@ -194,7 +202,7 @@ Modern inventory management and point-of-sale system for SYD Construction Suppli
 
 ---
 
-## Phase 5: Analytics (90% COMPLETE)
+## Phase 5: Analytics (COMPLETE)
 
 ### Dashboards
 - [x] Sales dashboard
@@ -203,12 +211,12 @@ Modern inventory management and point-of-sale system for SYD Construction Suppli
 - [x] AR aging summary
 
 ### Reports
-- [x] Sales by product report
-- [x] Sales by category report
-- [x] AR aging report with payment collection
-- [x] Inventory turnover report
-- [x] Profit margin analysis
-- [x] Supplier purchase history
+- [x] Sales report (`/reports/sales`)
+- [x] AR aging report (`/reports/ar-aging`)
+- [x] Inventory turnover report (`/reports/inventory-turnover`)
+- [x] Profit margin analysis (`/reports/profit-margin`)
+- [x] Supplier purchase history (`/reports/supplier-history`)
+- [x] Demand forecast (`/reports/demand-forecast`)
 
 ### Forecasting
 - [x] Demand prediction & reorder suggestions
@@ -217,22 +225,32 @@ Modern inventory management and point-of-sale system for SYD Construction Suppli
 
 ---
 
-## Phase 6: Polish & Deploy (NOT STARTED)
+## Phase 6: Polish & Deploy (80% COMPLETE)
 
-### Mobile Responsiveness
-- [ ] POS mobile layout
-- [ ] Inventory mobile layout
-- [ ] Touch-friendly buttons
+### Mobile Responsiveness (COMPLETE)
+- [x] Mobile sidebar (Sheet-based slide-out)
+- [x] Bottom navigation bar (Dashboard, POS, Products, Inventory, More)
+- [x] Responsive header with hamburger menu
+- [x] POS mobile layout (floating cart FAB + cart Sheet)
+- [x] Responsive dashboard stats grid
+- [x] Table horizontal scroll on all list pages
+- [x] Responsive page headers
+- [x] iOS safe area padding
+- [x] `lg` breakpoint (1024px) as mobile/desktop threshold
+- [x] Sidebar Zustand store (`src/lib/stores/sidebar.ts`)
+
+### Security (COMPLETE)
+- [x] RLS policy audit & fix (product tables allow public SELECT)
+- [x] Auth session hardening (expiry tracking, cleanup)
+- [x] Supabase key format validation
+- [x] Middleware user profile validation
+- [x] Error handling on categories page
 
 ### Performance
-- [ ] Query optimization
-- [ ] Image optimization
-- [ ] Loading states
-
-### Security
-- [ ] RLS policy audit
-- [ ] Input validation
-- [ ] Error handling
+- [x] Loading states on data pages
+- [x] Error states with retry buttons
+- [ ] Query optimization / caching tuning
+- [ ] Image optimization (product images)
 
 ### Deployment
 - [ ] Vercel setup
@@ -243,7 +261,6 @@ Modern inventory management and point-of-sale system for SYD Construction Suppli
 ### Documentation
 - [ ] User training docs
 - [ ] Admin guide
-- [ ] API documentation
 
 ---
 
@@ -268,8 +285,6 @@ src/
 │   │   │   ├── page.tsx
 │   │   │   ├── history/page.tsx
 │   │   │   └── returns/page.tsx
-│   │   ├── reports/
-│   │   │   └── ar-aging/page.tsx
 │   │   ├── products/
 │   │   │   ├── page.tsx
 │   │   │   ├── new/page.tsx
@@ -281,17 +296,37 @@ src/
 │   │   │   ├── page.tsx
 │   │   │   ├── new/page.tsx
 │   │   │   └── [id]/page.tsx
+│   │   ├── reports/
+│   │   │   ├── ar-aging/page.tsx
+│   │   │   ├── sales/page.tsx
+│   │   │   ├── inventory-turnover/page.tsx
+│   │   │   ├── profit-margin/page.tsx
+│   │   │   ├── supplier-history/page.tsx
+│   │   │   └── demand-forecast/page.tsx
+│   │   ├── settings/page.tsx
 │   │   └── suppliers/page.tsx
 │   └── layout.tsx
 ├── components/
 │   ├── forms/product-form.tsx
 │   ├── layout/
 │   │   ├── header.tsx
-│   │   └── sidebar.tsx
-│   ├── providers/query-provider.tsx
+│   │   ├── sidebar.tsx
+│   │   ├── mobile-sidebar.tsx
+│   │   └── bottom-nav.tsx
+│   ├── print/
+│   │   ├── index.ts
+│   │   ├── print-dialog.tsx
+│   │   ├── receipt-template.tsx
+│   │   ├── invoice-template.tsx
+│   │   ├── packing-slip-template.tsx
+│   │   └── po-template.tsx
+│   ├── providers/
+│   │   ├── auth-provider.tsx
+│   │   └── query-provider.tsx
 │   └── ui/ (20+ Shadcn components)
 ├── hooks/
 │   ├── useCustomers.ts
+│   ├── useDashboard.ts
 │   ├── useInventory.ts
 │   ├── useProducts.ts
 │   ├── usePurchases.ts
@@ -299,9 +334,10 @@ src/
 │   └── useTransactions.ts
 ├── lib/
 │   ├── stores/
-│   │   ├── auth.ts
+│   │   ├── auth.ts (with persist middleware)
 │   │   ├── cart.ts
-│   │   └── posStore.ts
+│   │   ├── posStore.ts
+│   │   └── sidebar.ts
 │   ├── supabase/
 │   │   ├── client.ts
 │   │   ├── middleware.ts
@@ -346,23 +382,38 @@ supabase/
 - **Issue:** RLS policies on tables checked user role by querying the `users` table, but the `users` table itself had RLS that queried `users` again.
 - **Fix:** Created `get_current_user_role()` SECURITY DEFINER function that bypasses RLS. All policies now use this function.
 
+### RLS Blocking Product Data (FIXED)
+- **Issue:** Product-related tables (`product_categories`, `products`, `product_subcategories`, `units_of_measure`, `product_variants`, `product_images`) had SELECT policies restricted to `authenticated` role only. The `sb_publishable_*` key format caused the browser client to act as `anon`, returning empty arrays.
+- **Fix:** Changed SELECT policies to allow public access for all product reference data. Write operations remain restricted to admin/manager roles.
+
 ### TypeScript Type Inference (FIXED)
 - **Issue:** Supabase client with `Database` generic caused `never` type inference on insert/update.
 - **Fix:** Removed `Database` generic from `createBrowserClient`, using untyped client with `as any` assertions where needed.
 
+### Auth Provider Duplicate Declarations (FIXED)
+- **Issue:** `auth-provider.tsx` had duplicate variable declarations causing build failure.
+- **Fix:** Removed duplicate lines and updated `useRef<NodeJS.Timeout>()` to `useRef<NodeJS.Timeout | null>(null)` for React 19 compatibility.
+
+### Transaction Queries Column Mismatch (FIXED)
+- **Issue:** Transaction queries referenced `abbreviation` column on `units_of_measure` which doesn't exist.
+- **Fix:** Changed to `code` column which is the actual column name.
+
 ---
 
-## Next Priority Tasks
+## Remaining Tasks
 
-1. ~~**Receipt/Invoice Printing** - Thermal (58mm/80mm) and A4 invoice~~ ✅
-2. ~~**Returns & Refunds** - Link to original transaction, restock~~ ✅
-3. ~~**Credit Limit Enforcement** - Block checkout if over limit~~ ✅
-4. ~~**AR Aging Report** - Customer payment tracking~~ ✅
-5. ~~**Sales Dashboard** - Charts and analytics~~ ✅
-6. **Mobile Responsiveness** - Touch-friendly POS
-7. **Packing Slips** - For delivery orders
-8. **Payment Collection Tracking** - Record payments against AR
-9. **Sales Reports** - Sales by product/category
+### Must Have (Before Production)
+- [ ] Vercel deployment setup
+- [ ] Production environment variables
+- [ ] Domain configuration
+- [ ] Get actual user ID from auth in POS checkout (currently hardcoded)
+
+### Nice to Have
+- [ ] Seasonal demand adjustments in forecast
+- [ ] Query performance optimization
+- [ ] Product image upload/optimization
+- [ ] User training documentation
+- [ ] Admin guide documentation
 
 ---
 
@@ -386,4 +437,4 @@ npx shadcn@latest add [component]
 
 ---
 
-*Last Updated: February 11, 2026*
+*Last Updated: February 12, 2026*

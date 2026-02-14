@@ -32,6 +32,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 
 import { useCategories, useSubcategories, useUnitsOfMeasure, useCreateProduct, useUpdateProduct } from '@/hooks/useProducts'
 import type { Product } from '@/lib/supabase/queries/products'
+import { ProductImageUpload } from '@/components/products/product-image-upload'
+import type { ProductImage } from '@/lib/supabase/storage/product-images'
+import { addProductImageRecord } from '@/lib/supabase/storage/product-images'
 
 const productFormSchema = z.object({
   code: z.string().min(1, 'Product code is required'),
@@ -67,6 +70,9 @@ interface ProductFormProps {
 export function ProductForm({ product, mode }: ProductFormProps) {
   const router = useRouter()
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | undefined>(product?.category_id)
+  const [productImages, setProductImages] = useState<ProductImage[]>(
+    (product as any)?.images || []
+  )
 
   const { data: categories } = useCategories()
   const { data: subcategories } = useSubcategories(selectedCategoryId)
@@ -167,12 +173,26 @@ export function ProductForm({ product, mode }: ProductFormProps) {
       }
 
       if (mode === 'create') {
-        await createProduct.mutateAsync(productData)
+        const newProduct = await createProduct.mutateAsync(productData)
+        
+        // Save temporary images to database with actual product ID
+        if (productImages.length > 0) {
+          for (const image of productImages) {
+            await addProductImageRecord(
+              newProduct.id,
+              image.url,
+              image.is_primary,
+              image.alt_text || undefined
+            )
+          }
+        }
+        
         toast.success('Product created successfully')
       } else {
         await updateProduct.mutateAsync({
           id: product!.id,
           updates: productData,
+        })
         })
         toast.success('Product updated successfully')
       }
@@ -525,6 +545,42 @@ export function ProductForm({ product, mode }: ProductFormProps) {
                 )}
               />
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Product Images */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Product Images</CardTitle>
+            <CardDescription>
+              Upload images of the product. The first image will be the primary image.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ProductImageUpload
+              productId={product?.id}
+              images={productImages}
+              onImagesChange={setProductImages}
+              maxImages={5}
+            />
+          </CardContent>
+        </Card>
+
+        {/* Product Images */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Product Images</CardTitle>
+            <CardDescription>
+              Upload images of the product. The first image will be the primary image.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ProductImageUpload
+              productId={product?.id}
+              images={productImages}
+              onImagesChange={setProductImages}
+              maxImages={5}
+            />
           </CardContent>
         </Card>
 
