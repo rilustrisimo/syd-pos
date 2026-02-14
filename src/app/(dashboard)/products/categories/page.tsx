@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useCategories, useCreateCategory, useUpdateCategory, useDeleteCategory } from '@/hooks/useProducts'
 import { toast } from 'sonner'
-import { Plus, Pencil, Trash2, Package } from 'lucide-react'
+import { Plus, Pencil, Trash2, Package, AlertCircle, RefreshCw } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -16,7 +16,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import {
   Dialog,
   DialogContent,
@@ -41,7 +41,7 @@ export default function CategoriesPage() {
     description: '',
   })
 
-  const { data: categories, isLoading } = useCategories()
+  const { data: categories, isLoading, isError, error, refetch } = useCategories()
   const createCategory = useCreateCategory()
   const updateCategory = useUpdateCategory()
   const deleteCategory = useDeleteCategory()
@@ -141,6 +141,17 @@ export default function CategoriesPage() {
           {isLoading ? (
             <div className="flex h-64 items-center justify-center">
               <div className="text-muted-foreground">Loading categories...</div>
+            </div>
+          ) : isError ? (
+            <div className="flex h-64 flex-col items-center justify-center gap-3">
+              <AlertCircle className="h-12 w-12 text-destructive" />
+              <p className="text-muted-foreground">
+                Failed to load categories: {error?.message || 'Unknown error'}
+              </p>
+              <Button variant="outline" onClick={() => refetch()}>
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Retry
+              </Button>
             </div>
           ) : categories && categories.length === 0 ? (
             <div className="flex h-64 flex-col items-center justify-center gap-2">

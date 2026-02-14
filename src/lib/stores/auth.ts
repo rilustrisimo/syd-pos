@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { persist, createJSONStorage } from 'zustand/middleware'
 import type { UserRole } from '@/types'
 
 interface User {
@@ -12,10 +13,13 @@ interface User {
 interface AuthState {
   user: User | null
   isLoading: boolean
+  sessionExpiresAt: number | null
   setUser: (user: User | null) => void
   setLoading: (loading: boolean) => void
+  setSessionExpiry: (expiresAt: number | null) => void
   hasPermission: (permission: string) => boolean
   clear: () => void
+  isSessionExpired: () => boolean
 }
 
 // Role-based permissions
@@ -52,19 +56,89 @@ const rolePermissions: Record<UserRole, string[]> = {
   ],
 }
 
-export const useAuthStore = create<AuthState>((set, get) => ({
-  user: null,
-  isLoading: true,
+export const useAuthStore = create<AuthState>()(
+  persist(
+    (set, get) => ({
+      user: null,
+      isLoading: true,
+      sessionExpiresAt: null,
 
-  setUser: (user) => set({ user, isLoading: false }),
+      setUser: (user) => set({ user, isLoading: false }),
 
-  setLoading: (isLoading) => set({ isLoading }),
+      setLoading: (isLoading) => set({ isLoading }),
 
-  hasPermission: (permission) => {
-    const { user } = get()
-    if (!user) return false
-    return rolePermissions[user.role]?.includes(permission) ?? false
-  },
+      setSessionExpiry: (expiresAt) => set({ sessionExpiresAt: expiresAt }),
 
-  clear: () => set({ user: null, isLoading: false }),
-}))
+      isSessionExpired: () => {
+        const { sessionExpiresAt } = get()
+        if (!sessionExpiresAt) return false
+        return Date.now() > sessionExpiresAt * 1000
+      },
+
+      hasPermission: (permission) => {
+        const { user, isSessionExpired } = get()
+        if (!user || isSessionExpired()) return false
+        return rolePermissions[user.role]?.includes(permission) ?? false
+      },
+
+      clear: () => {
+        // Clear all auth state
+        set({ 
+          user: null, 
+          isLoading: false, 
+          sessionExpiresAt: null 
+        })
+        
+        // Clear localStorage persistence
+        try {
+          localStorage.removeItem('syd-pos-auth')
+        } catch (error) {
+          console.error('Failed to clear auth storage:', error)
+        }
+      },
+    }),
+    {
+      name: 'syd-pos-auth',
+      storage: createJSONStorage(() => localStorage),
+      partialize: (state) => ({
+        user: state.user,
+        sessionExpiresAt: state.sessionExpiresAt,
+      }),
+      version: 1,
+      // Automatically clear if schema changes
+      onRehydrateStorage: () => (state) => {
+        // Check if session is expired on rehydration
+        if (state?.sessionExpiresAt && Date.now() > state.sessionExpiresAt * 1000) {
+          state.clear()
+        }
+      },
+    }
+  )
+)
+
+// Utility to clear all auth data (useful for forced logout)
+export const clearAllAuthData = () => {
+  try {
+    useAuthStore.getState().clear()
+    
+    // Clear any other auth-related storage
+    const authKeys = ['syd-pos-auth', 'supabase.auth.token']
+    authKeys.forEach(key => {
+      try {
+        localStorage.removeItem(key)
+        sessionStorage.removeItem(key)
+      } catch (e) {
+        console.error(`Failed to remove ${key}:`, e)
+      }
+    })
+    
+    // Clear all cookies (Supabase auth cookies)
+    document.cookie.split(';').forEach((c) => {
+      document.cookie = c
+        .replace(/^ +/, '')
+        .replace(/=.*/, `=;expires=${new Date().toUTCString()};path=/`)
+    })
+  } catch (error) {
+    console.error('Failed to clear auth data:', error)
+  }
+}

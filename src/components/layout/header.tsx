@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Bell, Menu, Search, User, LogOut, Settings, UserCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -22,19 +22,29 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { useAuthStore } from '@/lib/stores/auth'
+import { useAuthStore, clearAllAuthData } from '@/lib/stores/auth'
 import { useSidebarStore } from '@/lib/stores/sidebar'
 import { getClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
+import { useQueryClient } from '@tanstack/react-query'
 
 export function Header() {
   const router = useRouter()
+  const queryClient = useQueryClient()
   const user = useAuthStore((state) => state.user)
-  const clear = useAuthStore((state) => state.clear)
+  const isLoading = useAuthStore((state) => state.isLoading)
   const toggleSidebar = useSidebarStore((state) => state.toggle)
   const [profileOpen, setProfileOpen] = useState(false)
+  const [mounted, setMounted] = useState(false)
+  const [isSigningOut, setIsSigningOut] = useState(false)
 
-  const getInitials = (name: string) => {
+  // Prevent hydration mismatch by waiting for client-side mount
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  const getInitials = (name: string | undefined) => {
+    if (!name) return 'U'
     return name
       .split(' ')
       .map((n) => n[0])
@@ -43,14 +53,33 @@ export function Header() {
       .slice(0, 2)
   }
 
+  const displayName = user?.fullName || user?.email?.split('@')[0] || 'User'
+  const displayRole = user?.role?.replace('_', ' ') || (isLoading ? 'Loading...' : 'Not signed in')
+
   const handleSignOut = async () => {
+    if (isSigningOut) return // Prevent double-click
+    setIsSigningOut(true)
+    
     try {
       const supabase = getClient()
+      
+      // Sign out from Supabase
       await supabase.auth.signOut()
-      clear()
-      router.push('/login')
-    } catch {
-      toast.error('Failed to sign out')
+      
+      // Clear all local state and storage
+      clearAllAuthData()
+      
+      // Clear React Query cache
+      queryClient.clear()
+      
+      // Hard redirect to ensure everything is cleared
+      window.location.href = '/login'
+    } catch (error) {
+      console.error('Sign out error:', error)
+      // Even if sign out fails, clear local state
+      clearAllAuthData()
+      queryClient.clear()
+      window.location.href = '/login'
     }
   }
 
@@ -88,15 +117,15 @@ export function Header() {
               <Button variant="ghost" className="flex items-center gap-2">
                 <Avatar className="h-8 w-8">
                   <AvatarFallback>
-                    {user ? getInitials(user.fullName) : <User className="h-4 w-4" />}
+                    {mounted && user ? getInitials(displayName) : <User className="h-4 w-4" />}
                   </AvatarFallback>
                 </Avatar>
                 <div className="hidden text-left md:block">
                   <p className="text-sm font-medium">
-                    {user?.fullName || 'Guest'}
+                    {mounted ? displayName : 'User'}
                   </p>
                   <p className="text-xs text-muted-foreground capitalize">
-                    {user?.role?.replace('_', ' ') || 'Not signed in'}
+                    {mounted ? displayRole : '...'}
                   </p>
                 </div>
               </Button>
@@ -132,13 +161,13 @@ export function Header() {
             <div className="flex items-center gap-4">
               <Avatar className="h-16 w-16">
                 <AvatarFallback className="text-lg">
-                  {user ? getInitials(user.fullName) : <User className="h-8 w-8" />}
+                  {user ? getInitials(displayName) : <User className="h-8 w-8" />}
                 </AvatarFallback>
               </Avatar>
               <div>
-                <h3 className="text-lg font-semibold">{user?.fullName || 'Guest'}</h3>
+                <h3 className="text-lg font-semibold">{displayName}</h3>
                 <Badge variant="secondary" className="capitalize">
-                  {user?.role?.replace('_', ' ') || 'No role'}
+                  {displayRole}
                 </Badge>
               </div>
             </div>

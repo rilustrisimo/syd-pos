@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
@@ -24,8 +25,9 @@ import {
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { getClient } from '@/lib/supabase/client'
-import { useAuthStore } from '@/lib/stores/auth'
+import { useAuthStore, clearAllAuthData } from '@/lib/stores/auth'
 import { toast } from 'sonner'
+import { useQueryClient } from '@tanstack/react-query'
 
 const navigation = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
@@ -66,16 +68,33 @@ const bottomNavigation = [
 export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname()
   const router = useRouter()
-  const clear = useAuthStore((state) => state.clear)
+  const queryClient = useQueryClient()
+  const [isSigningOut, setIsSigningOut] = useState(false)
 
   const handleSignOut = async () => {
+    if (isSigningOut) return // Prevent double-click
+    setIsSigningOut(true)
+    
     try {
       const supabase = getClient()
+      
+      // Sign out from Supabase
       await supabase.auth.signOut()
-      clear()
-      router.push('/login')
-    } catch {
-      toast.error('Failed to sign out')
+      
+      // Clear all local state and storage
+      clearAllAuthData()
+      
+      // Clear React Query cache
+      queryClient.clear()
+      
+      // Hard redirect to ensure everything is cleared
+      window.location.href = '/login'
+    } catch (error) {
+      console.error('Sign out error:', error)
+      // Even if sign out fails, clear local state
+      clearAllAuthData()
+      queryClient.clear()
+      window.location.href = '/login'
     }
   }
 

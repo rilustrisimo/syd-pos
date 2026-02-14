@@ -41,6 +41,31 @@ export async function updateSession(request: NextRequest) {
   const isAuthRoute = request.nextUrl.pathname.startsWith('/login')
   const isProtectedRoute = !isAuthRoute && !request.nextUrl.pathname.startsWith('/api')
 
+  if (user && isProtectedRoute) {
+    // Validate that user profile exists and is active in database
+    const { data: userProfile, error: profileError } = await supabase
+      .from('users')
+      .select('id, is_active')
+      .eq('id', user.id)
+      .single()
+
+    // If profile doesn't exist or is inactive, sign out and redirect
+    if (profileError || !userProfile || !userProfile.is_active) {
+      console.warn('User profile validation failed:', {
+        error: profileError?.message,
+        exists: !!userProfile,
+        active: userProfile?.is_active
+      })
+      
+      // Sign out the user
+      await supabase.auth.signOut()
+      
+      const url = request.nextUrl.clone()
+      url.pathname = '/login'
+      return NextResponse.redirect(url)
+    }
+  }
+
   if (!user && isProtectedRoute) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'

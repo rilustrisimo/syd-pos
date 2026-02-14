@@ -63,7 +63,7 @@ export interface TransactionLine {
   uom?: {
     id: string
     name: string
-    abbreviation: string
+    code: string
   }
 }
 
@@ -236,7 +236,7 @@ export async function getTransaction(id: string) {
       *,
       product:products!product_id(id, code, name),
       variant:product_variants!variant_id(id, name),
-      uom:units_of_measure!uom_id(id, name, abbreviation)
+      uom:units_of_measure!uom_id(id, name, code)
     `)
     .eq('transaction_id', id)
     .order('line_number')
@@ -564,27 +564,31 @@ export async function getTodaysSummary(branchId?: string) {
 export async function searchProductsForPOS(query: string, branchId: string, limit = 20) {
   const supabase = createClient()
 
-  const { data, error } = await supabase
+  // First, get products
+  const { data: products, error: productsError } = await supabase
     .from('products')
-    .select(`
-      id,
-      code,
-      name,
-      current_selling_price,
-      latest_cogs,
-      selling_uom_id,
-      selling_uom:units_of_measure!selling_uom_id(id, name, abbreviation)
-    `)
+    .select('id, code, name, current_selling_price, latest_cogs, selling_uom_id')
     .eq('is_active', true)
     .or(`code.ilike.%${query}%,name.ilike.%${query}%`)
     .order('name')
     .limit(limit)
 
-  if (error) throw error
+  if (productsError) throw productsError
+  if (!products || products.length === 0) return []
+
+  // Get UOM details for the products
+  const uomIds = [...new Set(products.map(p => p.selling_uom_id))]
+  const { data: uoms, error: uomsError } = await supabase
+    .from('units_of_measure')
+    .select('id, name, code')
+    .in('id', uomIds)
+
+  if (uomsError) throw uomsError
+
+  const uomMap = new Map((uoms || []).map(u => [u.id, u]))
 
   // Get inventory for these products
-  const productIds = (data as any[]).map(p => p.id)
-
+  const productIds = products.map(p => p.id)
   const { data: inventory, error: invError } = await supabase
     .from('branch_inventory')
     .select('product_id, variant_id, quantity_on_hand')
@@ -594,23 +598,26 @@ export async function searchProductsForPOS(query: string, branchId: string, limi
   if (invError) throw invError
 
   const inventoryMap = new Map(
-    (inventory as any[]).map(inv => [
+    (inventory || []).map(inv => [
       `${inv.product_id}-${inv.variant_id || 'null'}`,
       inv.quantity_on_hand
     ])
   )
 
-  return (data as any[]).map(product => ({
-    id: product.id,
-    code: product.code,
-    name: product.name,
-    unit_price: product.current_selling_price,
-    cogs: product.latest_cogs,
-    uom_id: product.selling_uom_id,
-    uom_name: product.selling_uom?.name || '',
-    uom_abbreviation: product.selling_uom?.abbreviation || '',
-    available_stock: inventoryMap.get(`${product.id}-null`) || 0
-  }))
+  return products.map(product => {
+    const uom = uomMap.get(product.selling_uom_id)
+    return {
+      id: product.id,
+      code: product.code,
+      name: product.name,
+      unit_price: product.current_selling_price,
+      cogs: product.latest_cogs,
+      uom_id: product.selling_uom_id,
+      uom_name: uom?.name || '',
+      uom_abbreviation: uom?.code || '', // Using 'code' from DB but naming as 'abbreviation' for backward compatibility
+      available_stock: inventoryMap.get(`${product.id}-null`) || 0
+    }
+  })
 }
 
 // ============================================
@@ -882,7 +889,7 @@ export async function getReturnsForTransaction(originalTransactionId: string) {
       lines:transaction_lines(
         *,
         product:products!product_id(id, code, name),
-        uom:units_of_measure!uom_id(id, name, abbreviation)
+        uom:units_of_measure!uom_id(id, name, code)
       ),
       payments:transaction_payments(*)
     `)
