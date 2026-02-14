@@ -193,7 +193,6 @@ export function ProductForm({ product, mode }: ProductFormProps) {
           id: product!.id,
           updates: productData,
         })
-        })
         toast.success('Product updated successfully')
       }
 
