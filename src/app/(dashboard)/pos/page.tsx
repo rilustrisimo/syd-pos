@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { usePOSStore } from '@/lib/stores/posStore'
+import { useAuthStore } from '@/lib/stores/auth'
 import { usePOSProductSearch, useCreateTransaction, useTodaysSummary } from '@/hooks/useTransactions'
 import { useSearchCustomers, useWalkInCustomer, useCreateCustomer } from '@/hooks/useCustomers'
 import { useBranches } from '@/hooks/useInventory'
@@ -161,6 +162,9 @@ export default function POSPage() {
 
   const createTransaction = useCreateTransaction()
   const createCustomer = useCreateCustomer()
+
+  // Get authenticated user
+  const { user } = useAuthStore()
 
   // Set default branch and walk-in customer
   useEffect(() => {
@@ -331,10 +335,13 @@ export default function POSPage() {
       return
     }
 
-    try {
-      // TODO: Get actual user ID from auth context
-      const userId = '00000000-0000-0000-0000-000000000000'
+    // Validate user is authenticated
+    if (!user || !user.id) {
+      toast.error('Authentication error. Please login again.')
+      return
+    }
 
+    try {
       // Store current items and payments before reset
       const currentItems = [...items]
       const currentPayments = [...payments]
@@ -369,7 +376,7 @@ export default function POSPage() {
           amount: p.amount,
           reference_number: p.reference_number,
         })),
-        userId,
+        userId: user.id,
       })
 
       // Store completed transaction for printing
