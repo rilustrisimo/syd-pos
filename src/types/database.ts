@@ -76,6 +76,7 @@ export interface ProductRow {
   subcategory_id: string | null
   base_uom_id: string
   selling_uom_id: string
+  conversion_factor: number
   latest_cogs: number
   markup_percentage: number
   current_selling_price: number

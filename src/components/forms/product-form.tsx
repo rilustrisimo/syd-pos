@@ -43,6 +43,9 @@ const productFormSchema = z.object({
   subcategory_id: z.string().optional(),
   base_uom_id: z.string().uuid('Please select a base unit'),
   selling_uom_id: z.string().uuid('Please select a selling unit'),
+  conversion_factor: z.string().refine((val) => !isNaN(Number(val)) && Number(val) > 0, {
+    message: 'Conversion factor must be greater than 0',
+  }),
   latest_cogs: z.string().refine((val) => !isNaN(Number(val)) && Number(val) >= 0, {
     message: 'Cost must be a valid number',
   }),
@@ -90,6 +93,7 @@ export function ProductForm({ product, mode }: ProductFormProps) {
       subcategory_id: product?.subcategory_id || '',
       base_uom_id: product?.base_uom_id || '',
       selling_uom_id: product?.selling_uom_id || '',
+      conversion_factor: (product as any)?.conversion_factor?.toString() || '1',
       latest_cogs: product?.latest_cogs?.toString() || '0',
       markup_percentage: product?.markup_percentage?.toString() || '20',
       current_selling_price: product?.current_selling_price?.toString() || '0',
@@ -106,6 +110,16 @@ export function ProductForm({ product, mode }: ProductFormProps) {
   // Watch for changes in cost and markup
   const watchCost = form.watch('latest_cogs')
   const watchMarkup = form.watch('markup_percentage')
+  const watchBaseUom = form.watch('base_uom_id')
+  const watchSellingUom = form.watch('selling_uom_id')
+  const watchConversionFactor = form.watch('conversion_factor')
+
+  // Check if units are different
+  const isDifferentUnits = watchBaseUom && watchSellingUom && watchBaseUom !== watchSellingUom
+
+  // Get unit names for display
+  const baseUnitName = units?.find(u => u.id === watchBaseUom)?.name || 'base unit'
+  const sellingUnitName = units?.find(u => u.id === watchSellingUom)?.name || 'selling unit'
 
   // Calculate selling price when cost or markup changes
   useEffect(() => {
@@ -163,6 +177,7 @@ export function ProductForm({ product, mode }: ProductFormProps) {
         subcategory_id: values.subcategory_id || null,
         base_uom_id: values.base_uom_id,
         selling_uom_id: values.selling_uom_id,
+        conversion_factor: Number(values.conversion_factor),
         latest_cogs: Number(values.latest_cogs),
         markup_percentage: Number(values.markup_percentage),
         current_selling_price: Number(values.current_selling_price),
@@ -396,6 +411,32 @@ export function ProductForm({ product, mode }: ProductFormProps) {
                 )}
               />
             </div>
+
+            {/* Conversion Factor - Only show when units are different */}
+            {isDifferentUnits && (
+              <FormField
+                control={form.control}
+                name="conversion_factor"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Unit Conversion Factor *</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        step="0.0001"
+                        placeholder="1"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      How many <strong>{sellingUnitName}s</strong> are in 1 <strong>{baseUnitName}</strong>? 
+                      (e.g., 1 box = 20 kg → enter 20)
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
           </CardContent>
         </Card>
 
@@ -428,7 +469,9 @@ export function ProductForm({ product, mode }: ProductFormProps) {
                       />
                     </FormControl>
                     <FormDescription>
-                      Cost of goods sold
+                      {isDifferentUnits 
+                        ? `Cost per ${sellingUnitName} (auto-calculated from purchase)` 
+                        : 'Cost of goods sold'}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
