@@ -60,13 +60,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (error) {
         console.error('Error loading user profile:', error)
-        await handleCompleteSignOut()
+        setLoading(false)
+        toast.error('Failed to load user profile')
         return
       }
 
       if (!userData) {
         console.error('No user data found for user id:', userId)
-        await handleCompleteSignOut()
+        setLoading(false)
+        toast.error('User profile not found')
         return
       }
 
@@ -94,9 +96,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     } catch (error) {
       console.error('Unexpected error loading user:', error)
-      await handleCompleteSignOut()
+      setLoading(false)
+      toast.error('An error occurred while loading your profile')
     }
-  }, [setUser, setSessionExpiry, handleCompleteSignOut])
+  }, [setUser, setSessionExpiry, setLoading, handleCompleteSignOut])
 
   useEffect(() => {
     const supabase = getClient()
@@ -165,29 +168,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
 
         if (event === 'SIGNED_OUT') {
+          isHandlingAuthChange.current = true
           await handleCompleteSignOut()
+          isHandlingAuthChange.current = false
         } else if (event === 'TOKEN_REFRESHED') {
           console.log('Token refreshed')
           if (session?.expires_at) {
             setSessionExpiry(session.expires_at)
           }
-          // Verify user still exists and is active
-          if (session?.user) {
-            const { user } = useAuthStore.getState()
-            if (!user) {
-              await loadUser(session.user.id, session.user.email || '', session.expires_at)
-            }
-          }
-        } else if (event === 'SIGNED_IN' && session?.user) {
-          await loadUser(session.user.id, session.user.email || '', session.expires_at)
         } else if (event === 'USER_UPDATED' && session?.user) {
-          // Refresh user data
-          await loadUser(session.user.id, session.user.email || '', session.expires_at)
-        } else if (!session) {
-          // No session but auth event fired
-          clear()
-          router.push('/login')
+          // Refresh user data only if needed
+          const { user } = useAuthStore.getState()
+          if (user) {
+            console.log('User updated, reloading profile')
+            await loadUser(session.user.id, session.user.email || '', session.expires_at)
+          }
         }
+        // Note: SIGNED_IN is handled by initSession, not here to avoid double-loading
       }
     )
 
