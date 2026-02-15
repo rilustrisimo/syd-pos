@@ -64,6 +64,7 @@ export function useCreateSupplier() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['suppliers'] })
       queryClient.invalidateQueries({ queryKey: ['supplier-code-generate'] })
+      queryClient.refetchQueries({ queryKey: ['suppliers'], type: 'active' })
     },
   })
 }
@@ -78,6 +79,8 @@ export function useUpdateSupplier() {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['suppliers'] })
       queryClient.invalidateQueries({ queryKey: ['supplier', variables.id] })
+      queryClient.refetchQueries({ queryKey: ['suppliers'], type: 'active' })
+      queryClient.refetchQueries({ queryKey: ['supplier', variables.id], type: 'active' })
     },
   })
 }
@@ -90,6 +93,7 @@ export function useDeleteSupplier() {
     mutationFn: (id: string) => deleteSupplier(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['suppliers'] })
+      queryClient.refetchQueries({ queryKey: ['suppliers'], type: 'active' })
     },
   })
 }

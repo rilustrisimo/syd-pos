@@ -47,6 +47,7 @@ export function useCreateProduct() {
     mutationFn: (product: InsertTables<'products'>) => createProduct(product),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products'] })
+      queryClient.refetchQueries({ queryKey: ['products'], type: 'active' })
     },
   })
 }
@@ -60,6 +61,8 @@ export function useUpdateProduct() {
     onSuccess: (_, { id }) => {
       queryClient.invalidateQueries({ queryKey: ['products'] })
       queryClient.invalidateQueries({ queryKey: ['products', id] })
+      queryClient.refetchQueries({ queryKey: ['products'], type: 'active' })
+      queryClient.refetchQueries({ queryKey: ['products', id], type: 'active' })
     },
   })
 }
@@ -71,6 +74,7 @@ export function useDeleteProduct() {
     mutationFn: (id: string) => deleteProduct(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products'] })
+      queryClient.refetchQueries({ queryKey: ['products'], type: 'active' })
     },
   })
 }

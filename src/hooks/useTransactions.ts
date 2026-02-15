@@ -95,6 +95,10 @@ export function useCreateTransaction() {
       // Also invalidate inventory queries
       queryClient.invalidateQueries({ queryKey: ['inventory'] })
       queryClient.invalidateQueries({ queryKey: ['customers'] })
+      // Force immediate refetch of active queries
+      queryClient.refetchQueries({ queryKey: transactionKeys.lists(), type: 'active' })
+      queryClient.refetchQueries({ queryKey: transactionKeys.todaysSummary(), type: 'active' })
+      queryClient.refetchQueries({ queryKey: ['inventory'], type: 'active' })
     },
   })
 }
@@ -118,6 +122,9 @@ export function useAddPayment() {
       queryClient.invalidateQueries({ queryKey: transactionKeys.lists() })
       queryClient.invalidateQueries({ queryKey: transactionKeys.todaysSummary() })
       queryClient.invalidateQueries({ queryKey: ['customers'] })
+      // Force immediate refetch
+      queryClient.refetchQueries({ queryKey: transactionKeys.detail(transactionId), type: 'active' })
+      queryClient.refetchQueries({ queryKey: transactionKeys.lists(), type: 'active' })
     },
   })
 }
@@ -168,6 +175,9 @@ export function useCreateReturn() {
       // Invalidate inventory and customer queries
       queryClient.invalidateQueries({ queryKey: ['inventory'] })
       queryClient.invalidateQueries({ queryKey: ['customers'] })
+      // Force immediate refetch
+      queryClient.refetchQueries({ queryKey: transactionKeys.lists(), type: 'active' })
+      queryClient.refetchQueries({ queryKey: ['inventory'], type: 'active' })
     },
   })
 }
@@ -215,6 +225,9 @@ export function useRecordARPayment() {
       queryClient.invalidateQueries({ queryKey: transactionKeys.all })
       queryClient.invalidateQueries({ queryKey: ['customers'] })
       queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+      // Force immediate refetch
+      queryClient.refetchQueries({ queryKey: transactionKeys.all, type: 'active' })
+      queryClient.refetchQueries({ queryKey: ['customers'], type: 'active' })
     },
   })
 }
@@ -236,9 +249,11 @@ export function useSoftDeleteTransaction() {
       userId: string
     }) => softDeleteTransaction(transactionId, userId),
     onSuccess: () => {
-      // Invalidate transaction queries to refresh the list
+      // Invalidate and refetch transaction queries to refresh the list immediately
       queryClient.invalidateQueries({ queryKey: transactionKeys.lists() })
       queryClient.invalidateQueries({ queryKey: transactionKeys.todaysSummary() })
+      queryClient.refetchQueries({ queryKey: transactionKeys.lists(), type: 'active' })
+      queryClient.refetchQueries({ queryKey: transactionKeys.todaysSummary(), type: 'active' })
     },
   })
 }

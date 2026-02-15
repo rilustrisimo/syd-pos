@@ -114,7 +114,7 @@ export default function TransactionHistoryPage() {
   const { user } = useAuthStore()
 
   const { data: branches } = useBranches()
-  const { data: transactionsData, isLoading } = useTransactions({
+  const { data: transactionsData, isLoading, refetch } = useTransactions({
     search: searchQuery || undefined,
     payment_status: statusFilter !== 'all' ? statusFilter : undefined,
     branch_id: branchFilter !== 'all' ? branchFilter : undefined,
@@ -251,6 +251,8 @@ export default function TransactionHistoryPage() {
       })
       toast.success('Transaction deleted successfully')
       setDeleteTransactionId(null)
+      // Force immediate refetch to show updated list
+      refetch()
     } catch (error: any) {
       toast.error(error.message || 'Failed to delete transaction')
     }

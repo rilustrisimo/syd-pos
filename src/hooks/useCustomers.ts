@@ -81,6 +81,7 @@ export function useCreateCustomer() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: customerKeys.lists() })
       queryClient.invalidateQueries({ queryKey: customerKeys.stats() })
+      queryClient.refetchQueries({ queryKey: customerKeys.lists(), type: 'active' })
     },
   })
 }
@@ -96,6 +97,8 @@ export function useUpdateCustomer() {
       queryClient.invalidateQueries({ queryKey: customerKeys.lists() })
       queryClient.invalidateQueries({ queryKey: customerKeys.detail(id) })
       queryClient.invalidateQueries({ queryKey: customerKeys.stats() })
+      queryClient.refetchQueries({ queryKey: customerKeys.lists(), type: 'active' })
+      queryClient.refetchQueries({ queryKey: customerKeys.detail(id), type: 'active' })
     },
   })
 }
@@ -109,6 +112,7 @@ export function useDeleteCustomer() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: customerKeys.lists() })
       queryClient.invalidateQueries({ queryKey: customerKeys.stats() })
+      queryClient.refetchQueries({ queryKey: customerKeys.lists(), type: 'active' })
     },
   })
 }
