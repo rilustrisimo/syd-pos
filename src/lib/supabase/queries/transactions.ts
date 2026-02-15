@@ -564,7 +564,7 @@ export async function getTodaysSummary(branchId?: string) {
 export async function searchProductsForPOS(query: string, branchId: string, limit = 20) {
   const supabase = createClient()
 
-  // First, get products with primary image
+  // Get all products with their images
   const { data: products, error: productsError } = await supabase
     .from('products')
     .select(`
@@ -574,30 +574,16 @@ export async function searchProductsForPOS(query: string, branchId: string, limi
       current_selling_price, 
       latest_cogs, 
       selling_uom_id,
-      images:product_images!inner(url)
+      images:product_images(url, is_primary, sort_order)
     `)
     .eq('is_active', true)
-    .eq('product_images.is_primary', true)
     .or(`code.ilike.%${query}%,name.ilike.%${query}%`)
     .order('name')
     .limit(limit)
 
-  // Also get products without images
-  const { data: productsNoImage, error: productsNoImageError } = await supabase
-    .from('products')
-    .select('id, code, name, current_selling_price, latest_cogs, selling_uom_id')
-    .eq('is_active', true)
-    .or(`code.ilike.%${query}%,name.ilike.%${query}%`)
-    .order('name')
-    .limit(limit)
-
-  if (productsError && productsNoImageError) throw productsError
+  if (productsError) throw productsError
   
-  // Merge results, preferring products with images
-  const allProducts = [...(products || []), ...(productsNoImage || [])]
-  const uniqueProducts = Array.from(
-    new Map(allProducts.map(p => [p.id, p])).values()
-  ).slice(0, limit)
+  const uniqueProducts = products || []
 
   if (!uniqueProducts || uniqueProducts.length === 0) return []
 
@@ -631,7 +617,10 @@ export async function searchProductsForPOS(query: string, branchId: string, limi
 
   return uniqueProducts.map(product => {
     const uom = uomMap.get(product.selling_uom_id)
-    const primaryImage = (product as any).images?.[0]?.url || null
+    // Get primary image or first image
+    const images = (product as any).images || []
+    const primaryImage = images.find((img: any) => img.is_primary)?.url || images[0]?.url || null
+    
     return {
       id: product.id,
       code: product.code,
