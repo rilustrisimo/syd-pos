@@ -46,11 +46,11 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-100 p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <div className="flex justify-center mb-4">
-            <div className="relative w-48 h-16">
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4">
+      <Card className="w-full max-w-md shadow-2xl border-slate-700">
+        <CardHeader className="text-center space-y-4">
+          <div className="flex flex-col items-center gap-3">
+            <div className="relative w-24 h-16">
               <Image
                 src="/syd-logo.svg"
                 alt="SYD Logo"
@@ -59,8 +59,14 @@ export default function LoginPage() {
                 priority
               />
             </div>
+            <div>
+              <CardTitle className="text-2xl font-bold bg-gradient-to-r from-[#ffc107] to-[#ffb300] bg-clip-text text-transparent">
+                SYD CONSTRUCTION
+              </CardTitle>
+              <p className="text-sm text-[#ffc107] font-medium mt-1">SUPPLIES TRADING</p>
+            </div>
           </div>
-          <CardDescription>
+          <CardDescription className="text-slate-400">
             Sign in to your account to continue
           </CardDescription>
         </CardHeader>

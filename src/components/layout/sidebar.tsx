@@ -109,14 +109,11 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
             alt="SYD Logo"
             fill
             className="object-contain"
-            style={{
-              filter: 'invert(1) brightness(2)',
-            }}
             priority
           />
         </div>
         <div className="flex-1 min-w-0">
-          <h1 className="text-[10px] leading-tight font-semibold tracking-tight">
+          <h1 className="text-[10px] leading-tight font-semibold tracking-tight text-[#ffc107]">
             SYD CONSTRUCTION<br />
             SUPPLIES TRADING
           </h1>
@@ -137,7 +134,7 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
                   className={cn(
                     'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium',
                     isActive
-                      ? 'text-white'
+                      ? 'text-[#ffc107]'
                       : 'text-slate-400'
                   )}
                 >
@@ -155,7 +152,7 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
                         className={cn(
                           'flex items-center gap-3 rounded-lg px-3 py-1.5 text-sm transition-colors',
                           isChildActive
-                            ? 'bg-slate-800 text-white'
+                            ? 'bg-[#ffc107]/10 text-[#ffc107] border border-[#ffc107]/30'
                             : 'text-slate-400 hover:bg-slate-800 hover:text-white'
                         )}
                       >
@@ -177,7 +174,7 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
               className={cn(
                 'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
                 isActive
-                  ? 'bg-slate-800 text-white'
+                  ? 'bg-[#ffc107]/10 text-[#ffc107] border border-[#ffc107]/30'
                   : 'text-slate-400 hover:bg-slate-800 hover:text-white'
               )}
             >
@@ -200,7 +197,7 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
               className={cn(
                 'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
                 isActive
-                  ? 'bg-slate-800 text-white'
+                  ? 'bg-[#ffc107]/10 text-[#ffc107] border border-[#ffc107]/30'
                   : 'text-slate-400 hover:bg-slate-800 hover:text-white'
               )}
             >
