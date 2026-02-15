@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import Image from 'next/image'
 import { usePathname, useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import {
@@ -101,9 +102,20 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   return (
     <>
       {/* Logo */}
-      <div className="flex h-16 items-center justify-center border-b border-slate-800">
-        <h1 className="text-xl font-bold">SYD POS</h1>
-      </div>
+      <Link href="/" className="flex h-16 items-center justify-center border-b border-slate-800 px-4">
+        <div className="relative w-full h-10">
+          <Image
+            src="/syd-logo.svg"
+            alt="SYD Logo"
+            fill
+            className="object-contain"
+            style={{
+              filter: 'invert(1) brightness(2)',
+            }}
+            priority
+          />
+        </div>
+      </Link>
 
       {/* Navigation */}
       <nav className="flex-1 space-y-1 px-3 py-4 overflow-y-auto">

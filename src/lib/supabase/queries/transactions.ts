@@ -927,6 +927,28 @@ export async function getReturns(filters: TransactionFilters = {}) {
 }
 
 // ============================================
+// SOFT DELETE TRANSACTION
+// ============================================
+
+export async function softDeleteTransaction(transactionId: string, userId: string) {
+  const supabase = createClient()
+
+  // Update transaction to mark as deleted
+  const { error } = await supabase
+    .from('transactions')
+    .update({
+      is_deleted: true,
+      deleted_at: new Date().toISOString(),
+      deleted_by: userId
+    } as any)
+    .eq('id', transactionId)
+
+  if (error) throw error
+
+  return { success: true }
+}
+
+// ============================================
 // AR AGING REPORT
 // ============================================
 

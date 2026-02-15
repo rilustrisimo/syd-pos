@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Image from 'next/image'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -48,7 +49,17 @@ export default function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-slate-100 p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold">SYD POS</CardTitle>
+          <div className="flex justify-center mb-4">
+            <div className="relative w-48 h-16">
+              <Image
+                src="/syd-logo.svg"
+                alt="SYD Logo"
+                fill
+                className="object-contain"
+                priority
+              />
+            </div>
+          </div>
           <CardDescription>
             Sign in to your account to continue
           </CardDescription>

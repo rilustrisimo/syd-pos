@@ -1,8 +1,9 @@
 'use client'
 
 import { useState, useMemo, useRef } from 'react'
-import { useTransactions, useTransaction } from '@/hooks/useTransactions'
+import { useTransactions, useTransaction, useSoftDeleteTransaction } from '@/hooks/useTransactions'
 import { useBranches } from '@/hooks/useInventory'
+import { useAuthStore } from '@/lib/stores/auth'
 import { toast } from 'sonner'
 import {
   Search,
@@ -16,6 +17,7 @@ import {
   Loader2,
   Filter,
   Download,
+  Trash2,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -43,6 +45,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import {
   Select,
   SelectContent,
@@ -94,9 +106,12 @@ export default function TransactionHistoryPage() {
   const [selectedTransactionId, setSelectedTransactionId] = useState<string | null>(null)
   const [printTab, setPrintTab] = useState<'receipt' | 'invoice'>('receipt')
   const [receiptWidth, setReceiptWidth] = useState<'58mm' | '80mm'>('80mm')
+  const [deleteTransactionId, setDeleteTransactionId] = useState<string | null>(null)
 
   const receiptRef = useRef<HTMLDivElement>(null)
   const invoiceRef = useRef<HTMLDivElement>(null)
+
+  const { user } = useAuthStore()
 
   const { data: branches } = useBranches()
   const { data: transactionsData, isLoading } = useTransactions({
@@ -110,6 +125,8 @@ export default function TransactionHistoryPage() {
   const { data: selectedTransaction, isLoading: isLoadingTransaction } = useTransaction(
     selectedTransactionId || ''
   )
+
+  const softDeleteTransaction = useSoftDeleteTransaction()
 
   const transactions = transactionsData?.transactions || []
   const totalPages = transactionsData?.totalPages || 1
@@ -224,6 +241,21 @@ export default function TransactionHistoryPage() {
     }
   }
 
+  const handleDeleteTransaction = async () => {
+    if (!deleteTransactionId || !user?.id) return
+
+    try {
+      await softDeleteTransaction.mutateAsync({
+        transactionId: deleteTransactionId,
+        userId: user.id,
+      })
+      toast.success('Transaction deleted successfully')
+      setDeleteTransactionId(null)
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to delete transaction')
+    }
+  }
+
   return (
     <div className="space-y-6">
       {/* Page Header */}
@@ -333,7 +365,7 @@ export default function TransactionHistoryPage() {
                       <TableHead>Type</TableHead>
                       <TableHead className="text-right">Total</TableHead>
                       <TableHead>Status</TableHead>
-                      <TableHead className="w-[100px]">Actions</TableHead>
+                      <TableHead className="w-[150px]">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -365,14 +397,24 @@ export default function TransactionHistoryPage() {
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setSelectedTransactionId(txn.id)}
-                          >
-                            <Printer className="h-4 w-4 mr-1" />
-                            Print
-                          </Button>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setSelectedTransactionId(txn.id)}
+                            >
+                              <Printer className="h-4 w-4 mr-1" />
+                              Print
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setDeleteTransactionId(txn.id)}
+                              className="text-destructive hover:text-destructive"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -512,6 +554,40 @@ export default function TransactionHistoryPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog
+        open={!!deleteTransactionId}
+        onOpenChange={(open) => !open && setDeleteTransactionId(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Transaction?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will mark the transaction as deleted. The transaction will no longer appear in
+              reports and listings, but the data will be preserved in the database for audit purposes.
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteTransaction}
+              className="bg-destructive hover:bg-destructive/90"
+              disabled={softDeleteTransaction.isPending}
+            >
+              {softDeleteTransaction.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                'Delete Transaction'
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

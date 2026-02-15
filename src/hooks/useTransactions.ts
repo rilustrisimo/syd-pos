@@ -13,6 +13,7 @@ import {
   getReturns,
   getARAgingByCustomer,
   getARTransactionsForCustomer,
+  softDeleteTransaction,
   TransactionFilters,
   TransactionInput,
   TransactionLineInput,
@@ -214,6 +215,30 @@ export function useRecordARPayment() {
       queryClient.invalidateQueries({ queryKey: transactionKeys.all })
       queryClient.invalidateQueries({ queryKey: ['customers'] })
       queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+    },
+  })
+}
+
+// ============================================
+// SOFT DELETE
+// ============================================
+
+// Hook to soft delete a transaction
+export function useSoftDeleteTransaction() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({
+      transactionId,
+      userId,
+    }: {
+      transactionId: string
+      userId: string
+    }) => softDeleteTransaction(transactionId, userId),
+    onSuccess: () => {
+      // Invalidate transaction queries to refresh the list
+      queryClient.invalidateQueries({ queryKey: transactionKeys.lists() })
+      queryClient.invalidateQueries({ queryKey: transactionKeys.todaysSummary() })
     },
   })
 }
