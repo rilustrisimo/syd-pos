@@ -72,6 +72,7 @@ export async function getProduct(id: string) {
       images:product_images(*)
     `)
     .eq('id', id)
+    .order('sort_order', { referencedTable: 'product_images', ascending: true })
     .single()
 
   if (error) throw error

@@ -564,8 +564,26 @@ export async function getTodaysSummary(branchId?: string) {
 export async function searchProductsForPOS(query: string, branchId: string, limit = 20) {
   const supabase = createClient()
 
-  // First, get products
+  // First, get products with primary image
   const { data: products, error: productsError } = await supabase
+    .from('products')
+    .select(`
+      id, 
+      code, 
+      name, 
+      current_selling_price, 
+      latest_cogs, 
+      selling_uom_id,
+      images:product_images!inner(url)
+    `)
+    .eq('is_active', true)
+    .eq('product_images.is_primary', true)
+    .or(`code.ilike.%${query}%,name.ilike.%${query}%`)
+    .order('name')
+    .limit(limit)
+
+  // Also get products without images
+  const { data: productsNoImage, error: productsNoImageError } = await supabase
     .from('products')
     .select('id, code, name, current_selling_price, latest_cogs, selling_uom_id')
     .eq('is_active', true)
@@ -573,11 +591,18 @@ export async function searchProductsForPOS(query: string, branchId: string, limi
     .order('name')
     .limit(limit)
 
-  if (productsError) throw productsError
-  if (!products || products.length === 0) return []
+  if (productsError && productsNoImageError) throw productsError
+  
+  // Merge results, preferring products with images
+  const allProducts = [...(products || []), ...(productsNoImage || [])]
+  const uniqueProducts = Array.from(
+    new Map(allProducts.map(p => [p.id, p])).values()
+  ).slice(0, limit)
+
+  if (!uniqueProducts || uniqueProducts.length === 0) return []
 
   // Get UOM details for the products
-  const uomIds = [...new Set(products.map(p => p.selling_uom_id))]
+  const uomIds = [...new Set(uniqueProducts.map(p => p.selling_uom_id))]
   const { data: uoms, error: uomsError } = await supabase
     .from('units_of_measure')
     .select('id, name, code')
@@ -588,7 +613,7 @@ export async function searchProductsForPOS(query: string, branchId: string, limi
   const uomMap = new Map((uoms || []).map(u => [u.id, u]))
 
   // Get inventory for these products
-  const productIds = products.map(p => p.id)
+  const productIds = uniqueProducts.map(p => p.id)
   const { data: inventory, error: invError } = await supabase
     .from('branch_inventory')
     .select('product_id, variant_id, quantity_on_hand')
@@ -604,8 +629,9 @@ export async function searchProductsForPOS(query: string, branchId: string, limi
     ])
   )
 
-  return products.map(product => {
+  return uniqueProducts.map(product => {
     const uom = uomMap.get(product.selling_uom_id)
+    const primaryImage = (product as any).images?.[0]?.url || null
     return {
       id: product.id,
       code: product.code,
@@ -615,7 +641,8 @@ export async function searchProductsForPOS(query: string, branchId: string, limi
       uom_id: product.selling_uom_id,
       uom_name: uom?.name || '',
       uom_abbreviation: uom?.code || '', // Using 'code' from DB but naming as 'abbreviation' for backward compatibility
-      available_stock: inventoryMap.get(`${product.id}-null`) || 0
+      available_stock: inventoryMap.get(`${product.id}-null`) || 0,
+      image_url: primaryImage
     }
   })
 }

@@ -225,6 +225,10 @@ export function ProductImageUpload({
                   fill
                   className="object-cover"
                   sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, (max-width: 1024px) 25vw, 20vw"
+                  unoptimized
+                  onError={(e) => {
+                    console.error('Image failed to load:', image.url)
+                  }}
                 />
                 
                 {/* Overlay on hover */}
