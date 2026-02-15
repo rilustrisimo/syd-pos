@@ -165,6 +165,7 @@ export async function getTransactions(filters: TransactionFilters = {}) {
       customer:customers!customer_id(id, name, phone, customer_type),
       branch:branches!branch_id(id, name)
     `, { count: 'exact' })
+    .eq('is_deleted', false)  // Explicitly filter out deleted transactions
 
   // Apply filters
   if (rest.branch_id) {
@@ -225,6 +226,7 @@ export async function getTransaction(id: string) {
       branch:branches!branch_id(id, name)
     `)
     .eq('id', id)
+    .eq('is_deleted', false)
     .single()
 
   if (txnError) throw txnError
@@ -389,6 +391,7 @@ export async function addPaymentToTransaction(
     .from('transactions')
     .select('total_amount, amount_paid, customer_id')
     .eq('id', transactionId)
+    .eq('is_deleted', false)
     .single()
 
   if (txnError) throw txnError
@@ -533,6 +536,7 @@ export async function getTodaysSummary(branchId?: string) {
   let query = supabase
     .from('transactions')
     .select('total_amount, payment_status, transaction_type')
+    .eq('is_deleted', false)  // Explicitly filter out deleted transactions
     .gte('transaction_date', `${today}T00:00:00`)
     .lte('transaction_date', `${today}T23:59:59`)
 
@@ -689,6 +693,7 @@ export async function createReturnTransaction(
     .from('transactions')
     .select('id, transaction_number, customer_id')
     .eq('id', input.original_transaction_id)
+    .eq('is_deleted', false)
     .single()
 
   if (origError) throw origError
@@ -893,6 +898,7 @@ export async function getReturnsForTransaction(originalTransactionId: string) {
     .from('transactions')
     .select('transaction_number')
     .eq('id', originalTransactionId)
+    .eq('is_deleted', false)
     .single()
 
   if (origError) throw origError
@@ -910,6 +916,7 @@ export async function getReturnsForTransaction(originalTransactionId: string) {
       payments:transaction_payments(*)
     `)
     .eq('transaction_type', 'return')
+    .eq('is_deleted', false)
     .ilike('notes', `%${(originalTxn as any).transaction_number}%`)
     .order('created_at', { ascending: false })
 
@@ -1013,6 +1020,7 @@ export async function getARAgingByCustomer(): Promise<{
       payments:transaction_payments(payment_method, amount)
     `)
     .eq('transaction_type', 'sale')
+    .eq('is_deleted', false)
     .in('payment_status', ['unpaid', 'partial'])
     .order('transaction_date', { ascending: true })
 
@@ -1107,6 +1115,7 @@ export async function getARTransactionsForCustomer(customerId: string): Promise<
     `)
     .eq('customer_id', customerId)
     .eq('transaction_type', 'sale')
+    .eq('is_deleted', false)
     .in('payment_status', ['unpaid', 'partial'])
     .order('transaction_date', { ascending: true })
 
@@ -1152,6 +1161,7 @@ export async function recordARPayment(input: ARPaymentInput, userId: string) {
     .from('transactions')
     .select('id, total_amount, amount_paid, customer_id')
     .eq('id', input.transaction_id)
+    .eq('is_deleted', false)
     .single()
 
   if (txnError) throw txnError

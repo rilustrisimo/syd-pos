@@ -102,8 +102,8 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   return (
     <>
       {/* Logo */}
-      <Link href="/" className="flex h-16 items-center justify-center border-b border-slate-800 px-4">
-        <div className="relative w-full h-10">
+      <Link href="/" className="flex h-16 items-center gap-3 border-b border-slate-800 px-3">
+        <div className="relative w-16 h-10 flex-shrink-0">
           <Image
             src="/syd-logo.svg"
             alt="SYD Logo"
@@ -114,6 +114,12 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
             }}
             priority
           />
+        </div>
+        <div className="flex-1 min-w-0">
+          <h1 className="text-[10px] leading-tight font-semibold tracking-tight">
+            SYD CONSTRUCTION<br />
+            SUPPLIES TRADING
+          </h1>
         </div>
       </Link>
 
