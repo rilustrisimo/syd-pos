@@ -65,17 +65,28 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       isLoading: true,
       sessionExpiresAt: null,
+      lastActivityAt: null,
 
-      setUser: (user) => set({ user, isLoading: false }),
+      setUser: (user) => set({ user, isLoading: false, lastActivityAt: Date.now() }),
 
       setLoading: (isLoading) => set({ isLoading }),
 
       setSessionExpiry: (expiresAt) => set({ sessionExpiresAt: expiresAt }),
 
+      updateLastActivity: () => set({ lastActivityAt: Date.now() }),
+
       isSessionExpired: () => {
         const { sessionExpiresAt } = get()
         if (!sessionExpiresAt) return false
         return Date.now() > sessionExpiresAt * 1000
+      },
+
+      isInactive: () => {
+        const { lastActivityAt } = get()
+        if (!lastActivityAt) return false
+        // 1 day = 86400000 milliseconds
+        const ONE_DAY = 86400000
+        return Date.now() - lastActivityAt > ONE_DAY
       },
 
       hasPermission: (permission) => {
