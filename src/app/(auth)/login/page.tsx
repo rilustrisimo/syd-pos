@@ -60,10 +60,10 @@ export default function LoginPage() {
               />
             </div>
             <div>
-              <CardTitle className="text-2xl font-bold text-white">
+              <CardTitle className="text-2xl font-bold text-black">
                 SYD CONSTRUCTION
               </CardTitle>
-              <p className="text-sm text-slate-300 font-medium mt-1">SUPPLIES TRADING</p>
+              <p className="text-sm text-slate-600 font-medium mt-1">SUPPLIES TRADING</p>
             </div>
           </div>
           <CardDescription className="text-slate-400">
