@@ -10,7 +10,7 @@ import { useQueryClient } from '@tanstack/react-query'
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const queryClient = useQueryClient()
-  const { setUser, setLoading, setSessionExpiry, clear, isSessionExpired } = useAuthStore()
+  const { setUser, setLoading, setSessionExpiry, updateLastActivity, clear, isSessionExpired, isInactive } = useAuthStore()
   const sessionCheckInterval = useRef<NodeJS.Timeout | null>(null)
   const isHandlingAuthChange = useRef(false)
 
@@ -148,11 +148,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     initSession()
 
-    // Session expiry checker (runs every minute)
+    // Track user activity for inactivity timeout
+    const handleActivity = () => {
+      updateLastActivity()
+    }
+
+    // Listen for user activity
+    window.addEventListener('mousemove', handleActivity)
+    window.addEventListener('keydown', handleActivity)
+    window.addEventListener('mousedown', handleActivity)
+    window.addEventListener('touchstart', handleActivity)
+    window.addEventListener('scroll', handleActivity)
+
+    // Session expiry and inactivity checker (runs every minute)
     sessionCheckInterval.current = setInterval(() => {
       if (isSessionExpired()) {
         console.warn('Session expired during runtime')
         toast.warning('Your session has expired. Please login again.')
+        handleCompleteSignOut()
+      } else if (isInactive()) {
+        console.warn('User inactive for 1 day')
+        toast.info('You have been logged out due to inactivity.')
         handleCompleteSignOut()
       }
     }, 60000) // Check every minute
@@ -189,12 +205,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     )
 
     return () => {
+      // Clean up activity listeners
+      window.removeEventListener('mousemove', handleActivity)
+      window.removeEventListener('keydown', handleActivity)
+      window.removeEventListener('mousedown', handleActivity)
+      window.removeEventListener('touchstart', handleActivity)
+      window.removeEventListener('scroll', handleActivity)
+      
       subscription.unsubscribe()
       if (sessionCheckInterval.current) {
         clearInterval(sessionCheckInterval.current)
       }
     }
-  }, [loadUser, setLoading, clear, router, handleCompleteSignOut, isSessionExpired, setSessionExpiry])
+  }, [loadUser, setLoading, clear, router, handleCompleteSignOut, isSessionExpired, isInactive, setSessionExpiry, updateLastActivity])
 
   return <>{children}</>
 }

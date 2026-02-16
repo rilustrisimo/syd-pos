@@ -14,12 +14,15 @@ interface AuthState {
   user: User | null
   isLoading: boolean
   sessionExpiresAt: number | null
+  lastActivityAt: number | null
   setUser: (user: User | null) => void
   setLoading: (loading: boolean) => void
   setSessionExpiry: (expiresAt: number | null) => void
+  updateLastActivity: () => void
   hasPermission: (permission: string) => boolean
   clear: () => void
   isSessionExpired: () => boolean
+  isInactive: () => boolean
 }
 
 // Role-based permissions
@@ -86,7 +89,8 @@ export const useAuthStore = create<AuthState>()(
         set({ 
           user: null, 
           isLoading: false, 
-          sessionExpiresAt: null 
+          sessionExpiresAt: null,
+          lastActivityAt: null 
         })
         
         // Clear localStorage persistence
@@ -103,6 +107,7 @@ export const useAuthStore = create<AuthState>()(
       partialize: (state) => ({
         user: state.user,
         sessionExpiresAt: state.sessionExpiresAt,
+        lastActivityAt: state.lastActivityAt,
       }),
       version: 1,
       // Automatically clear if schema changes
