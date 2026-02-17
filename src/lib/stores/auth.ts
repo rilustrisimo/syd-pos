@@ -148,6 +148,16 @@ export const clearAllAuthData = () => {
       }
     })
     
+    // Clear session-specific data (filters, searches, etc.)
+    const sessionKeys = ['products-filters']
+    sessionKeys.forEach(key => {
+      try {
+        sessionStorage.removeItem(key)
+      } catch (e) {
+        console.error(`Failed to remove ${key}:`, e)
+      }
+    })
+    
     // Clear all cookies (Supabase auth cookies)
     document.cookie.split(';').forEach((c) => {
       document.cookie = c

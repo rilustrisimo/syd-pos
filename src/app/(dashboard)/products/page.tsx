@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useProducts, useCategories } from '@/hooks/useProducts'
 import { formatCurrency } from '@/lib/utils/formatting'
@@ -25,11 +25,43 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Search, Plus, Package, ChevronLeft, ChevronRight, FolderTree } from 'lucide-react'
 
+const STORAGE_KEY = 'products-filters'
+
 export default function ProductsPage() {
   const [search, setSearch] = useState('')
   const [categoryId, setCategoryId] = useState<string>('')
   const [page, setPage] = useState(1)
+  const [isInitialized, setIsInitialized] = useState(false)
   const limit = 20
+
+  // Load filters from sessionStorage on mount
+  useEffect(() => {
+    try {
+      const savedFilters = sessionStorage.getItem(STORAGE_KEY)
+      if (savedFilters) {
+        const parsed = JSON.parse(savedFilters)
+        setSearch(parsed.search || '')
+        setCategoryId(parsed.categoryId || '')
+        setPage(parsed.page || 1)
+      }
+    } catch (error) {
+      console.error('Failed to load saved filters:', error)
+    } finally {
+      setIsInitialized(true)
+    }
+  }, [])
+
+  // Save filters to sessionStorage whenever they change
+  useEffect(() => {
+    if (!isInitialized) return
+    
+    try {
+      const filters = { search, categoryId, page }
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(filters))
+    } catch (error) {
+      console.error('Failed to save filters:', error)
+    }
+  }, [search, categoryId, page, isInitialized])
 
   const { data: productsData, isLoading } = useProducts({
     search: search || undefined,
