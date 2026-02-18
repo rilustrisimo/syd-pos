@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { useProducts, useCategories } from '@/hooks/useProducts'
+import { useProducts, useCategories, useAllProductsForExport } from '@/hooks/useProducts'
 import { formatCurrency } from '@/lib/utils/formatting'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -24,6 +24,7 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Search, Plus, Package, ChevronLeft, ChevronRight, FolderTree } from 'lucide-react'
+import { ProductExportDialog } from '@/components/products/product-export-dialog'
 
 const STORAGE_KEY = 'products-filters'
 
@@ -72,6 +73,12 @@ export default function ProductsPage() {
 
   const { data: categories } = useCategories()
 
+  // For export - fetch all products with same filters (no pagination)
+  const { data: exportProducts = [], isLoading: isLoadingExport, refetch: refetchExportProducts } = useAllProductsForExport({
+    search: search || undefined,
+    categoryId: categoryId || undefined,
+  })
+
   const products = productsData?.data || []
   const totalPages = productsData?.totalPages || 1
   const total = productsData?.total || 0
@@ -85,6 +92,11 @@ export default function ProductsPage() {
     }
   }
 
+  // Trigger export products fetch when dialog opens
+  const handleExportClick = () => {
+    refetchExportProducts()
+  }
+
   return (
     <div className="space-y-6">
       {/* Page header */}
@@ -96,6 +108,12 @@ export default function ProductsPage() {
           </p>
         </div>
         <div className="flex gap-2">
+          <div onClick={handleExportClick}>
+            <ProductExportDialog 
+              products={exportProducts} 
+              isLoading={isLoadingExport}
+            />
+          </div>
           <Link href="/products/categories" onClick={clearSessionFilters}>
             <Button variant="outline">
               <FolderTree className="mr-2 h-4 w-4" />

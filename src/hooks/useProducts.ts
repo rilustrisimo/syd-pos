@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   getProducts,
   getProduct,
+  getAllProductsForExport,
   createProduct,
   updateProduct,
   deleteProduct,
@@ -37,6 +38,17 @@ export function useProduct(id: string) {
     queryKey: ['products', id],
     queryFn: () => getProduct(id),
     enabled: !!id,
+  })
+}
+
+export function useAllProductsForExport(params?: {
+  search?: string
+  categoryId?: string
+}) {
+  return useQuery({
+    queryKey: ['products', 'export', params],
+    queryFn: () => getAllProductsForExport(params),
+    enabled: false, // Only fetch when manually triggered
   })
 }
 

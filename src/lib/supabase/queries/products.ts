@@ -56,6 +56,42 @@ export async function getProducts(params?: {
   }
 }
 
+// Fetch all products for export (no pagination)
+export async function getAllProductsForExport(params?: {
+  search?: string
+  categoryId?: string
+}) {
+  const supabase = getClient()
+  const { search, categoryId } = params || {}
+
+  let query = supabase
+    .from('products')
+    .select(`
+      *,
+      category:product_categories(*),
+      subcategory:product_subcategories(*),
+      base_uom:units_of_measure!products_base_uom_id_fkey(*),
+      selling_uom:units_of_measure!products_selling_uom_id_fkey(*)
+    `)
+    .eq('is_active', true)
+    .order('category_id')
+    .order('name')
+
+  if (search) {
+    query = query.or(`name.ilike.%${search}%,code.ilike.%${search}%`)
+  }
+
+  if (categoryId) {
+    query = query.eq('category_id', categoryId)
+  }
+
+  const { data, error } = await query
+
+  if (error) throw error
+
+  return data as Product[]
+}
+
 // Fetch single product by ID
 export async function getProduct(id: string) {
   const supabase = getClient()
