@@ -108,6 +108,31 @@ export function ProductForm({ product, mode }: ProductFormProps) {
     },
   })
 
+  // Reset form when product changes (important for edit mode)
+  useEffect(() => {
+    if (product && mode === 'edit') {
+      form.reset({
+        code: product.code || '',
+        name: product.name || '',
+        category_id: product.category_id || '',
+        subcategory_id: product.subcategory_id || '',
+        base_uom_id: product.base_uom_id || '',
+        selling_uom_id: product.selling_uom_id || '',
+        conversion_factor: (product as any)?.conversion_factor?.toString() || '1',
+        base_unit_cost: product.latest_cogs?.toString() || '0',
+        latest_cogs: product.latest_cogs?.toString() || '0',
+        markup_percentage: product.markup_percentage?.toString() || '20',
+        current_selling_price: product.current_selling_price?.toString() || '0',
+        reorder_point: product.reorder_point?.toString() || '10',
+        reorder_quantity: product.reorder_quantity?.toString() || '50',
+        description: product.description || '',
+        is_active: product.is_active ?? true,
+      })
+      setSelectedCategoryId(product.category_id)
+      setProductImages((product as any)?.images || [])
+    }
+  }, [product, mode, form])
+
   // Track which field was last edited to avoid circular updates
   const lastEditedField = useRef<'cost' | 'markup' | 'price' | null>(null)
 

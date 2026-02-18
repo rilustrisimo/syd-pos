@@ -147,8 +147,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // Inactivity checker (runs every minute)
     sessionCheckInterval.current = setInterval(() => {
+      const { user, lastActivityAt } = useAuthStore.getState()
+      
+      // Only check inactivity if user is logged in
+      if (!user) return
+      
+      // Safety check: if lastActivityAt is not set, set it now
+      if (!lastActivityAt) {
+        console.log('lastActivityAt not set, initializing...')
+        updateLastActivity()
+        return
+      }
+      
+      const inactiveDuration = Date.now() - lastActivityAt
+      const hoursInactive = inactiveDuration / (1000 * 60 * 60)
+      
+      // Log every 10 minutes for debugging
+      if (Math.floor(Date.now() / (1000 * 60 * 10)) % 6 === 0) {
+        console.log(`User activity check: ${hoursInactive.toFixed(1)} hours since last activity`)
+      }
+      
       if (isInactive()) {
-        console.warn('User inactive for 24 hours')
+        console.warn('User inactive for 24 hours - logging out')
         toast.info('You have been logged out due to 24 hours of inactivity.')
         handleCompleteSignOut()
       }

@@ -121,13 +121,6 @@ export const useAuthStore = create<AuthState>()(
         lastActivityAt: state.lastActivityAt,
       }),
       version: 1,
-      // Automatically clear if schema changes
-      onRehydrateStorage: () => (state) => {
-        // Check if session is expired on rehydration
-        if (state?.sessionExpiresAt && Date.now() > state.sessionExpiresAt * 1000) {
-          state.clear()
-        }
-      },
     }
   )
 )
