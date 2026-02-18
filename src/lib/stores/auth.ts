@@ -90,8 +90,8 @@ export const useAuthStore = create<AuthState>()(
       },
 
       hasPermission: (permission) => {
-        const { user, isSessionExpired } = get()
-        if (!user || isSessionExpired()) return false
+        const { user, isInactive } = get()
+        if (!user || isInactive()) return false
         return rolePermissions[user.role]?.includes(permission) ?? false
       },
 

@@ -10,7 +10,7 @@ import { useQueryClient } from '@tanstack/react-query'
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const queryClient = useQueryClient()
-  const { setUser, setLoading, setSessionExpiry, updateLastActivity, clear, isSessionExpired, isInactive } = useAuthStore()
+  const { setUser, setLoading, setSessionExpiry, updateLastActivity, clear, isInactive } = useAuthStore()
   const sessionCheckInterval = useRef<NodeJS.Timeout | null>(null)
   const isHandlingAuthChange = useRef(false)
 
@@ -104,13 +104,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const supabase = getClient()
 
-    // Check if session is expired on mount
-    if (isSessionExpired()) {
-      console.warn('Session expired on mount')
-      handleCompleteSignOut(true)
-      return
-    }
-
     // Initial session check
     const initSession = async () => {
       setLoading(true)
@@ -126,14 +119,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         if (session?.user) {
           const expiresAt = session.expires_at
-          
-          // Check if session is about to expire or already expired
-          if (expiresAt && Date.now() > expiresAt * 1000) {
-            console.warn('Session already expired')
-            await handleCompleteSignOut(true)
-            return
-          }
-          
           await loadUser(session.user.id, session.user.email || '', expiresAt)
         } else {
           clear()
@@ -160,15 +145,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     window.addEventListener('touchstart', handleActivity)
     window.addEventListener('scroll', handleActivity)
 
-    // Session expiry and inactivity checker (runs every minute)
+    // Inactivity checker (runs every minute)
     sessionCheckInterval.current = setInterval(() => {
-      if (isSessionExpired()) {
-        console.warn('Session expired during runtime')
-        toast.warning('Your session has expired. Please login again.')
-        handleCompleteSignOut()
-      } else if (isInactive()) {
-        console.warn('User inactive for 1 day')
-        toast.info('You have been logged out due to inactivity.')
+      if (isInactive()) {
+        console.warn('User inactive for 24 hours')
+        toast.info('You have been logged out due to 24 hours of inactivity.')
         handleCompleteSignOut()
       }
     }, 60000) // Check every minute
@@ -217,7 +198,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         clearInterval(sessionCheckInterval.current)
       }
     }
-  }, [loadUser, setLoading, clear, router, handleCompleteSignOut, isSessionExpired, isInactive, setSessionExpiry, updateLastActivity])
+  }, [loadUser, setLoading, clear, router, handleCompleteSignOut, isInactive, setSessionExpiry, updateLastActivity])
 
   return <>{children}</>
 }
