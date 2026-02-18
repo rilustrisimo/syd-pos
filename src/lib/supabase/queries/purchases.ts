@@ -175,14 +175,14 @@ export async function updatePurchaseOrder(id: string, updates: UpdateTables<'pur
 }
 
 // Update PO status
-export async function updatePOStatus(id: string, status: POStatus) {
+export async function updatePOStatus(id: string, status: POStatus, actualDeliveryDate?: string) {
   const supabase = getClient()
 
   const updateData: any = { status }
 
   // Set actual delivery date when received
   if (status === 'received') {
-    updateData.actual_delivery_date = new Date().toISOString().split('T')[0]
+    updateData.actual_delivery_date = actualDeliveryDate || new Date().toISOString().split('T')[0]
   }
 
   const { data, error } = await supabase
@@ -436,7 +436,7 @@ async function checkAndUpdatePOStatus(poId: string) {
 }
 
 // Receive all remaining items for a PO
-export async function receiveAllPOLines(poId: string, userId: string) {
+export async function receiveAllPOLines(poId: string, userId: string, receiveDate?: string) {
   const supabase = getClient()
 
   // Get all lines with remaining quantities
@@ -473,8 +473,8 @@ export async function receiveAllPOLines(poId: string, userId: string) {
     await updateBranchInventory(po.branch_id, line.product_id, remaining, userId, poId)
   }
 
-  // Set PO status to received
-  await updatePOStatus(poId, 'received')
+  // Set PO status to received with custom date
+  await updatePOStatus(poId, 'received', receiveDate)
 
   return { success: true }
 }

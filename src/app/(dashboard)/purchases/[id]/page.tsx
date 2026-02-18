@@ -98,6 +98,7 @@ export default function PurchaseOrderDetailPage() {
   const [isReceiveDialogOpen, setIsReceiveDialogOpen] = useState(false)
   const [receivingLine, setReceivingLine] = useState<any>(null)
   const [receiveQuantity, setReceiveQuantity] = useState<number>(0)
+  const [receiveDate, setReceiveDate] = useState(new Date().toISOString().split('T')[0])
   const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false)
   const [isReceiveAllDialogOpen, setIsReceiveAllDialogOpen] = useState(false)
 
@@ -177,7 +178,7 @@ export default function PurchaseOrderDetailPage() {
     if (!user?.id) return
 
     try {
-      await receiveAllMutation.mutateAsync({ poId, userId: user.id })
+      await receiveAllMutation.mutateAsync({ poId, userId: user.id, receiveDate })
       toast.success('All items received. Product prices have been updated.')
       setIsReceiveAllDialogOpen(false)
     } catch (err: any) {
@@ -643,30 +644,44 @@ export default function PurchaseOrderDetailPage() {
               percentage and the new costs in this PO.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          {po.lines && (
-            <div className="my-4 text-sm space-y-2">
-              <div className="font-medium">Items to receive:</div>
-              {po.lines
-                .filter(l => Number(l.quantity_received) < Number(l.quantity_ordered))
-                .map(line => {
-                  const remaining = Number(line.quantity_ordered) - Number(line.quantity_received)
-                  const newPrice = Number(line.unit_cost) * (1 + Number((line.product as any)?.markup_percentage || 0) / 100)
-                  return (
-                    <div key={line.id} className="flex items-center justify-between py-1 border-b last:border-0">
-                      <div>
-                        <span className="font-medium">{(line.product as any)?.name}</span>
-                        <span className="text-muted-foreground ml-2">x{remaining}</span>
+          <div className="space-y-4">
+            {po.lines && (
+              <div className="text-sm space-y-2">
+                <div className="font-medium">Items to receive:</div>
+                {po.lines
+                  .filter(l => Number(l.quantity_received) < Number(l.quantity_ordered))
+                  .map(line => {
+                    const remaining = Number(line.quantity_ordered) - Number(line.quantity_received)
+                    const newPrice = Number(line.unit_cost) * (1 + Number((line.product as any)?.markup_percentage || 0) / 100)
+                    return (
+                      <div key={line.id} className="flex items-center justify-between py-1 border-b last:border-0">
+                        <div>
+                          <span className="font-medium">{(line.product as any)?.name}</span>
+                          <span className="text-muted-foreground ml-2">x{remaining}</span>
+                        </div>
+                        <div className="text-xs text-muted-foreground flex items-center gap-1">
+                          Sell: {formatCurrency((line.product as any)?.current_selling_price || 0)}
+                          <ArrowRight className="h-3 w-3" />
+                          <span className="text-green-600 font-medium">{formatCurrency(newPrice)}</span>
+                        </div>
                       </div>
-                      <div className="text-xs text-muted-foreground flex items-center gap-1">
-                        Sell: {formatCurrency((line.product as any)?.current_selling_price || 0)}
-                        <ArrowRight className="h-3 w-3" />
-                        <span className="text-green-600 font-medium">{formatCurrency(newPrice)}</span>
-                      </div>
-                    </div>
-                  )
-                })}
+                    )
+                  })}
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label htmlFor="receiveDate">Actual Delivery Date *</Label>
+              <Input
+                id="receiveDate"
+                type="date"
+                value={receiveDate}
+                onChange={(e) => setReceiveDate(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                This date will be recorded as when the items were actually received.
+              </p>
             </div>
-          )}
+          </div>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction

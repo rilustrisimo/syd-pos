@@ -180,8 +180,8 @@ export function useReceiveAllPOLines() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: ({ poId, userId }: { poId: string; userId: string }) =>
-      receiveAllPOLines(poId, userId),
+    mutationFn: ({ poId, userId, receiveDate }: { poId: string; userId: string; receiveDate?: string }) =>
+      receiveAllPOLines(poId, userId, receiveDate),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['purchase-order', variables.poId] })
       queryClient.invalidateQueries({ queryKey: ['purchase-orders'] })

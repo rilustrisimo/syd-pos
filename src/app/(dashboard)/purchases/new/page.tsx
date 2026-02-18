@@ -77,6 +77,7 @@ export default function NewPurchaseOrderPage() {
 
   const [supplierId, setSupplierId] = useState('')
   const [branchId, setBranchId] = useState('')
+  const [poDate, setPoDate] = useState(new Date().toISOString().split('T')[0])
   const [expectedDeliveryDate, setExpectedDeliveryDate] = useState('')
   const [notes, setNotes] = useState('')
   const [lines, setLines] = useState<POLine[]>([])
@@ -165,7 +166,7 @@ export default function NewPurchaseOrderPage() {
         po: {
           supplier_id: supplierId,
           branch_id: branchId,
-          po_date: new Date().toISOString().split('T')[0],
+          po_date: poDate,
           expected_delivery_date: expectedDeliveryDate || null,
           actual_delivery_date: null,
           status: 'draft',
@@ -253,6 +254,16 @@ export default function NewPurchaseOrderPage() {
                       ))}
                     </SelectContent>
                   </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="poDate">Purchase Order Date *</Label>
+                  <Input
+                    id="poDate"
+                    type="date"
+                    value={poDate}
+                    onChange={(e) => setPoDate(e.target.value)}
+                  />
                 </div>
 
                 <div className="space-y-2">
