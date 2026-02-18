@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, Fragment } from 'react'
+import { useState, Fragment } from 'react'
 import {
   useCategories,
   useCreateCategory,
@@ -36,8 +36,6 @@ import {
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
-
-const STORAGE_KEY = 'products-filters'
 
 interface CategoryFormData {
   name: string
@@ -250,15 +248,6 @@ export default function CategoriesPage() {
     name: '',
     description: '',
   })
-
-  // Clear products list filters when mounting categories page
-  useEffect(() => {
-    try {
-      sessionStorage.removeItem(STORAGE_KEY)
-    } catch (error) {
-      console.error('Failed to clear session filters:', error)
-    }
-  }, [])
 
   const { data: categories, isLoading, isError, error, refetch } = useCategories()
   const createCategory = useCreateCategory()

@@ -1,23 +1,9 @@
-'use client'
-
-import { useEffect } from 'react'
 import { ProductForm } from '@/components/forms/product-form'
 import { ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 
-const STORAGE_KEY = 'products-filters'
-
 export default function NewProductPage() {
-  // Clear products list filters when mounting new product page
-  useEffect(() => {
-    try {
-      sessionStorage.removeItem(STORAGE_KEY)
-    } catch (error) {
-      console.error('Failed to clear session filters:', error)
-    }
-  }, [])
-
   return (
     <div className="space-y-6">
       {/* Page header */}

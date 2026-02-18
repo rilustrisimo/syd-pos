@@ -79,6 +79,7 @@ export function ProductForm({ product, mode }: ProductFormProps) {
   const [productImages, setProductImages] = useState<ProductImage[]>(
     (product as any)?.images || []
   )
+  const isFormInitializing = useRef(true)
 
   const { data: categories } = useCategories()
   const { data: subcategories } = useSubcategories(selectedCategoryId)
@@ -130,8 +131,21 @@ export function ProductForm({ product, mode }: ProductFormProps) {
       })
       setSelectedCategoryId(product.category_id)
       setProductImages((product as any)?.images || [])
+      isFormInitializing.current = true
+      // Allow form to settle before re-enabling calculations
+      setTimeout(() => {
+        isFormInitializing.current = false
+      }, 100)
     }
   }, [product, mode, form])
+
+  // After initial mount, mark as no longer initializing
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      isFormInitializing.current = false
+    }, 500)
+    return () => clearTimeout(timer)
+  }, [])
 
   // Track which field was last edited to avoid circular updates
   const lastEditedField = useRef<'cost' | 'markup' | 'price' | null>(null)
@@ -153,6 +167,9 @@ export function ProductForm({ product, mode }: ProductFormProps) {
 
   // Auto-calculate COGS from base unit cost and conversion factor
   useEffect(() => {
+    // Skip calculations during form initialization
+    if (isFormInitializing.current) return
+    
     const baseUnitCost = Number(watchBaseUnitCost) || 0
     const conversionFactor = Number(watchConversionFactor) || 1
 
@@ -174,6 +191,9 @@ export function ProductForm({ product, mode }: ProductFormProps) {
 
   // Calculate selling price when cost or markup changes
   useEffect(() => {
+    // Skip calculations during form initialization
+    if (isFormInitializing.current) return
+    
     if (lastEditedField.current === 'price') {
       lastEditedField.current = null
       return
