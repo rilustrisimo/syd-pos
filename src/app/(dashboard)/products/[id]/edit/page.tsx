@@ -1,6 +1,7 @@
 'use client'
 
 import { useParams, useRouter } from 'next/navigation'
+import { useEffect } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, Loader2 } from 'lucide-react'
 
@@ -9,12 +10,23 @@ import { ProductForm } from '@/components/forms/product-form'
 import { useProduct } from '@/hooks/useProducts'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 
+const STORAGE_KEY = 'products-filters'
+
 export default function EditProductPage() {
   const params = useParams()
   const router = useRouter()
   const productId = params.id as string
 
   const { data: product, isLoading, error } = useProduct(productId)
+
+  // Clear products list filters when mounting edit page
+  useEffect(() => {
+    try {
+      sessionStorage.removeItem(STORAGE_KEY)
+    } catch (error) {
+      console.error('Failed to clear session filters:', error)
+    }
+  }, [])
 
   if (isLoading) {
     return (

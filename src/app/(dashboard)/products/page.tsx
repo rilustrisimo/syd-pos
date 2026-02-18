@@ -76,6 +76,15 @@ export default function ProductsPage() {
   const totalPages = productsData?.totalPages || 1
   const total = productsData?.total || 0
 
+  // Clear filters from session storage (used when navigating to add/edit/categories)
+  const clearSessionFilters = () => {
+    try {
+      sessionStorage.removeItem(STORAGE_KEY)
+    } catch (error) {
+      console.error('Failed to clear session filters:', error)
+    }
+  }
+
   return (
     <div className="space-y-6">
       {/* Page header */}
@@ -87,13 +96,13 @@ export default function ProductsPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Link href="/products/categories">
+          <Link href="/products/categories" onClick={clearSessionFilters}>
             <Button variant="outline">
               <FolderTree className="mr-2 h-4 w-4" />
               Categories
             </Button>
           </Link>
-          <Link href="/products/new">
+          <Link href="/products/new" onClick={clearSessionFilters}>
             <Button>
               <Plus className="mr-2 h-4 w-4" />
               Add Product
