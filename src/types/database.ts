@@ -77,6 +77,7 @@ export interface ProductRow {
   base_uom_id: string
   selling_uom_id: string
   conversion_factor: number
+  base_unit_cost: number
   latest_cogs: number
   markup_percentage: number
   current_selling_price: number
