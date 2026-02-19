@@ -592,27 +592,37 @@ export default function PurchaseOrderDetailPage() {
                   </span>
                 </div>
                 {/* Price Impact Preview */}
-                {receivingLine.product?.markup_percentage != null && (
-                  <>
-                    <Separator />
-                    <div className="text-xs text-muted-foreground">Price update on receive:</div>
-                    <div className="flex items-center gap-2 text-sm">
-                      <span className="text-muted-foreground">
-                        {formatCurrency(receivingLine.product?.current_selling_price || 0)}
-                      </span>
-                      <ArrowRight className="h-3 w-3 text-muted-foreground" />
-                      <span className="font-medium text-green-600">
-                        {formatCurrency(
-                          Number(receivingLine.unit_cost) *
-                          (1 + Number(receivingLine.product.markup_percentage) / 100)
-                        )}
-                      </span>
-                      <Badge variant="outline" className="text-xs">
-                        {receivingLine.product.markup_percentage}% markup
-                      </Badge>
-                    </div>
-                  </>
-                )}
+                {receivingLine.product?.markup_percentage != null && (() => {
+                  const currentPrice = Number(receivingLine.product?.current_selling_price || 0)
+                  const newCalculatedPrice = Number(receivingLine.unit_cost) *
+                    (1 + Number(receivingLine.product.markup_percentage) / 100)
+                  const willIncrease = newCalculatedPrice > currentPrice
+                  
+                  return (
+                    <>
+                      <Separator />
+                      <div className="text-xs text-muted-foreground">Price update on receive:</div>
+                      <div className="flex items-center gap-2 text-sm">
+                        <span className="text-muted-foreground">
+                          {formatCurrency(currentPrice)}
+                        </span>
+                        <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                        <span className={`font-medium ${willIncrease ? 'text-green-600' : 'text-muted-foreground'}`}>
+                          {formatCurrency(willIncrease ? newCalculatedPrice : currentPrice)}
+                        </span>
+                        <Badge variant="outline" className="text-xs">
+                          {receivingLine.product.markup_percentage}% markup
+                        </Badge>
+                      </div>
+                      {!willIncrease && (
+                        <div className="text-xs text-amber-600 flex items-center gap-1">
+                          <AlertCircle className="h-3 w-3" />
+                          Price unchanged (would decrease to {formatCurrency(newCalculatedPrice)})
+                        </div>
+                      )}
+                    </>
+                  )
+                })()}
               </div>
             </div>
           )}
@@ -640,8 +650,8 @@ export default function PurchaseOrderDetailPage() {
             <AlertDialogTitle>Receive All Items</AlertDialogTitle>
             <AlertDialogDescription>
               This will mark all remaining items as received and update inventory and product
-              pricing. The selling prices will be recalculated based on each product&apos;s markup
-              percentage and the new costs in this PO.
+              pricing. Selling prices will only be increased if the new cost results in a higher
+              price - prices will never be automatically reduced.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="space-y-4">
