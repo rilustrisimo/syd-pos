@@ -198,6 +198,7 @@ export default function PurchaseOrderDetailPage() {
       const markup = Number(product.markup_percentage) || 0
       const cogs = calculateCogsFromLine(line)
       const proposedPrice = cogs * (1 + markup / 100)
+      const isIncrease = proposedPrice > currentPrice
 
       return {
         lineId: line.id,
@@ -207,7 +208,7 @@ export default function PurchaseOrderDetailPage() {
         proposedPrice,
         cogs,
         markup,
-        action: 'retain' as PriceReviewAction,
+        action: (isIncrease ? 'accept' : 'retain') as PriceReviewAction,
         customPrice: proposedPrice.toFixed(2),
         customMarkup: markup.toFixed(2),
       }
@@ -550,7 +551,7 @@ export default function PurchaseOrderDetailPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="border rounded-lg">
+              <div className="border rounded-lg max-h-[60vh] overflow-y-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -905,7 +906,7 @@ export default function PurchaseOrderDetailPage() {
           }
         }}
       >
-        <DialogContent className="max-w-4xl">
+        <DialogContent className="w-full max-w-5xl">
           <DialogHeader>
             <DialogTitle>Review Pricing Changes</DialogTitle>
             <DialogDescription>
@@ -928,7 +929,9 @@ export default function PurchaseOrderDetailPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {priceReviewItems.map((item, index) => (
+                    {priceReviewItems.map((item, index) => {
+                      const isIncrease = item.proposedPrice > item.currentPrice
+                      return (
                       <TableRow key={item.lineId}>
                         <TableCell>
                           <div className="font-medium">{item.productName}</div>
@@ -939,7 +942,7 @@ export default function PurchaseOrderDetailPage() {
                         <TableCell className="text-right font-mono">
                           {formatCurrency(item.currentPrice)}
                         </TableCell>
-                        <TableCell className="text-right font-mono">
+                        <TableCell className={`text-right font-mono ${isIncrease ? 'text-green-600' : 'text-amber-600'}`}>
                           {formatCurrency(item.proposedPrice)}
                         </TableCell>
                         <TableCell>
@@ -995,7 +998,7 @@ export default function PurchaseOrderDetailPage() {
                           )}
                         </TableCell>
                       </TableRow>
-                    ))}
+                    )})}
                   </TableBody>
                 </Table>
               </div>
