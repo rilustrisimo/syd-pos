@@ -1,22 +1,17 @@
 'use client'
 
-import { useState, useMemo, useRef } from 'react'
+import { useState, useMemo } from 'react'
 import { useTransactions, useTransaction, useSoftDeleteTransaction } from '@/hooks/useTransactions'
 import { useBranches } from '@/hooks/useInventory'
 import { useAuthStore } from '@/lib/stores/auth'
 import { toast } from 'sonner'
 import {
   Search,
-  Calendar,
   Receipt,
-  FileText,
   Printer,
-  Eye,
   ChevronLeft,
   ChevronRight,
   Loader2,
-  Filter,
-  Download,
   Trash2,
 } from 'lucide-react'
 
@@ -39,13 +34,6 @@ import {
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -62,10 +50,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { ReceiptTemplate } from '@/components/print/receipt-template'
-import { InvoiceTemplate } from '@/components/print/invoice-template'
-import { printElement } from '@/lib/utils/print'
+import { PrintDialog } from '@/components/print/print-dialog'
 import type { ReceiptData } from '@/components/print/receipt-template'
 import type { InvoiceData } from '@/components/print/invoice-template'
 
@@ -104,12 +89,7 @@ export default function TransactionHistoryPage() {
   const [branchFilter, setBranchFilter] = useState<string>('all')
   const [currentPage, setCurrentPage] = useState(1)
   const [selectedTransactionId, setSelectedTransactionId] = useState<string | null>(null)
-  const [printTab, setPrintTab] = useState<'receipt' | 'invoice'>('receipt')
-  const [receiptWidth, setReceiptWidth] = useState<'58mm' | '80mm'>('80mm')
   const [deleteTransactionId, setDeleteTransactionId] = useState<string | null>(null)
-
-  const receiptRef = useRef<HTMLDivElement>(null)
-  const invoiceRef = useRef<HTMLDivElement>(null)
 
   const { user } = useAuthStore()
 
@@ -222,24 +202,6 @@ export default function TransactionHistoryPage() {
       prepared_by: 'Staff',
     }
   }, [selectedTransaction])
-
-  const handlePrintReceipt = () => {
-    if (receiptRef.current) {
-      printElement(receiptRef.current, {
-        title: `Receipt - ${selectedTransaction?.transaction_number}`,
-        paperSize: receiptWidth === '58mm' ? 'thermal-58mm' : 'thermal-80mm',
-      })
-    }
-  }
-
-  const handlePrintInvoice = () => {
-    if (invoiceRef.current) {
-      printElement(invoiceRef.current, {
-        title: `Invoice - ${invoiceData?.invoice_number}`,
-        paperSize: 'a4',
-      })
-    }
-  }
 
   const handleDeleteTransaction = async () => {
     if (!deleteTransactionId || !user?.id) return
@@ -457,105 +419,14 @@ export default function TransactionHistoryPage() {
         </CardContent>
       </Card>
 
-      {/* Print Dialog */}
-      <Dialog
-        open={!!selectedTransactionId}
+      {/* Print Dialog (shared component with thermal print support) */}
+      <PrintDialog
+        open={!!selectedTransactionId && !isLoadingTransaction}
         onOpenChange={(open) => !open && setSelectedTransactionId(null)}
-      >
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Printer className="h-5 w-5" />
-              Print Transaction
-            </DialogTitle>
-            <DialogDescription>
-              {selectedTransaction?.transaction_number} - Preview and print
-            </DialogDescription>
-          </DialogHeader>
-
-          {isLoadingTransaction ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-            </div>
-          ) : (
-            <Tabs
-              value={printTab}
-              onValueChange={(v) => setPrintTab(v as 'receipt' | 'invoice')}
-              className="flex-1 overflow-hidden flex flex-col"
-            >
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="receipt" className="flex items-center gap-2">
-                  <Receipt className="h-4 w-4" />
-                  Thermal Receipt
-                </TabsTrigger>
-                <TabsTrigger value="invoice" className="flex items-center gap-2">
-                  <FileText className="h-4 w-4" />
-                  A4 Invoice
-                </TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="receipt" className="flex-1 overflow-auto mt-4 flex flex-col">
-                <div className="flex items-center gap-2 mb-4">
-                  <span className="text-sm text-muted-foreground">Paper width:</span>
-                  <div className="flex gap-1">
-                    <Button
-                      variant={receiptWidth === '58mm' ? 'default' : 'outline'}
-                      size="sm"
-                      onClick={() => setReceiptWidth('58mm')}
-                    >
-                      58mm
-                    </Button>
-                    <Button
-                      variant={receiptWidth === '80mm' ? 'default' : 'outline'}
-                      size="sm"
-                      onClick={() => setReceiptWidth('80mm')}
-                    >
-                      80mm
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="flex-1 overflow-auto bg-gray-100 rounded-lg p-4 flex justify-center">
-                  <div className="bg-white shadow-lg">
-                    {receiptData && (
-                      <ReceiptTemplate
-                        ref={receiptRef}
-                        data={receiptData}
-                        width={receiptWidth}
-                      />
-                    )}
-                  </div>
-                </div>
-
-                <div className="mt-4 flex justify-end">
-                  <Button onClick={handlePrintReceipt}>
-                    <Printer className="mr-2 h-4 w-4" />
-                    Print Receipt
-                  </Button>
-                </div>
-              </TabsContent>
-
-              <TabsContent value="invoice" className="flex-1 overflow-auto mt-4 flex flex-col">
-                <div className="flex-1 overflow-auto bg-gray-100 rounded-lg p-4">
-                  <div
-                    className="bg-white shadow-lg mx-auto"
-                    style={{ maxWidth: '210mm', transform: 'scale(0.6)', transformOrigin: 'top center' }}
-                  >
-                    {invoiceData && <InvoiceTemplate ref={invoiceRef} data={invoiceData} />}
-                  </div>
-                </div>
-
-                <div className="mt-4 flex justify-end">
-                  <Button onClick={handlePrintInvoice}>
-                    <Printer className="mr-2 h-4 w-4" />
-                    Print Invoice
-                  </Button>
-                </div>
-              </TabsContent>
-            </Tabs>
-          )}
-        </DialogContent>
-      </Dialog>
+        receiptData={receiptData}
+        invoiceData={invoiceData}
+        onComplete={() => setSelectedTransactionId(null)}
+      />
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog
