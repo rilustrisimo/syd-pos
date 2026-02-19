@@ -92,6 +92,7 @@ export async function getPurchaseOrder(id: string) {
       *,
       product:products(
         id, code, name, latest_cogs, markup_percentage, current_selling_price,
+        base_uom_id, selling_uom_id, conversion_factor,
         base_uom:units_of_measure!products_base_uom_id_fkey(id, code, name),
         category:product_categories(id, name)
       ),
@@ -503,6 +504,32 @@ export async function cancelPurchaseOrder(id: string) {
 
   if (error) throw error
   return data
+}
+
+// Delete a purchase order (only if nothing was received)
+export async function deletePurchaseOrder(id: string) {
+  const supabase = getClient()
+
+  const { data: lines, error: linesError } = await supabase
+    .from('purchase_order_lines')
+    .select('quantity_received')
+    .eq('po_id', id)
+
+  if (linesError) throw linesError
+
+  const hasReceivedItems = lines?.some(line => Number(line.quantity_received) > 0)
+  if (hasReceivedItems) {
+    throw new Error('Cannot delete PO with received items')
+  }
+
+  const { error } = await supabase
+    .from('purchase_orders')
+    .delete()
+    .eq('id', id)
+
+  if (error) throw error
+
+  return { success: true }
 }
 
 // Get PO summary stats

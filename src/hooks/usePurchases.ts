@@ -10,6 +10,7 @@ import {
   addPurchaseOrderLine,
   updatePurchaseOrderLine,
   deletePurchaseOrderLine,
+  deletePurchaseOrder,
   receivePOLineItems,
   receiveAllPOLines,
   cancelPurchaseOrder,
@@ -170,7 +171,7 @@ export function useReceivePOLineItems() {
       queryClient.invalidateQueries({ queryKey: ['po-stats'] })
       queryClient.invalidateQueries({ queryKey: ['branch-inventory'] })
       queryClient.invalidateQueries({ queryKey: ['inventory-movements'] })
-      queryClient.invalidateQueries({ queryKey: ['products'] }) // Product pricing updated
+      queryClient.invalidateQueries({ queryKey: ['products'] }) // COGS updated; pricing reviewed in UI
     },
   })
 }
@@ -202,6 +203,19 @@ export function useCancelPurchaseOrder() {
     onSuccess: (_, id) => {
       queryClient.invalidateQueries({ queryKey: ['purchase-orders'] })
       queryClient.invalidateQueries({ queryKey: ['purchase-order', id] })
+      queryClient.invalidateQueries({ queryKey: ['po-stats'] })
+    },
+  })
+}
+
+// Delete PO mutation
+export function useDeletePurchaseOrder() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (id: string) => deletePurchaseOrder(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['purchase-orders'] })
       queryClient.invalidateQueries({ queryKey: ['po-stats'] })
     },
   })

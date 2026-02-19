@@ -8,8 +8,11 @@ import {
   useReceivePOLineItems,
   useReceiveAllPOLines,
   useCancelPurchaseOrder,
+  useDeletePurchaseOrder,
 } from '@/hooks/usePurchases'
+import { useUpdateProduct } from '@/hooks/useProducts'
 import { formatCurrency, formatDate, formatDateTime } from '@/lib/utils/formatting'
+import { calculateMarkupPercentage, calculateSellingPrice } from '@/lib/utils/calculations'
 import { useAuthStore } from '@/lib/stores/auth'
 import type { POStatus } from '@/types/database'
 import { toast } from 'sonner'
@@ -32,6 +35,7 @@ import {
   Printer,
   PackagePlus,
   ArrowRight,
+  Trash2,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -73,6 +77,13 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 const statusConfig: Record<POStatus, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline'; icon: typeof FileText; color: string }> = {
   draft: { label: 'Draft', variant: 'outline', icon: FileText, color: 'text-gray-500' },
@@ -81,6 +92,21 @@ const statusConfig: Record<POStatus, { label: string; variant: 'default' | 'seco
   partially_received: { label: 'Partially Received', variant: 'secondary', icon: Package, color: 'text-amber-500' },
   received: { label: 'Fully Received', variant: 'default', icon: PackageCheck, color: 'text-green-600' },
   cancelled: { label: 'Cancelled', variant: 'destructive', icon: XCircle, color: 'text-red-500' },
+}
+
+type PriceReviewAction = 'accept' | 'retain' | 'custom_price' | 'custom_markup'
+
+type PriceReviewItem = {
+  lineId: string
+  productId: string
+  productName: string
+  currentPrice: number
+  proposedPrice: number
+  cogs: number
+  markup: number
+  action: PriceReviewAction
+  customPrice: string
+  customMarkup: string
 }
 
 export default function PurchaseOrderDetailPage() {
@@ -94,6 +120,8 @@ export default function PurchaseOrderDetailPage() {
   const receiveMutation = useReceivePOLineItems()
   const receiveAllMutation = useReceiveAllPOLines()
   const cancelMutation = useCancelPurchaseOrder()
+  const deleteMutation = useDeletePurchaseOrder()
+  const updateProductMutation = useUpdateProduct()
 
   const [isReceiveDialogOpen, setIsReceiveDialogOpen] = useState(false)
   const [receivingLine, setReceivingLine] = useState<any>(null)
@@ -101,6 +129,10 @@ export default function PurchaseOrderDetailPage() {
   const [receiveDate, setReceiveDate] = useState(new Date().toISOString().split('T')[0])
   const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false)
   const [isReceiveAllDialogOpen, setIsReceiveAllDialogOpen] = useState(false)
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [isPriceReviewOpen, setIsPriceReviewOpen] = useState(false)
+  const [priceReviewItems, setPriceReviewItems] = useState<PriceReviewItem[]>([])
+  const [isApplyingPriceReview, setIsApplyingPriceReview] = useState(false)
 
   if (isLoading) {
     return (
@@ -137,6 +169,72 @@ export default function PurchaseOrderDetailPage() {
   const totalReceived = po.lines?.reduce((sum, l) => sum + Number(l.quantity_received), 0) || 0
   const receivedPercentage = totalOrdered > 0 ? (totalReceived / totalOrdered) * 100 : 0
   const hasUnreceived = po.lines?.some(l => Number(l.quantity_received) < Number(l.quantity_ordered))
+  const hasReceivedItems = po.lines?.some(l => Number(l.quantity_received) > 0)
+  const canDelete = user?.role && ['admin', 'manager'].includes(user.role) && !hasReceivedItems
+
+  const parseNumber = (value: string, fallback = 0) => {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : fallback
+  }
+
+  const calculateCogsFromLine = (line: any) => {
+    const product = line.product || {}
+    const unitCost = Number(line.unit_cost) || 0
+    const baseUomId = product.base_uom_id
+    const sellingUomId = product.selling_uom_id
+    const conversionFactor = Number(product.conversion_factor) || 1
+
+    if (baseUomId && sellingUomId && baseUomId !== sellingUomId && conversionFactor > 0) {
+      return unitCost / conversionFactor
+    }
+
+    return unitCost
+  }
+
+  const buildPriceReviewItems = (lines: any[]) => {
+    const items = lines.map((line) => {
+      const product = line.product || {}
+      const currentPrice = Number(product.current_selling_price) || 0
+      const markup = Number(product.markup_percentage) || 0
+      const cogs = calculateCogsFromLine(line)
+      const proposedPrice = cogs * (1 + markup / 100)
+
+      return {
+        lineId: line.id,
+        productId: line.product_id,
+        productName: product.name || 'Unnamed Product',
+        currentPrice,
+        proposedPrice,
+        cogs,
+        markup,
+        action: 'retain' as PriceReviewAction,
+        customPrice: proposedPrice.toFixed(2),
+        customMarkup: markup.toFixed(2),
+      }
+    })
+
+    return items.filter((item) => item.proposedPrice !== item.currentPrice)
+  }
+
+  const openPriceReview = (lines: any[]) => {
+    const items = buildPriceReviewItems(lines)
+
+    if (items.length === 0) {
+      toast.info('No price changes to review')
+      return
+    }
+
+    setPriceReviewItems(items)
+    setIsPriceReviewOpen(true)
+  }
+
+  const updateReviewItem = (index: number, updates: Partial<PriceReviewItem>) => {
+    setPriceReviewItems((prev) => {
+      const next = [...prev]
+      next[index] = { ...next[index], ...updates }
+      return next
+    })
+  }
 
   const handleOpenReceive = (line: any) => {
     const remaining = Number(line.quantity_ordered) - Number(line.quantity_received)
@@ -168,7 +266,9 @@ export default function PurchaseOrderDetailPage() {
       })
       toast.success(`Received ${receiveQuantity} units of ${receivingLine.product?.name}`)
       setIsReceiveDialogOpen(false)
+      const receivedLine = receivingLine
       setReceivingLine(null)
+      openPriceReview([receivedLine])
     } catch (err: any) {
       toast.error(err.message || 'Failed to receive items')
     }
@@ -179,10 +279,80 @@ export default function PurchaseOrderDetailPage() {
 
     try {
       await receiveAllMutation.mutateAsync({ poId, userId: user.id, receiveDate })
-      toast.success('All items received. Product prices have been updated.')
+      toast.success('All items received. Review pricing updates.')
       setIsReceiveAllDialogOpen(false)
+      const remainingLines = (po.lines || []).filter(
+        (line) => Number(line.quantity_received) < Number(line.quantity_ordered)
+      )
+      openPriceReview(remainingLines)
     } catch (err: any) {
       toast.error(err.message || 'Failed to receive all items')
+    }
+  }
+
+  const handleApplyPriceReview = async () => {
+    if (priceReviewItems.length === 0) {
+      setIsPriceReviewOpen(false)
+      return
+    }
+
+    setIsApplyingPriceReview(true)
+
+    try {
+      for (const item of priceReviewItems) {
+        if (item.action === 'retain') continue
+
+        if (item.action === 'accept') {
+          await updateProductMutation.mutateAsync({
+            id: item.productId,
+            updates: { current_selling_price: item.proposedPrice },
+          })
+          continue
+        }
+
+        if (item.action === 'custom_price') {
+          const customPrice = parseNumber(item.customPrice)
+          if (customPrice <= 0) {
+            throw new Error(`Invalid custom price for ${item.productName}`)
+          }
+
+          const markup = calculateMarkupPercentage(item.cogs, customPrice)
+
+          await updateProductMutation.mutateAsync({
+            id: item.productId,
+            updates: {
+              current_selling_price: customPrice,
+              markup_percentage: markup,
+            },
+          })
+          continue
+        }
+
+        if (item.action === 'custom_markup') {
+          const customMarkup = parseNumber(item.customMarkup)
+          if (customMarkup < 0) {
+            throw new Error(`Invalid custom markup for ${item.productName}`)
+          }
+
+          const customPrice = calculateSellingPrice(item.cogs, customMarkup)
+
+          await updateProductMutation.mutateAsync({
+            id: item.productId,
+            updates: {
+              current_selling_price: customPrice,
+              markup_percentage: customMarkup,
+            },
+          })
+        }
+      }
+
+      toast.success('Pricing updates applied')
+      setIsPriceReviewOpen(false)
+      setPriceReviewItems([])
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to apply pricing updates')
+    } finally {
+      setIsApplyingPriceReview(false)
     }
   }
 
@@ -193,6 +363,17 @@ export default function PurchaseOrderDetailPage() {
       setIsCancelDialogOpen(false)
     } catch (err: any) {
       toast.error(err.message || 'Failed to cancel')
+    }
+  }
+
+  const handleDelete = async () => {
+    try {
+      await deleteMutation.mutateAsync(poId)
+      toast.success('Purchase order deleted')
+      setIsDeleteDialogOpen(false)
+      router.push('/purchases')
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to delete')
     }
   }
 
@@ -275,6 +456,12 @@ export default function PurchaseOrderDetailPage() {
             <Button variant="destructive" onClick={() => setIsCancelDialogOpen(true)}>
               <XCircle className="mr-2 h-4 w-4" />
               Cancel
+            </Button>
+          )}
+          {canDelete && (
+            <Button variant="destructive" onClick={() => setIsDeleteDialogOpen(true)}>
+              <Trash2 className="mr-2 h-4 w-4" />
+              Delete
             </Button>
           )}
         </div>
@@ -594,32 +781,28 @@ export default function PurchaseOrderDetailPage() {
                 {/* Price Impact Preview */}
                 {receivingLine.product?.markup_percentage != null && (() => {
                   const currentPrice = Number(receivingLine.product?.current_selling_price || 0)
-                  const newCalculatedPrice = Number(receivingLine.unit_cost) *
-                    (1 + Number(receivingLine.product.markup_percentage) / 100)
-                  const willIncrease = newCalculatedPrice > currentPrice
-                  
+                  const cogs = calculateCogsFromLine(receivingLine)
+                  const proposedPrice = calculateSellingPrice(
+                    cogs,
+                    Number(receivingLine.product.markup_percentage)
+                  )
+
                   return (
                     <>
                       <Separator />
-                      <div className="text-xs text-muted-foreground">Price update on receive:</div>
+                      <div className="text-xs text-muted-foreground">Proposed price (requires approval):</div>
                       <div className="flex items-center gap-2 text-sm">
                         <span className="text-muted-foreground">
                           {formatCurrency(currentPrice)}
                         </span>
                         <ArrowRight className="h-3 w-3 text-muted-foreground" />
-                        <span className={`font-medium ${willIncrease ? 'text-green-600' : 'text-muted-foreground'}`}>
-                          {formatCurrency(willIncrease ? newCalculatedPrice : currentPrice)}
+                        <span className="font-medium text-green-600">
+                          {formatCurrency(proposedPrice)}
                         </span>
                         <Badge variant="outline" className="text-xs">
                           {receivingLine.product.markup_percentage}% markup
                         </Badge>
                       </div>
-                      {!willIncrease && (
-                        <div className="text-xs text-amber-600 flex items-center gap-1">
-                          <AlertCircle className="h-3 w-3" />
-                          Price unchanged (would decrease to {formatCurrency(newCalculatedPrice)})
-                        </div>
-                      )}
                     </>
                   )
                 })()}
@@ -650,8 +833,7 @@ export default function PurchaseOrderDetailPage() {
             <AlertDialogTitle>Receive All Items</AlertDialogTitle>
             <AlertDialogDescription>
               This will mark all remaining items as received and update inventory and product
-              pricing. Selling prices will only be increased if the new cost results in a higher
-              price - prices will never be automatically reduced.
+              pricing. Any price changes will be reviewed per item before applying.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="space-y-4">
@@ -662,7 +844,11 @@ export default function PurchaseOrderDetailPage() {
                   .filter(l => Number(l.quantity_received) < Number(l.quantity_ordered))
                   .map(line => {
                     const remaining = Number(line.quantity_ordered) - Number(line.quantity_received)
-                    const newPrice = Number(line.unit_cost) * (1 + Number((line.product as any)?.markup_percentage || 0) / 100)
+                    const cogs = calculateCogsFromLine(line)
+                    const newPrice = calculateSellingPrice(
+                      cogs,
+                      Number((line.product as any)?.markup_percentage || 0)
+                    )
                     return (
                       <div key={line.id} className="flex items-center justify-between py-1 border-b last:border-0">
                         <div>
@@ -670,9 +856,9 @@ export default function PurchaseOrderDetailPage() {
                           <span className="text-muted-foreground ml-2">x{remaining}</span>
                         </div>
                         <div className="text-xs text-muted-foreground flex items-center gap-1">
-                          Sell: {formatCurrency((line.product as any)?.current_selling_price || 0)}
+                          Current: {formatCurrency((line.product as any)?.current_selling_price || 0)}
                           <ArrowRight className="h-3 w-3" />
-                          <span className="text-green-600 font-medium">{formatCurrency(newPrice)}</span>
+                          <span className="text-green-600 font-medium">Proposed {formatCurrency(newPrice)}</span>
                         </div>
                       </div>
                     )
@@ -709,6 +895,126 @@ export default function PurchaseOrderDetailPage() {
         </AlertDialogContent>
       </AlertDialog>
 
+      {/* Pricing Review */}
+      <Dialog
+        open={isPriceReviewOpen}
+        onOpenChange={(open) => {
+          setIsPriceReviewOpen(open)
+          if (!open) {
+            setPriceReviewItems([])
+          }
+        }}
+      >
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>Review Pricing Changes</DialogTitle>
+            <DialogDescription>
+              Approve, retain, or customize pricing per item before applying updates.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {priceReviewItems.length === 0 ? (
+              <div className="text-sm text-muted-foreground">No price changes to review.</div>
+            ) : (
+              <div className="border rounded-lg">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Product</TableHead>
+                      <TableHead className="text-right">Current</TableHead>
+                      <TableHead className="text-right">Proposed</TableHead>
+                      <TableHead>Action</TableHead>
+                      <TableHead>Custom</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {priceReviewItems.map((item, index) => (
+                      <TableRow key={item.lineId}>
+                        <TableCell>
+                          <div className="font-medium">{item.productName}</div>
+                          <div className="text-xs text-muted-foreground">
+                            COGS: {formatCurrency(item.cogs)}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right font-mono">
+                          {formatCurrency(item.currentPrice)}
+                        </TableCell>
+                        <TableCell className="text-right font-mono">
+                          {formatCurrency(item.proposedPrice)}
+                        </TableCell>
+                        <TableCell>
+                          <Select
+                            value={item.action}
+                            onValueChange={(value) =>
+                              updateReviewItem(index, { action: value as PriceReviewAction })
+                            }
+                          >
+                            <SelectTrigger className="w-[170px]">
+                              <SelectValue placeholder="Select" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="accept">Accept proposed</SelectItem>
+                              <SelectItem value="retain">Retain current</SelectItem>
+                              <SelectItem value="custom_price">Custom price</SelectItem>
+                              <SelectItem value="custom_markup">Custom markup</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
+                        <TableCell>
+                          {item.action === 'custom_price' && (
+                            <div className="space-y-1">
+                              <Input
+                                type="number"
+                                step="0.01"
+                                value={item.customPrice}
+                                onChange={(e) => updateReviewItem(index, { customPrice: e.target.value })}
+                              />
+                              <div className="text-xs text-muted-foreground">
+                                Markup: {calculateMarkupPercentage(item.cogs, parseNumber(item.customPrice)).toFixed(2)}%
+                              </div>
+                            </div>
+                          )}
+                          {item.action === 'custom_markup' && (
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2">
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  value={item.customMarkup}
+                                  onChange={(e) => updateReviewItem(index, { customMarkup: e.target.value })}
+                                />
+                                <span className="text-xs text-muted-foreground">%</span>
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                Price: {formatCurrency(calculateSellingPrice(item.cogs, parseNumber(item.customMarkup)))}
+                              </div>
+                            </div>
+                          )}
+                          {item.action !== 'custom_price' && item.action !== 'custom_markup' && (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsPriceReviewOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleApplyPriceReview} disabled={isApplyingPriceReview}>
+              {isApplyingPriceReview && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
+              Apply Pricing Updates
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Cancel Confirmation */}
       <AlertDialog open={isCancelDialogOpen} onOpenChange={setIsCancelDialogOpen}>
         <AlertDialogContent>
@@ -730,6 +1036,33 @@ export default function PurchaseOrderDetailPage() {
                 <XCircle className="mr-2 h-4 w-4" />
               )}
               Yes, cancel
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete Confirmation */}
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Purchase Order</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently removes the purchase order and its lines. Deletion is allowed
+              only when no items have been received.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleteMutation.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Trash2 className="mr-2 h-4 w-4" />
+              )}
+              Delete
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -2,7 +2,8 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { usePurchaseOrders, usePOStats, useCancelPurchaseOrder } from '@/hooks/usePurchases'
+import { usePurchaseOrders, usePOStats, useCancelPurchaseOrder, useDeletePurchaseOrder } from '@/hooks/usePurchases'
+import { useAuthStore } from '@/lib/stores/auth'
 import { useSuppliers } from '@/hooks/useSuppliers'
 import { useBranches } from '@/hooks/useInventory'
 import { formatCurrency, formatDate } from '@/lib/utils/formatting'
@@ -21,6 +22,7 @@ import {
   Eye,
   MoreHorizontal,
   FileText,
+  Trash2,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -80,6 +82,7 @@ export default function PurchasesPage() {
   const [selectedStatus, setSelectedStatus] = useState<string>('')
   const [currentPage, setCurrentPage] = useState(1)
   const [cancellingPO, setCancellingPO] = useState<string | null>(null)
+  const [deletingPO, setDeletingPO] = useState<string | null>(null)
 
   const { data: purchasesData, isLoading } = usePurchaseOrders({
     search: searchQuery || undefined,
@@ -90,8 +93,10 @@ export default function PurchasesPage() {
   })
 
   const { data: suppliersData } = useSuppliers({ limit: 100 })
+  const { user } = useAuthStore()
   const { data: stats } = usePOStats()
   const cancelMutation = useCancelPurchaseOrder()
+  const deleteMutation = useDeletePurchaseOrder()
 
   const purchases = purchasesData?.data || []
   const totalPages = purchasesData?.totalPages || 1
@@ -106,6 +111,18 @@ export default function PurchasesPage() {
       setCancellingPO(null)
     } catch (error: any) {
       toast.error(error.message || 'Failed to cancel PO')
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!deletingPO) return
+
+    try {
+      await deleteMutation.mutateAsync(deletingPO)
+      toast.success('Purchase order deleted')
+      setDeletingPO(null)
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to delete PO')
     }
   }
 
@@ -364,6 +381,16 @@ export default function PurchasesPage() {
                                   Cancel
                                 </DropdownMenuItem>
                               )}
+                              {user?.role && ['admin', 'manager'].includes(user.role) &&
+                                !['partially_received', 'received'].includes(po.status) && (
+                                  <DropdownMenuItem
+                                    onClick={() => setDeletingPO(po.id)}
+                                    className="text-destructive"
+                                  >
+                                    <Trash2 className="mr-2 h-4 w-4" />
+                                    Delete
+                                  </DropdownMenuItem>
+                                )}
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </TableCell>
@@ -425,6 +452,33 @@ export default function PurchasesPage() {
                 <XCircle className="mr-2 h-4 w-4" />
               )}
               Yes, cancel
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!deletingPO} onOpenChange={() => setDeletingPO(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Purchase Order</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently removes the purchase order and its lines. Deletion is allowed
+              only when no items have been received.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleteMutation.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Trash2 className="mr-2 h-4 w-4" />
+              )}
+              Delete
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

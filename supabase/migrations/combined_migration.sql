@@ -703,14 +703,43 @@ CREATE POLICY "Authenticated users can view purchase orders"
     TO authenticated
     USING (TRUE);
 
-CREATE POLICY "Inventory staff, managers, and admins can manage POs"
-    ON purchase_orders FOR ALL
+CREATE POLICY "Inventory staff, managers, and admins can insert POs"
+    ON purchase_orders FOR INSERT
+    TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM users
+            WHERE users.id = auth.uid()
+            AND users.role IN ('admin', 'manager', 'inventory_staff')
+        )
+    );
+
+CREATE POLICY "Inventory staff, managers, and admins can update POs"
+    ON purchase_orders FOR UPDATE
     TO authenticated
     USING (
         EXISTS (
             SELECT 1 FROM users
             WHERE users.id = auth.uid()
             AND users.role IN ('admin', 'manager', 'inventory_staff')
+        )
+    )
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM users
+            WHERE users.id = auth.uid()
+            AND users.role IN ('admin', 'manager', 'inventory_staff')
+        )
+    );
+
+CREATE POLICY "Admins and managers can delete POs"
+    ON purchase_orders FOR DELETE
+    TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM users
+            WHERE users.id = auth.uid()
+            AND users.role IN ('admin', 'manager')
         )
     );
 
@@ -748,10 +777,10 @@ CREATE POLICY "Authenticated users can view PO lines"
     TO authenticated
     USING (TRUE);
 
-CREATE POLICY "Inventory staff, managers, and admins can manage PO lines"
-    ON purchase_order_lines FOR ALL
+CREATE POLICY "Inventory staff, managers, and admins can insert PO lines"
+    ON purchase_order_lines FOR INSERT
     TO authenticated
-    USING (
+    WITH CHECK (
         EXISTS (
             SELECT 1 FROM users
             WHERE users.id = auth.uid()
@@ -759,34 +788,56 @@ CREATE POLICY "Inventory staff, managers, and admins can manage PO lines"
         )
     );
 
+CREATE POLICY "Inventory staff, managers, and admins can update PO lines"
+    ON purchase_order_lines FOR UPDATE
+    TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM users
+            WHERE users.id = auth.uid()
+            AND users.role IN ('admin', 'manager', 'inventory_staff')
+        )
+    )
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM users
+            WHERE users.id = auth.uid()
+            AND users.role IN ('admin', 'manager', 'inventory_staff')
+        )
+    );
+
+CREATE POLICY "Admins and managers can delete PO lines"
+    ON purchase_order_lines FOR DELETE
+    TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM users
+            WHERE users.id = auth.uid()
+            AND users.role IN ('admin', 'manager')
+        )
+    );
+
 -- Function to update product COGS when PO is received
--- Updated: Only increases selling prices automatically, never decreases
+-- Updated: Only updates COGS; pricing changes require user approval in the UI
 CREATE OR REPLACE FUNCTION update_product_pricing_on_receive()
 RETURNS TRIGGER AS $$
 DECLARE
     v_conversion_factor DECIMAL(12, 4);
     v_base_uom UUID;
     v_selling_uom UUID;
-    v_markup DECIMAL(5, 2);
     v_calculated_cogs DECIMAL(12, 4);
-    v_new_selling_price DECIMAL(12, 2);
-    v_current_selling_price DECIMAL(12, 2);
 BEGIN
     -- Only update when quantity received increases
     IF NEW.quantity_received > OLD.quantity_received THEN
-        -- Get product details including current selling price
+        -- Get product details for unit conversion
         SELECT 
             conversion_factor, 
             base_uom_id, 
-            selling_uom_id,
-            markup_percentage,
-            current_selling_price
+            selling_uom_id
         INTO 
             v_conversion_factor,
             v_base_uom,
-            v_selling_uom,
-            v_markup,
-            v_current_selling_price
+            v_selling_uom
         FROM products
         WHERE id = NEW.product_id;
 
@@ -799,26 +850,12 @@ BEGIN
             v_calculated_cogs := NEW.unit_cost;
         END IF;
 
-        -- Calculate the new selling price based on markup
-        v_new_selling_price := v_calculated_cogs * (1 + v_markup / 100);
-
-        -- Only update selling price if it would increase (never decrease)
-        IF v_new_selling_price > v_current_selling_price THEN
-            -- Price is going up - update both COGS and selling price
-            UPDATE products
-            SET
-                latest_cogs = v_calculated_cogs,
-                current_selling_price = v_new_selling_price,
-                updated_at = NOW()
-            WHERE id = NEW.product_id;
-        ELSE
-            -- Price would go down or stay same - only update COGS for tracking
-            UPDATE products
-            SET
-                latest_cogs = v_calculated_cogs,
-                updated_at = NOW()
-            WHERE id = NEW.product_id;
-        END IF;
+        -- Update only COGS. Pricing changes require user approval in UI.
+        UPDATE products
+        SET
+            latest_cogs = v_calculated_cogs,
+            updated_at = NOW()
+        WHERE id = NEW.product_id;
     END IF;
     RETURN NEW;
 END;
