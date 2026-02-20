@@ -11,19 +11,15 @@
  */
 
 import { NextResponse } from 'next/server'
-import { execFile } from 'child_process'
+import { exec } from 'child_process'
 import { promisify } from 'util'
 import { writeFile, unlink } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
 
-const execFileAsync = promisify(execFile)
-
-// Absolute paths — Node.js child processes inherit a minimal PATH that
-// may not include /usr/bin or /usr/sbin on macOS.
-const LPSTAT    = '/usr/bin/lpstat'
-const LP        = '/usr/bin/lp'
-const CUPSENABLE = '/usr/sbin/cupsenable'
+// Use exec (shell mode via /bin/sh) so macOS CUPS binaries resolve correctly.
+// execFile with absolute paths can fail with ENOENT on macOS due to SIP/TCC.
+const execAsync = promisify(exec)
 
 // ---------------------------------------------------------------------------
 // GET /api/print  — list CUPS printers
@@ -31,7 +27,7 @@ const CUPSENABLE = '/usr/sbin/cupsenable'
 
 export async function GET() {
   try {
-    const { stdout } = await execFileAsync(LPSTAT, ['-p'])
+    const { stdout } = await execAsync('lpstat -p')
     const printers = stdout
       .split('\n')
       .filter((line) => line.startsWith('printer '))
@@ -78,11 +74,11 @@ export async function POST(request: Request) {
     await writeFile(tmpFile, buffer)
 
     // Re-enable the queue in case a previous job disabled it, then print raw
-    await execFileAsync(CUPSENABLE, [printer]).catch(() => {
+    await execAsync(`cupsenable "${printer}"`).catch(() => {
       // Not fatal — the printer may already be enabled
     })
 
-    await execFileAsync(LP, ['-d', printer, '-o', 'raw', tmpFile])
+    await execAsync(`lp -d "${printer}" -o raw "${tmpFile}"`)
 
     return NextResponse.json({ success: true })
   } catch (err: any) {
