@@ -84,11 +84,9 @@ export function buildReceiptBytes(data: ReceiptData): Uint8Array {
 
   // ── Header ────────────────────────────────────────────────────────────────
   r += CMD.CENTER
-  r += CMD.BOLD_ON + CMD.DOUBLE_SIZE
-  r += 'SYD CONSTRUCTION' + LF
-  r += 'SUPPLIES TRADING' + LF
-  r += CMD.NORMAL_SIZE + CMD.BOLD_OFF
-  r += 'Construction Materials & Hardware' + LF
+  r += CMD.NORMAL_SIZE
+  r += CMD.BOLD_ON + 'SYD CONSTRUCTION SUPPLIES TRADING' + LF + CMD.BOLD_OFF
+  r += 'Sitio Landing, Talakag, Bukidnon' + LF
 
   r += CMD.LEFT
   r += divider + LF
