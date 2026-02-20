@@ -81,7 +81,6 @@ export function buildReceiptBytes(data: ReceiptData): Uint8Array {
   r += 'SYD CONSTRUCTION' + LF
   r += 'SUPPLIES TRADING' + LF
   r += CMD.NORMAL_SIZE + CMD.BOLD_OFF
-  r += data.branch + LF
   r += 'Construction Materials & Hardware' + LF
 
   r += CMD.LEFT
