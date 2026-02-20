@@ -81,6 +81,7 @@ export function buildReceiptBytes(data: ReceiptData): Uint8Array {
 
   r += CMD.INIT
   r += CMD.CHARSET_PC437
+  r += LF.repeat(3)
 
   // ── Header ────────────────────────────────────────────────────────────────
   r += CMD.CENTER
