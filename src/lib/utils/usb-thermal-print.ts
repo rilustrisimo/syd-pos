@@ -199,7 +199,7 @@ function toBase64(bytes: Uint8Array): string {
 }
 
 // ---------------------------------------------------------------------------
-// CUPS transport via Next.js API route
+// Transport layer — tries QZ Tray first, falls back to CUPS API route
 // ---------------------------------------------------------------------------
 
 async function sendToCUPS(bytes: Uint8Array, printerQueue: string): Promise<void> {
@@ -215,16 +215,37 @@ async function sendToCUPS(bytes: Uint8Array, printerQueue: string): Promise<void
   }
 }
 
+/**
+ * Print strategy:
+ *  1. Try QZ Tray (localhost WebSocket) — works on any device with QZ Tray installed.
+ *  2. Fall back to the Next.js CUPS API route — works only when the app is running
+ *     locally on the same Mac the printer is attached to.
+ *  3. If both fail, throws with a combined error message.
+ */
+async function sendBytes(bytes: Uint8Array, printerQueue: string): Promise<void> {
+  // Dynamic import keeps qz-tray out of the SSR bundle
+  const { printWithQZ } = await import('./qz-print')
+
+  try {
+    await printWithQZ(bytes, printerQueue)
+    return
+  } catch (qzErr) {
+    console.warn('[print] QZ Tray unavailable, trying CUPS API route:', qzErr)
+  }
+
+  await sendToCUPS(bytes, printerQueue)
+}
+
 // ---------------------------------------------------------------------------
-// Public API (same interface as before, transparent to callers)
+// Public API
 // ---------------------------------------------------------------------------
 
-/** Prints a receipt to the configured CUPS thermal printer. */
+/** Prints a receipt to the configured thermal printer. */
 export async function printUSBReceipt(
   data: ReceiptData,
   printerQueue: string
 ): Promise<void> {
-  await sendToCUPS(buildReceiptBytes(data), printerQueue)
+  await sendBytes(buildReceiptBytes(data), printerQueue)
 }
 
 /** Prints a test receipt to verify the printer is working. */
@@ -240,7 +261,7 @@ export async function printUSBTestReceipt(printerQueue: string): Promise<void> {
     delivery_type: 'pickup',
     items: [
       {
-        name: 'Test Product — 80mm CUPS USB Receipt',
+        name: 'Test Product — 80mm QZ Tray USB Receipt',
         quantity: 2,
         unit_price: 150,
         uom: 'pc',
@@ -255,10 +276,10 @@ export async function printUSBTestReceipt(printerQueue: string): Promise<void> {
     payments: [{ method: 'cash', amount: 300, reference: null }],
     amount_paid: 300,
     change: 0,
-    notes: 'VOZY G80 USB test — auto-cut enabled',
+    notes: 'VOZY G80 USB test — QZ Tray + auto-cut',
   }
 
-  await sendToCUPS(buildReceiptBytes(testData), printerQueue)
+  await sendBytes(buildReceiptBytes(testData), printerQueue)
 }
 
 // ---------------------------------------------------------------------------

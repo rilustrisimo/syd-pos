@@ -12,23 +12,31 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
-import { User, Building, Bell, Lock, Printer, Loader2, RefreshCw } from 'lucide-react'
+import { User, Building, Bell, Lock, Printer, Loader2, RefreshCw, Wifi, WifiOff } from 'lucide-react'
 import { usePrinterStore } from '@/lib/stores/printer'
-import { listCupsPrinters, printUSBTestReceipt, type CupsPrinter } from '@/lib/utils/usb-thermal-print'
+import { printUSBTestReceipt } from '@/lib/utils/usb-thermal-print'
+import { isQZAvailable, listQZPrinters } from '@/lib/utils/qz-print'
 import { toast } from 'sonner'
 
 function PrinterSettingsCard() {
   const { cupsQueueName, setCupsQueueName } = usePrinterStore()
 
-  const [printers, setPrinters]     = useState<CupsPrinter[]>([])
-  const [isLoading, setIsLoading]   = useState(false)
-  const [isTesting, setIsTesting]   = useState(false)
+  const [printers, setPrinters]       = useState<string[]>([])
+  const [isLoading, setIsLoading]     = useState(false)
+  const [isTesting, setIsTesting]     = useState(false)
+  const [qzConnected, setQzConnected] = useState<boolean | null>(null)
 
   const refreshPrinters = useCallback(async () => {
     setIsLoading(true)
     try {
-      const list = await listCupsPrinters()
-      setPrinters(list)
+      const available = await isQZAvailable()
+      setQzConnected(available)
+      if (available) {
+        const list = await listQZPrinters()
+        setPrinters(list)
+      } else {
+        setPrinters([])
+      }
     } finally {
       setIsLoading(false)
     }
@@ -55,8 +63,6 @@ function PrinterSettingsCard() {
     }
   }
 
-  const selectedPrinter = printers.find((p) => p.name === cupsQueueName)
-
   return (
     <Card className="md:col-span-2">
       <CardHeader>
@@ -65,30 +71,46 @@ function PrinterSettingsCard() {
             <Printer className="h-5 w-5" />
             <CardTitle>Thermal Printer</CardTitle>
           </div>
-          {selectedPrinter ? (
-            selectedPrinter.status === 'idle' ? (
-              <Badge variant="default">Ready</Badge>
-            ) : selectedPrinter.status === 'disabled' ? (
-              <Badge variant="destructive">Disabled</Badge>
-            ) : (
-              <Badge variant="secondary">Busy</Badge>
-            )
-          ) : cupsQueueName ? (
-            <Badge variant="secondary">Not Found</Badge>
+          {qzConnected === null ? (
+            <Badge variant="outline">Checking…</Badge>
+          ) : qzConnected ? (
+            <Badge variant="default" className="flex items-center gap-1">
+              <Wifi className="h-3 w-3" />
+              QZ Tray Connected
+            </Badge>
           ) : (
-            <Badge variant="outline">Not Configured</Badge>
+            <Badge variant="destructive" className="flex items-center gap-1">
+              <WifiOff className="h-3 w-3" />
+              QZ Tray Not Running
+            </Badge>
           )}
         </div>
         <CardDescription>
-          VOZY G80 (80 mm) connected via USB — raw ESC/POS via CUPS
+          VOZY G80 (80 mm) — raw ESC/POS via QZ Tray
         </CardDescription>
       </CardHeader>
 
       <CardContent className="space-y-6">
+
+        {/* QZ Tray status banner */}
+        {qzConnected === false && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 space-y-1">
+            <p className="font-medium">QZ Tray is not running</p>
+            <p className="text-xs">
+              QZ Tray must be running on this machine for thermal printing.
+              Download it free at{' '}
+              <a href="https://qz.io" target="_blank" rel="noreferrer" className="underline">
+                qz.io
+              </a>
+              .
+            </p>
+          </div>
+        )}
+
         {/* Printer selector */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <Label>CUPS Printer Queue</Label>
+            <Label>Printer</Label>
             <Button
               variant="ghost"
               size="sm"
@@ -109,9 +131,13 @@ function PrinterSettingsCard() {
               <Loader2 className="h-4 w-4 animate-spin" />
               Scanning for printers…
             </div>
+          ) : !qzConnected ? (
+            <p className="text-sm text-muted-foreground">
+              Start QZ Tray and click Refresh to see available printers.
+            </p>
           ) : printers.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              No CUPS printers found. Make sure the printer is connected and powered on.
+              No printers found. Make sure the printer is connected and powered on.
             </p>
           ) : (
             <Select value={cupsQueueName} onValueChange={setCupsQueueName}>
@@ -119,30 +145,23 @@ function PrinterSettingsCard() {
                 <SelectValue placeholder="Select a printer…" />
               </SelectTrigger>
               <SelectContent>
-                {printers.map((p) => (
-                  <SelectItem key={p.name} value={p.name}>
-                    <span>{p.name.replace(/_/g, ' ')}</span>
-                    <span className="ml-2 text-xs text-muted-foreground capitalize">
-                      ({p.status})
-                    </span>
+                {printers.map((name) => (
+                  <SelectItem key={name} value={name}>
+                    {name.replace(/_/g, ' ')}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           )}
 
-          <p className="text-xs text-muted-foreground">
-            The printer must be registered in macOS System Settings → Printers & Scanners.
-          </p>
+          {cupsQueueName && (
+            <p className="text-xs text-muted-foreground font-mono">{cupsQueueName}</p>
+          )}
         </div>
 
         {/* Selected printer details */}
-        {selectedPrinter && (
+        {cupsQueueName && qzConnected && (
           <div className="rounded-lg border p-3 text-sm space-y-1">
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Queue name:</span>
-              <span className="font-mono text-xs">{selectedPrinter.name}</span>
-            </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Paper width:</span>
               <span>80 mm (48 chars)</span>
@@ -150,6 +169,10 @@ function PrinterSettingsCard() {
             <div className="flex justify-between">
               <span className="text-muted-foreground">Auto-cut:</span>
               <span>Enabled</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Protocol:</span>
+              <span>QZ Tray → raw ESC/POS</span>
             </div>
           </div>
         )}
