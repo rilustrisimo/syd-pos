@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from 'react'
 import { useTransactions, useTransaction, useCreateReturn } from '@/hooks/useTransactions'
+import { getTransaction } from '@/lib/supabase/queries/transactions'
 import { useBranches } from '@/hooks/useInventory'
 import { useAuthStore } from '@/lib/stores/auth'
 import { toast } from 'sonner'
@@ -17,6 +18,7 @@ import {
   Package,
   Check,
   X,
+  Eye,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -103,6 +105,8 @@ export default function ReturnsPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [branchFilter, setBranchFilter] = useState<string>('all')
   const [currentPage, setCurrentPage] = useState(1)
+  const [detailsTransactionId, setDetailsTransactionId] = useState<string | null>(null)
+  const [loadingDetails, setLoadingDetails] = useState(false)
 
   // Return dialog state
   const [selectedTransactionId, setSelectedTransactionId] = useState<string | null>(null)
@@ -139,6 +143,20 @@ export default function ReturnsPage() {
     setReturnNotes('')
     setRefundMethod('cash')
     setRefundReference('')
+  }
+
+  // View transaction details
+  const handleViewDetails = async (txnId: string) => {
+    setDetailsTransactionId(txnId)
+    setLoadingDetails(true)
+    try {
+      const txn = await getTransaction(txnId)
+      // The details will be displayed, but we're just fetching to ensure we have full data
+    } catch (err: any) {
+      toast.error('Failed to load transaction details')
+    } finally {
+      setLoadingDetails(false)
+    }
   }
 
   // Populate return lines when transaction data loads
@@ -405,14 +423,24 @@ export default function ReturnsPage() {
                           {formatCurrency(txn.total_amount)}
                         </TableCell>
                         <TableCell>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleSelectTransaction(txn.id)}
-                          >
-                            <RotateCcw className="h-4 w-4 mr-1" />
-                            Return
-                          </Button>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleViewDetails(txn.id)}
+                              title="View transaction details"
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleSelectTransaction(txn.id)}
+                            >
+                              <RotateCcw className="h-4 w-4 mr-1" />
+                              Return
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -710,6 +738,140 @@ export default function ReturnsPage() {
                 <Check className="h-4 w-4 mr-2" />
               )}
               Process Return
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Transaction Details Dialog */}
+      <Dialog open={!!detailsTransactionId} onOpenChange={(open) => !open && setDetailsTransactionId(null)}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Transaction Details</DialogTitle>
+            <DialogDescription>
+              {transactions.find(t => t.id === detailsTransactionId)?.transaction_number}
+            </DialogDescription>
+          </DialogHeader>
+
+          {loadingDetails ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+            <>
+              {(() => {
+                const txn = transactions.find(t => t.id === detailsTransactionId)
+                if (!txn) return null
+
+                return (
+                  <div className="space-y-6">
+                    {/* Customer & Transaction Info */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-sm text-muted-foreground">Customer</p>
+                        <p className="font-semibold">{txn.customer?.name || 'Walk-in Customer'}</p>
+                        {txn.customer?.phone && (
+                          <p className="text-sm">{txn.customer.phone}</p>
+                        )}
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Date & Time</p>
+                        <p className="font-semibold">{formatDate(txn.transaction_date)}</p>
+                        <p className="text-sm">{formatTime(txn.transaction_date)}</p>
+                      </div>
+                    </div>
+
+                    <Separator />
+
+                    {/* Items List */}
+                    <div>
+                      <p className="text-sm font-semibold mb-3">Items</p>
+                      <div className="space-y-3 border rounded-lg p-3 bg-muted/30">
+                        {(txn.lines || []).map((line: any) => (
+                          <div key={line.id} className="pb-3 border-b last:border-0 last:pb-0">
+                            <div className="flex justify-between">
+                              <div className="flex-1">
+                                <p className="font-medium">{line.product?.name || 'Product'}</p>
+                                <p className="text-sm text-muted-foreground">
+                                  {line.quantity} {line.uom?.abbreviation || line.uom?.name || 'pc'} @ {formatCurrency(line.unit_price)} each
+                                </p>
+                              </div>
+                              <div className="text-right">
+                                <p className="font-semibold">{formatCurrency(line.quantity * line.unit_price)}</p>
+                                {line.discount_amount > 0 && (
+                                  <p className="text-sm text-green-600">-{formatCurrency(line.discount_amount)}</p>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Totals */}
+                    <div className="space-y-2 p-3 bg-slate-50 rounded-lg border">
+                      <div className="flex justify-between">
+                        <span>Subtotal</span>
+                        <span>{formatCurrency(txn.subtotal)}</span>
+                      </div>
+                      {txn.discount_amount > 0 && (
+                        <div className="flex justify-between text-green-600">
+                          <span>Discount</span>
+                          <span>-{formatCurrency(txn.discount_amount)}</span>
+                        </div>
+                      )}
+                      {txn.tax_amount > 0 && (
+                        <div className="flex justify-between">
+                          <span>Tax</span>
+                          <span>{formatCurrency(txn.tax_amount)}</span>
+                        </div>
+                      )}
+                      <Separator />
+                      <div className="flex justify-between font-bold text-lg">
+                        <span>Total</span>
+                        <span>{formatCurrency(txn.total_amount)}</span>
+                      </div>
+                    </div>
+
+                    {/* Payments */}
+                    <div>
+                      <p className="text-sm font-semibold mb-3">Payments</p>
+                      <div className="space-y-2 border rounded-lg p-3 bg-blue-50">
+                        {(txn.payments || []).map((payment: any) => (
+                          <div key={payment.id} className="flex justify-between items-center">
+                            <div>
+                              <Badge variant="outline" className="capitalize">{payment.payment_method}</Badge>
+                              {payment.reference_number && (
+                                <p className="text-xs text-muted-foreground mt-1">Ref: {payment.reference_number}</p>
+                              )}
+                            </div>
+                            <span className="font-semibold">{formatCurrency(payment.amount)}</span>
+                          </div>
+                        ))}
+                        <Separator />
+                        <div className="flex justify-between pt-2">
+                          <span className="font-semibold">Amount Paid</span>
+                          <span className="font-bold text-lg">{formatCurrency(txn.amount_paid)}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Notes */}
+                    {txn.notes && (
+                      <div>
+                        <p className="text-sm font-semibold mb-2">Notes</p>
+                        <p className="text-sm p-3 bg-amber-50 rounded-lg border">{txn.notes}</p>
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
+            </>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDetailsTransactionId(null)}>
+              Close
             </Button>
           </DialogFooter>
         </DialogContent>

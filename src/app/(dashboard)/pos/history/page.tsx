@@ -16,6 +16,7 @@ import {
   ChevronRight,
   Loader2,
   Trash2,
+  Eye,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -37,6 +38,14 @@ import {
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -46,6 +55,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { Separator } from '@/components/ui/separator'
 import {
   Select,
   SelectContent,
@@ -91,6 +101,9 @@ export default function TransactionHistoryPage() {
   const [currentPage, setCurrentPage] = useState(1)
   const [printingId, setPrintingId] = useState<string | null>(null)
   const [deleteTransactionId, setDeleteTransactionId] = useState<string | null>(null)
+  const [detailsTransactionId, setDetailsTransactionId] = useState<string | null>(null)
+  const [detailsTransaction, setDetailsTransaction] = useState<any | null>(null)
+  const [loadingDetails, setLoadingDetails] = useState(false)
 
   const { user } = useAuthStore()
   const { cupsQueueName } = usePrinterStore()
@@ -108,6 +121,20 @@ export default function TransactionHistoryPage() {
 
   const transactions = transactionsData?.transactions || []
   const totalPages = transactionsData?.totalPages || 1
+
+  // Fetch and display transaction details
+  const handleViewDetails = async (txnId: string) => {
+    setDetailsTransactionId(txnId)
+    setLoadingDetails(true)
+    try {
+      const txn = await getTransaction(txnId)
+      setDetailsTransaction(txn)
+    } catch (err: any) {
+      toast.error('Failed to load transaction details')
+    } finally {
+      setLoadingDetails(false)
+    }
+  }
 
   // Fetch full transaction details then print directly to USB thermal printer
   const handlePrintTransaction = async (txnId: string) => {
@@ -323,6 +350,14 @@ export default function TransactionHistoryPage() {
                             <Button
                               variant="ghost"
                               size="sm"
+                              onClick={() => handleViewDetails(txn.id)}
+                              title="View transaction details"
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
                               onClick={() => handlePrintTransaction(txn.id)}
                               disabled={printingId === txn.id}
                             >
@@ -415,6 +450,150 @@ export default function TransactionHistoryPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Transaction Details Dialog */}
+      <Dialog open={!!detailsTransactionId} onOpenChange={(open) => !open && setDetailsTransactionId(null)}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Transaction Details</DialogTitle>
+            <DialogDescription>
+              {detailsTransaction?.transaction_number}
+            </DialogDescription>
+          </DialogHeader>
+
+          {loadingDetails ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : detailsTransaction ? (
+            <div className="space-y-6">
+              {/* Customer & Transaction Info */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm text-muted-foreground">Customer</p>
+                  <p className="font-semibold">{(detailsTransaction.customer as any)?.name || 'Walk-in Customer'}</p>
+                  {(detailsTransaction.customer as any)?.phone && (
+                    <p className="text-sm">{(detailsTransaction.customer as any).phone}</p>
+                  )}
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Date & Time</p>
+                  <p className="font-semibold">{formatDate(detailsTransaction.transaction_date)}</p>
+                  <p className="text-sm">{formatTime(detailsTransaction.transaction_date)}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Branch</p>
+                  <p className="font-semibold">{(detailsTransaction.branch as any)?.name || 'Main Branch'}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Type</p>
+                  <p className="font-semibold capitalize">{detailsTransaction.delivery_type}</p>
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Delivery Address (if applicable) */}
+              {detailsTransaction.delivery_type === 'delivery' && detailsTransaction.delivery_address && (
+                <>
+                  <div>
+                    <p className="text-sm font-semibold mb-2">Delivery Address</p>
+                    <p className="text-sm">{detailsTransaction.delivery_address}</p>
+                  </div>
+                  <Separator />
+                </>
+              )}
+
+              {/* Items List */}
+              <div>
+                <p className="text-sm font-semibold mb-3">Items</p>
+                <div className="space-y-3 border rounded-lg p-3 bg-muted/30">
+                  {(detailsTransaction.lines || []).map((line: any) => (
+                    <div key={line.id} className="pb-3 border-b last:border-0 last:pb-0">
+                      <div className="flex justify-between">
+                        <div className="flex-1">
+                          <p className="font-medium">{line.product?.name || 'Product'}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {line.quantity} {line.uom?.abbreviation || line.uom?.name || 'pc'} @ {formatCurrency(line.unit_price)} each
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-semibold">{formatCurrency(line.quantity * line.unit_price)}</p>
+                          {line.discount_amount > 0 && (
+                            <p className="text-sm text-green-600">-{formatCurrency(line.discount_amount)}</p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Totals */}
+              <div className="space-y-2 p-3 bg-slate-50 rounded-lg border">
+                <div className="flex justify-between">
+                  <span>Subtotal</span>
+                  <span>{formatCurrency(detailsTransaction.subtotal)}</span>
+                </div>
+                {detailsTransaction.discount_amount > 0 && (
+                  <div className="flex justify-between text-green-600">
+                    <span>Discount</span>
+                    <span>-{formatCurrency(detailsTransaction.discount_amount)}</span>
+                  </div>
+                )}
+                {detailsTransaction.tax_amount > 0 && (
+                  <div className="flex justify-between">
+                    <span>Tax</span>
+                    <span>{formatCurrency(detailsTransaction.tax_amount)}</span>
+                  </div>
+                )}
+                <Separator />
+                <div className="flex justify-between font-bold text-lg">
+                  <span>Total</span>
+                  <span>{formatCurrency(detailsTransaction.total_amount)}</span>
+                </div>
+              </div>
+
+              {/* Payments */}
+              <div>
+                <p className="text-sm font-semibold mb-3">Payments</p>
+                <div className="space-y-2 border rounded-lg p-3 bg-blue-50">
+                  {(detailsTransaction.payments || []).map((payment: any) => (
+                    <div key={payment.id} className="flex justify-between items-center">
+                      <div>
+                        <Badge variant="outline" className="capitalize">{payment.payment_method}</Badge>
+                        {payment.reference_number && (
+                          <p className="text-xs text-muted-foreground mt-1">Ref: {payment.reference_number}</p>
+                        )}
+                      </div>
+                      <span className="font-semibold">{formatCurrency(payment.amount)}</span>
+                    </div>
+                  ))}
+                  <Separator />
+                  <div className="flex justify-between pt-2">
+                    <span className="font-semibold">Amount Paid</span>
+                    <span className="font-bold text-lg">{formatCurrency(detailsTransaction.amount_paid)}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Notes */}
+              {detailsTransaction.notes && (
+                <div>
+                  <p className="text-sm font-semibold mb-2">Notes</p>
+                  <p className="text-sm p-3 bg-amber-50 rounded-lg border">{detailsTransaction.notes}</p>
+                </div>
+              )}
+            </div>
+          ) : null}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDetailsTransactionId(null)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

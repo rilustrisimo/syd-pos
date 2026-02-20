@@ -970,138 +970,152 @@ export default function POSPage() {
 
       {/* Checkout Dialog */}
       <Dialog open={isCheckoutOpen} onOpenChange={setIsCheckoutOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Checkout</DialogTitle>
-            <DialogDescription>
+        <DialogContent className="max-w-3xl max-h-[95vh] overflow-y-auto p-6">
+          <DialogHeader className="pb-4 border-b">
+            <DialogTitle className="text-2xl">Checkout</DialogTitle>
+            <DialogDescription className="text-base">
               Complete the transaction for {customer?.name || 'Walk-in Customer'}
             </DialogDescription>
           </DialogHeader>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Left: Order Summary */}
-            <div className="space-y-4">
-              <h3 className="font-semibold">Order Summary</h3>
-              <div className="border rounded-lg p-3 space-y-2 max-h-[200px] overflow-y-auto">
+          <div className="space-y-6">
+            {/* Order Summary Section */}
+            <div className="space-y-3">
+              <h3 className="font-semibold text-lg">Order Summary</h3>
+              <div className="border rounded-lg p-4 space-y-3 max-h-[240px] overflow-y-auto bg-muted/30">
                 {items.map((item) => (
-                  <div key={item.id} className="flex justify-between text-sm">
-                    <span>
-                      {item.product_name} x {item.quantity}
-                    </span>
-                    <span>{formatCurrency(item.quantity * item.unit_price)}</span>
+                  <div key={item.id} className="flex justify-between items-center pb-3 border-b last:border-0 last:pb-0">
+                    <div className="flex-1">
+                      <p className="font-medium">{item.product_name}</p>
+                      <p className="text-sm text-muted-foreground">{item.quantity} unit(s)</p>
+                    </div>
+                    <span className="font-semibold text-lg">{formatCurrency(item.quantity * item.unit_price)}</span>
                   </div>
                 ))}
               </div>
 
-              <div className="space-y-2">
-                <div className="flex justify-between">
+              <div className="bg-slate-50 rounded-lg p-4 space-y-3 border">
+                <div className="flex justify-between text-base">
                   <span>Subtotal</span>
-                  <span>{formatCurrency(subtotal)}</span>
+                  <span className="font-medium">{formatCurrency(subtotal)}</span>
                 </div>
                 {totalDiscount > 0 && (
-                  <div className="flex justify-between text-green-600">
+                  <div className="flex justify-between text-base text-green-600">
                     <span>Discount</span>
-                    <span>-{formatCurrency(totalDiscount)}</span>
+                    <span className="font-medium">-{formatCurrency(totalDiscount)}</span>
                   </div>
                 )}
                 <Separator />
-                <div className="flex justify-between font-bold text-lg">
+                <div className="flex justify-between text-xl font-bold">
                   <span>Total</span>
                   <span>{formatCurrency(total)}</span>
                 </div>
               </div>
-
-              {/* Delivery Details */}
-              {deliveryType === 'delivery' && (
-                <div className="space-y-3">
-                  <h3 className="font-semibold">Delivery Details</h3>
-                  <div className="space-y-2">
-                    <Input
-                      placeholder="Delivery Address"
-                      value={deliveryAddress}
-                      onChange={(e) => setDeliveryAddress(e.target.value)}
-                    />
-                    <Input
-                      placeholder="Contact Phone"
-                      value={deliveryPhone}
-                      onChange={(e) => setDeliveryPhone(e.target.value)}
-                    />
-                  </div>
-                </div>
-              )}
-
-              <div className="space-y-2">
-                <Label>Notes</Label>
-                <Textarea
-                  placeholder="Order notes..."
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  rows={2}
-                />
-              </div>
             </div>
 
-            {/* Right: Payments */}
-            <div className="space-y-4">
-              <h3 className="font-semibold">Payment</h3>
+            {/* Delivery Details */}
+            {deliveryType === 'delivery' && (
+              <div className="space-y-3 bg-blue-50 rounded-lg p-4 border border-blue-200">
+                <h3 className="font-semibold">Delivery Details</h3>
+                <Input
+                  placeholder="Delivery Address"
+                  value={deliveryAddress}
+                  onChange={(e) => setDeliveryAddress(e.target.value)}
+                  className="h-12"
+                />
+                <Input
+                  placeholder="Contact Phone"
+                  value={deliveryPhone}
+                  onChange={(e) => setDeliveryPhone(e.target.value)}
+                  className="h-12"
+                />
+              </div>
+            )}
 
-              {/* Payment Method Selection */}
-              <div className="grid grid-cols-2 gap-2">
+            {/* Notes Section */}
+            <div className="space-y-3">
+              <Label className="text-base font-semibold">Order Notes (optional)</Label>
+              <Textarea
+                placeholder="Add any special instructions..."
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                rows={3}
+                className="text-base"
+              />
+            </div>
+
+            {/* Payment Section */}
+            <div className="space-y-4 border-t pt-6">
+              <h3 className="font-semibold text-lg">Payment</h3>
+
+              {/* Payment Method Selection - Grid for better touch targets */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 {paymentMethods.map((method) => (
                   <Button
                     key={method.value}
                     variant={selectedPaymentMethod === method.value ? 'default' : 'outline'}
-                    size="sm"
+                    className="h-12 text-base"
                     onClick={() => setSelectedPaymentMethod(method.value)}
                   >
-                    <method.icon className="mr-2 h-4 w-4" />
-                    {method.label}
+                    <method.icon className="mr-2 h-5 w-5" />
+                    <span className="hidden sm:inline">{method.label}</span>
+                    <span className="sm:hidden text-xs">{method.label}</span>
                   </Button>
                 ))}
               </div>
 
-              {/* Payment Amount */}
-              <div className="space-y-2">
-                <div className="flex gap-2">
+              {/* Payment Amount Input */}
+              <div className="space-y-3">
+                <Label className="text-base">Payment Amount</Label>
+                <div className="flex gap-3">
                   <Input
                     type="number"
-                    placeholder="Amount"
+                    placeholder="0.00"
                     value={paymentAmount}
                     onChange={(e) => setPaymentAmount(e.target.value)}
                     min="0"
                     step="0.01"
+                    className="flex-1 h-12 text-lg"
                   />
-                  <Button onClick={handleAddPayment}>Add</Button>
+                  <Button onClick={handleAddPayment} className="h-12 px-6 text-base">
+                    Add Payment
+                  </Button>
                 </div>
+
                 {(selectedPaymentMethod === 'gcash' ||
                   selectedPaymentMethod === 'maya' ||
                   selectedPaymentMethod === 'bank_transfer') && (
-                  <Input
-                    placeholder="Reference Number"
-                    value={paymentReference}
-                    onChange={(e) => setPaymentReference(e.target.value)}
-                  />
+                  <div className="space-y-2">
+                    <Label className="text-sm">Reference Number</Label>
+                    <Input
+                      placeholder="e.g., Transaction or Reference ID"
+                      value={paymentReference}
+                      onChange={(e) => setPaymentReference(e.target.value)}
+                      className="h-10"
+                    />
+                  </div>
                 )}
+
                 {/* Credit Limit Info */}
                 {selectedPaymentMethod === 'credit' && customer && (
-                  <div className={`text-sm p-2 rounded-lg ${
-                    wouldExceedCreditLimit() ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-blue-50 text-blue-700 border border-blue-200'
+                  <div className={`rounded-lg p-4 space-y-2 ${
+                    wouldExceedCreditLimit() ? 'bg-red-50 text-red-900 border-2 border-red-300' : 'bg-blue-50 text-blue-900 border-2 border-blue-300'
                   }`}>
-                    <div className="flex justify-between">
+                    <div className="flex justify-between text-base font-semibold">
                       <span>Credit Limit:</span>
-                      <span className="font-medium">{formatCurrency(customer.credit_limit)}</span>
+                      <span>{formatCurrency(customer.credit_limit)}</span>
                     </div>
-                    <div className="flex justify-between">
-                      <span>Outstanding:</span>
-                      <span className="font-medium">{formatCurrency(customer.outstanding_balance)}</span>
+                    <div className="flex justify-between text-base">
+                      <span>Outstanding Balance:</span>
+                      <span>{formatCurrency(customer.outstanding_balance)}</span>
                     </div>
-                    <div className="flex justify-between">
+                    <div className="flex justify-between text-base">
                       <span>This Order:</span>
-                      <span className="font-medium">{formatCurrency(getCreditPaymentTotal())}</span>
+                      <span>{formatCurrency(getCreditPaymentTotal())}</span>
                     </div>
-                    <div className="flex justify-between border-t pt-1 mt-1">
-                      <span>Available:</span>
-                      <span className={`font-bold ${wouldExceedCreditLimit() ? 'text-red-700' : 'text-green-600'}`}>
+                    <div className="flex justify-between border-t pt-2 mt-2 font-bold text-base">
+                      <span>Available Credit:</span>
+                      <span className={wouldExceedCreditLimit() ? 'text-red-700' : 'text-green-700'}>
                         {formatCurrency(Math.max(0, getAvailableCredit() - getCreditPaymentTotal()))}
                       </span>
                     </div>
@@ -1112,22 +1126,22 @@ export default function POSPage() {
               {/* Quick Amount Buttons */}
               <div className="grid grid-cols-3 gap-2">
                 <Button
-                  variant="outline"
-                  size="sm"
+                  variant="secondary"
+                  className="h-10 text-sm"
                   onClick={() => setPaymentAmount(balance.toFixed(2))}
                 >
                   Exact
                 </Button>
                 <Button
-                  variant="outline"
-                  size="sm"
+                  variant="secondary"
+                  className="h-10 text-sm"
                   onClick={() => setPaymentAmount((Math.ceil(total / 100) * 100).toString())}
                 >
                   Round Up
                 </Button>
                 <Button
-                  variant="outline"
-                  size="sm"
+                  variant="secondary"
+                  className="h-10 text-sm"
                   onClick={() => setPaymentAmount((Math.ceil(total / 500) * 500).toString())}
                 >
                   +500
@@ -1136,30 +1150,32 @@ export default function POSPage() {
 
               {/* Payments List */}
               {payments.length > 0 && (
-                <div className="border rounded-lg p-3 space-y-2">
-                  <h4 className="text-sm font-medium">Payments Added</h4>
+                <div className="border rounded-lg p-4 space-y-3 bg-amber-50">
+                  <h4 className="font-semibold text-base">Payment Methods Added</h4>
                   {payments.map((payment) => (
                     <div
                       key={payment.id}
-                      className="flex items-center justify-between text-sm"
+                      className="flex items-center justify-between p-3 bg-white rounded-lg border"
                     >
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline">{payment.payment_method}</Badge>
-                        {payment.reference_number && (
-                          <span className="text-xs text-muted-foreground">
-                            #{payment.reference_number}
-                          </span>
-                        )}
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <Badge variant="secondary" className="text-base py-1 px-2">{payment.payment_method.toUpperCase()}</Badge>
+                          {payment.reference_number && (
+                            <span className="text-sm text-muted-foreground">
+                              #{payment.reference_number}
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span>{formatCurrency(payment.amount)}</span>
+                      <div className="flex items-center gap-3">
+                        <span className="font-bold text-lg">{formatCurrency(payment.amount)}</span>
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-6 w-6"
+                          className="h-8 w-8 hover:bg-red-100"
                           onClick={() => removePayment(payment.id)}
                         >
-                          <X className="h-3 w-3" />
+                          <X className="h-4 w-4" />
                         </Button>
                       </div>
                     </div>
@@ -1168,19 +1184,19 @@ export default function POSPage() {
               )}
 
               {/* Payment Summary */}
-              <div className="border rounded-lg p-3 space-y-2">
-                <div className="flex justify-between">
-                  <span>Total</span>
-                  <span className="font-semibold">{formatCurrency(total)}</span>
+              <div className="bg-yellow-50 rounded-lg p-4 space-y-4 border-2 border-yellow-300">
+                <div className="flex justify-between text-lg">
+                  <span>Total Amount:</span>
+                  <span className="font-bold">{formatCurrency(total)}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span>Paid</span>
-                  <span className="text-green-600">{formatCurrency(totalPaid)}</span>
+                <div className="flex justify-between text-lg">
+                  <span>Amount Paid:</span>
+                  <span className="text-green-600 font-bold">{formatCurrency(totalPaid)}</span>
                 </div>
                 <Separator />
-                <div className="flex justify-between font-bold">
-                  <span>{balance >= 0 ? 'Balance Due' : 'Change'}</span>
-                  <span className={balance > 0 ? 'text-orange-600' : 'text-green-600'}>
+                <div className="flex justify-between text-xl font-bold">
+                  <span>{balance > 0.01 ? 'Balance Due' : 'Change'}</span>
+                  <span className={balance > 0.01 ? 'text-red-600' : 'text-green-600'}>
                     {formatCurrency(Math.abs(balance))}
                   </span>
                 </div>
@@ -1188,18 +1204,19 @@ export default function POSPage() {
             </div>
           </div>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsCheckoutOpen(false)}>
+          <DialogFooter className="gap-3 mt-6 pt-6 border-t">
+            <Button variant="outline" onClick={() => setIsCheckoutOpen(false)} className="h-12 text-base flex-1">
               Cancel
             </Button>
             <Button
               onClick={handleCheckout}
               disabled={createTransaction.isPending || balance > 0.01}
+              className="h-12 text-base flex-1"
             >
               {createTransaction.isPending ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
               ) : (
-                <Check className="mr-2 h-4 w-4" />
+                <Check className="mr-2 h-5 w-5" />
               )}
               Complete Transaction
             </Button>
