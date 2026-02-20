@@ -18,8 +18,13 @@ import { tmpdir } from 'os'
 import { join } from 'path'
 
 // Use exec (shell mode via /bin/sh) so macOS CUPS binaries resolve correctly.
-// execFile with absolute paths can fail with ENOENT on macOS due to SIP/TCC.
+// Node.js child processes inherit a stripped PATH — inject the standard macOS
+// system bin paths so CUPS commands (lp, lpstat, cupsenable) are found.
 const execAsync = promisify(exec)
+const SHELL_ENV = {
+  ...process.env,
+  PATH: '/usr/bin:/usr/sbin:/bin:/usr/local/bin:' + (process.env.PATH ?? ''),
+}
 
 // ---------------------------------------------------------------------------
 // GET /api/print  — list CUPS printers
@@ -27,7 +32,7 @@ const execAsync = promisify(exec)
 
 export async function GET() {
   try {
-    const { stdout } = await execAsync('lpstat -p')
+    const { stdout } = await execAsync('lpstat -p', { env: SHELL_ENV })
     const printers = stdout
       .split('\n')
       .filter((line) => line.startsWith('printer '))
@@ -74,11 +79,11 @@ export async function POST(request: Request) {
     await writeFile(tmpFile, buffer)
 
     // Re-enable the queue in case a previous job disabled it, then print raw
-    await execAsync(`cupsenable "${printer}"`).catch(() => {
+    await execAsync(`cupsenable "${printer}"`, { env: SHELL_ENV }).catch(() => {
       // Not fatal — the printer may already be enabled
     })
 
-    await execAsync(`lp -d "${printer}" -o raw "${tmpFile}"`)
+    await execAsync(`lp -d "${printer}" -o raw "${tmpFile}"`, { env: SHELL_ENV })
 
     return NextResponse.json({ success: true })
   } catch (err: any) {
