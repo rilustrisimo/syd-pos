@@ -19,13 +19,19 @@ import { join } from 'path'
 
 const execFileAsync = promisify(execFile)
 
+// Absolute paths — Node.js child processes inherit a minimal PATH that
+// may not include /usr/bin or /usr/sbin on macOS.
+const LPSTAT    = '/usr/bin/lpstat'
+const LP        = '/usr/bin/lp'
+const CUPSENABLE = '/usr/sbin/cupsenable'
+
 // ---------------------------------------------------------------------------
 // GET /api/print  — list CUPS printers
 // ---------------------------------------------------------------------------
 
 export async function GET() {
   try {
-    const { stdout } = await execFileAsync('lpstat', ['-p'])
+    const { stdout } = await execFileAsync(LPSTAT, ['-p'])
     const printers = stdout
       .split('\n')
       .filter((line) => line.startsWith('printer '))
@@ -72,11 +78,11 @@ export async function POST(request: Request) {
     await writeFile(tmpFile, buffer)
 
     // Re-enable the queue in case a previous job disabled it, then print raw
-    await execFileAsync('cupsenable', [printer]).catch(() => {
+    await execFileAsync(CUPSENABLE, [printer]).catch(() => {
       // Not fatal — the printer may already be enabled
     })
 
-    await execFileAsync('lp', ['-d', printer, '-o', 'raw', tmpFile])
+    await execFileAsync(LP, ['-d', printer, '-o', 'raw', tmpFile])
 
     return NextResponse.json({ success: true })
   } catch (err: any) {
