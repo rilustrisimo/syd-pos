@@ -66,6 +66,13 @@ function leftRight(left: string, right: string, width: number): string {
   return left + ' '.repeat(gap) + right
 }
 
+// Manually center text within `width` columns by prepending spaces.
+// For DOUBLE_SIZE lines pass width/2 because each char occupies 2 columns.
+function centerPad(text: string, width: number): string {
+  const pad = Math.max(0, Math.floor((width - text.length) / 2))
+  return ' '.repeat(pad) + text
+}
+
 export function buildReceiptBytes(data: ReceiptData): Uint8Array {
   const w           = CHAR_WIDTH
   const divider     = '='.repeat(w)
