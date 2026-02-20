@@ -24,15 +24,14 @@ import {
   Check,
   Loader2,
   Receipt,
-  Printer,
   UserPlus,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { PrintDialog } from '@/components/print/print-dialog'
 import type { ReceiptData } from '@/components/print/receipt-template'
-import type { InvoiceData } from '@/components/print/invoice-template'
+import { printUSBReceipt } from '@/lib/utils/usb-thermal-print'
+import { usePrinterStore } from '@/lib/stores/printer'
 import {
   Card,
   CardContent,
@@ -104,8 +103,6 @@ export default function POSPage() {
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>('cash')
   const [paymentAmount, setPaymentAmount] = useState('')
   const [paymentReference, setPaymentReference] = useState('')
-  const [isPrintDialogOpen, setIsPrintDialogOpen] = useState(false)
-  const [completedTransaction, setCompletedTransaction] = useState<any>(null)
   const [isCartOpen, setIsCartOpen] = useState(false)
   const [isNewCustomerOpen, setIsNewCustomerOpen] = useState(false)
   const [newCustomerName, setNewCustomerName] = useState('')
@@ -165,6 +162,7 @@ export default function POSPage() {
 
   // Get authenticated user
   const { user } = useAuthStore()
+  const { cupsQueueName } = usePrinterStore()
 
   // Set default branch and walk-in customer
   useEffect(() => {
@@ -379,145 +377,68 @@ export default function POSPage() {
         userId: user.id,
       })
 
-      // Store completed transaction for printing
-      setCompletedTransaction({
-        ...result,
-        _localData: {
-          items: currentItems,
-          payments: currentPayments,
-          customer: currentCustomer,
-          subtotal: currentSubtotal,
-          discount: currentTotalDiscount,
-          total: currentTotal,
-          totalPaid: currentTotalPaid,
-          change: Math.max(0, currentTotalPaid - currentTotal),
-          branch: currentBranch,
-          deliveryType,
-          deliveryAddress,
-          deliveryPhone,
-          notes,
-        }
-      })
-
       toast.success('Transaction completed successfully!')
       setIsCheckoutOpen(false)
 
-      // Show print dialog
-      setIsPrintDialogOpen(true)
+      // Reset POS immediately so the next transaction can start
+      resetAll()
+      if (walkInCustomer) {
+        setCustomer({
+          id: walkInCustomer.id,
+          name: walkInCustomer.name,
+          phone: walkInCustomer.phone,
+          customer_type: walkInCustomer.customer_type,
+          credit_limit: walkInCustomer.credit_limit,
+          outstanding_balance: walkInCustomer.outstanding_balance,
+        })
+      }
+
+      // Build receipt from the captured values and print directly to USB printer
+      const txnDate = new Date(result.transaction_date || new Date())
+      const receiptForPrint: ReceiptData = {
+        transaction_number: result.transaction_number,
+        date: txnDate.toLocaleDateString('en-PH'),
+        time: txnDate.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' }),
+        cashier: 'Staff',
+        branch: currentBranch?.name || 'Main Branch',
+        customer: {
+          name: currentCustomer?.name || 'Walk-in Customer',
+          phone: currentCustomer?.phone || null,
+        },
+        delivery_type: deliveryType,
+        delivery_address: deliveryAddress || null,
+        items: currentItems.map((item) => ({
+          name: item.product_name,
+          quantity: item.quantity,
+          unit_price: item.unit_price,
+          uom: item.uom_name,
+          discount: item.discount_amount,
+          total: item.quantity * item.unit_price - item.discount_amount,
+        })),
+        subtotal: currentSubtotal,
+        discount: currentTotalDiscount,
+        tax: 0,
+        total: currentTotal,
+        payments: currentPayments.map((p) => ({
+          method: p.payment_method,
+          amount: p.amount,
+          reference: p.reference_number,
+        })),
+        amount_paid: currentTotalPaid,
+        change: Math.max(0, currentTotalPaid - currentTotal),
+        notes: notes || null,
+      }
+
+      const printToastId = toast.loading('Printing receipt…')
+      printUSBReceipt(receiptForPrint, cupsQueueName)
+        .then(() => toast.success('Receipt printed!', { id: printToastId }))
+        .catch((err: any) =>
+          toast.error(err?.message || 'Print failed — check USB printer in Settings', { id: printToastId })
+        )
     } catch (error: any) {
       toast.error(error.message || 'Failed to complete transaction')
     }
   }
-
-  // Handle print dialog complete
-  const handlePrintComplete = () => {
-    setCompletedTransaction(null)
-    resetAll()
-
-    // Re-set default customer
-    if (walkInCustomer) {
-      setCustomer({
-        id: walkInCustomer.id,
-        name: walkInCustomer.name,
-        phone: walkInCustomer.phone,
-        customer_type: walkInCustomer.customer_type,
-        credit_limit: walkInCustomer.credit_limit,
-        outstanding_balance: walkInCustomer.outstanding_balance,
-      })
-    }
-  }
-
-  // Prepare receipt data for printing
-  const receiptData: ReceiptData | null = useMemo(() => {
-    if (!completedTransaction) return null
-    const local = completedTransaction._localData
-    const txnDate = new Date(completedTransaction.transaction_date || new Date())
-
-    return {
-      transaction_number: completedTransaction.transaction_number,
-      date: txnDate.toLocaleDateString('en-PH'),
-      time: txnDate.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' }),
-      cashier: 'Staff', // TODO: Get from auth
-      branch: local.branch?.name || 'Main Branch',
-      customer: {
-        name: local.customer?.name || 'Walk-in Customer',
-        phone: local.customer?.phone || null,
-      },
-      delivery_type: local.deliveryType,
-      delivery_address: local.deliveryAddress,
-      items: local.items.map((item: any) => ({
-        name: item.product_name,
-        quantity: item.quantity,
-        unit_price: item.unit_price,
-        uom: item.uom_name,
-        discount: item.discount_amount,
-        total: item.quantity * item.unit_price - item.discount_amount,
-      })),
-      subtotal: local.subtotal,
-      discount: local.discount,
-      tax: 0,
-      total: local.total,
-      payments: local.payments.map((p: any) => ({
-        method: p.payment_method,
-        amount: p.amount,
-        reference: p.reference_number,
-      })),
-      amount_paid: local.totalPaid,
-      change: local.change,
-      notes: local.notes,
-    }
-  }, [completedTransaction])
-
-  // Prepare invoice data for printing
-  const invoiceData: InvoiceData | null = useMemo(() => {
-    if (!completedTransaction) return null
-    const local = completedTransaction._localData
-
-    return {
-      invoice_number: completedTransaction.transaction_number.replace('TXN', 'INV'),
-      transaction_number: completedTransaction.transaction_number,
-      date: completedTransaction.transaction_date || new Date().toISOString(),
-      due_date: null,
-      branch: {
-        name: local.branch?.name || 'Main Branch',
-        address: local.branch?.address || '',
-        phone: local.branch?.phone || '',
-        email: local.branch?.email || null,
-      },
-      customer: {
-        name: local.customer?.name || 'Walk-in Customer',
-        address: local.customer?.address || null,
-        phone: local.customer?.phone || null,
-        email: local.customer?.email || null,
-      },
-      delivery_type: local.deliveryType,
-      delivery_address: local.deliveryAddress,
-      delivery_phone: local.deliveryPhone,
-      items: local.items.map((item: any) => ({
-        code: item.product_code,
-        name: item.product_name,
-        quantity: item.quantity,
-        uom: item.uom_name,
-        unit_price: item.unit_price,
-        discount: item.discount_amount,
-        total: item.quantity * item.unit_price - item.discount_amount,
-      })),
-      subtotal: local.subtotal,
-      discount: local.discount,
-      tax: 0,
-      total: local.total,
-      amount_paid: local.totalPaid,
-      balance_due: Math.max(0, local.total - local.totalPaid),
-      payments: local.payments.map((p: any) => ({
-        method: p.payment_method,
-        amount: p.amount,
-        reference: p.reference_number,
-        date: new Date().toISOString(),
-      })),
-      notes: local.notes,
-      prepared_by: 'Staff', // TODO: Get from auth
-    }
-  }, [completedTransaction])
 
   const subtotal = getSubtotal()
   const totalDiscount = getTotalDiscount()
@@ -1362,14 +1283,6 @@ export default function POSPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Print Dialog */}
-      <PrintDialog
-        open={isPrintDialogOpen}
-        onOpenChange={setIsPrintDialogOpen}
-        receiptData={receiptData}
-        invoiceData={invoiceData}
-        onComplete={handlePrintComplete}
-      />
     </div>
   )
 }

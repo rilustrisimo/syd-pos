@@ -1,7 +1,10 @@
 'use client'
 
-import { useState, useMemo } from 'react'
-import { useTransactions, useTransaction, useSoftDeleteTransaction } from '@/hooks/useTransactions'
+import { useState } from 'react'
+import { useTransactions, useSoftDeleteTransaction } from '@/hooks/useTransactions'
+import { getTransaction } from '@/lib/supabase/queries/transactions'
+import { printUSBReceipt } from '@/lib/utils/usb-thermal-print'
+import { usePrinterStore } from '@/lib/stores/printer'
 import { useBranches } from '@/hooks/useInventory'
 import { useAuthStore } from '@/lib/stores/auth'
 import { toast } from 'sonner'
@@ -50,9 +53,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { PrintDialog } from '@/components/print/print-dialog'
 import type { ReceiptData } from '@/components/print/receipt-template'
-import type { InvoiceData } from '@/components/print/invoice-template'
 
 function formatCurrency(amount: number): string {
   return new Intl.NumberFormat('en-PH', {
@@ -88,10 +89,11 @@ export default function TransactionHistoryPage() {
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [branchFilter, setBranchFilter] = useState<string>('all')
   const [currentPage, setCurrentPage] = useState(1)
-  const [selectedTransactionId, setSelectedTransactionId] = useState<string | null>(null)
+  const [printingId, setPrintingId] = useState<string | null>(null)
   const [deleteTransactionId, setDeleteTransactionId] = useState<string | null>(null)
 
   const { user } = useAuthStore()
+  const { cupsQueueName } = usePrinterStore()
 
   const { data: branches } = useBranches()
   const { data: transactionsData, isLoading, refetch } = useTransactions({
@@ -102,106 +104,62 @@ export default function TransactionHistoryPage() {
     limit: 20,
   })
 
-  const { data: selectedTransaction, isLoading: isLoadingTransaction } = useTransaction(
-    selectedTransactionId || ''
-  )
-
   const softDeleteTransaction = useSoftDeleteTransaction()
 
   const transactions = transactionsData?.transactions || []
   const totalPages = transactionsData?.totalPages || 1
 
-  // Prepare receipt data
-  const receiptData: ReceiptData | null = useMemo(() => {
-    if (!selectedTransaction) return null
-    const txnDate = new Date(selectedTransaction.transaction_date)
+  // Fetch full transaction details then print directly to USB thermal printer
+  const handlePrintTransaction = async (txnId: string) => {
+    setPrintingId(txnId)
+    const toastId = toast.loading('Fetching transaction…')
+    try {
+      const txn = await getTransaction(txnId)
+      const txnDate = new Date(txn.transaction_date)
 
-    return {
-      transaction_number: selectedTransaction.transaction_number,
-      date: txnDate.toLocaleDateString('en-PH'),
-      time: txnDate.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' }),
-      cashier: 'Staff',
-      branch: (selectedTransaction.branch as any)?.name || 'Main Branch',
-      customer: {
-        name: (selectedTransaction.customer as any)?.name || 'Walk-in Customer',
-        phone: (selectedTransaction.customer as any)?.phone || null,
-      },
-      delivery_type: selectedTransaction.delivery_type,
-      delivery_address: selectedTransaction.delivery_address,
-      items: (selectedTransaction.lines || []).map((line: any) => ({
-        name: line.product?.name || 'Product',
-        quantity: line.quantity,
-        unit_price: line.unit_price,
-        uom: line.uom?.abbreviation || line.uom?.name || 'pc',
-        discount: line.discount_amount || 0,
-        total: line.line_total || line.quantity * line.unit_price - (line.discount_amount || 0),
-      })),
-      subtotal: selectedTransaction.subtotal,
-      discount: selectedTransaction.discount_amount,
-      tax: selectedTransaction.tax_amount,
-      total: selectedTransaction.total_amount,
-      payments: (selectedTransaction.payments || []).map((p: any) => ({
-        method: p.payment_method,
-        amount: p.amount,
-        reference: p.reference_number,
-      })),
-      amount_paid: selectedTransaction.amount_paid,
-      change: Math.max(0, selectedTransaction.amount_paid - selectedTransaction.total_amount),
-      notes: selectedTransaction.notes,
+      const receiptData: ReceiptData = {
+        transaction_number: txn.transaction_number,
+        date: txnDate.toLocaleDateString('en-PH'),
+        time: txnDate.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' }),
+        cashier: 'Staff',
+        branch: (txn.branch as any)?.name || 'Main Branch',
+        customer: {
+          name: (txn.customer as any)?.name || 'Walk-in Customer',
+          phone: (txn.customer as any)?.phone || null,
+        },
+        delivery_type: txn.delivery_type,
+        delivery_address: txn.delivery_address,
+        items: (txn.lines || []).map((line: any) => ({
+          name: line.product?.name || 'Product',
+          quantity: line.quantity,
+          unit_price: line.unit_price,
+          uom: line.uom?.abbreviation || line.uom?.name || 'pc',
+          discount: line.discount_amount || 0,
+          total: line.line_total || line.quantity * line.unit_price - (line.discount_amount || 0),
+        })),
+        subtotal: txn.subtotal,
+        discount: txn.discount_amount,
+        tax: txn.tax_amount,
+        total: txn.total_amount,
+        payments: (txn.payments || []).map((p: any) => ({
+          method: p.payment_method,
+          amount: p.amount,
+          reference: p.reference_number,
+        })),
+        amount_paid: txn.amount_paid,
+        change: Math.max(0, txn.amount_paid - txn.total_amount),
+        notes: txn.notes,
+      }
+
+      toast.loading('Printing receipt…', { id: toastId })
+      await printUSBReceipt(receiptData, cupsQueueName)
+      toast.success('Receipt printed!', { id: toastId })
+    } catch (err: any) {
+      toast.error(err?.message || 'Print failed — check USB printer in Settings', { id: toastId })
+    } finally {
+      setPrintingId(null)
     }
-  }, [selectedTransaction])
-
-  // Prepare invoice data
-  const invoiceData: InvoiceData | null = useMemo(() => {
-    if (!selectedTransaction) return null
-    const branch = selectedTransaction.branch as any
-    const customer = selectedTransaction.customer as any
-
-    return {
-      invoice_number: selectedTransaction.transaction_number.replace('TXN', 'INV'),
-      transaction_number: selectedTransaction.transaction_number,
-      date: selectedTransaction.transaction_date,
-      due_date: null,
-      branch: {
-        name: branch?.name || 'Main Branch',
-        address: branch?.address || '',
-        phone: branch?.phone || '',
-        email: branch?.email || null,
-      },
-      customer: {
-        name: customer?.name || 'Walk-in Customer',
-        address: customer?.address || null,
-        phone: customer?.phone || null,
-        email: customer?.email || null,
-      },
-      delivery_type: selectedTransaction.delivery_type,
-      delivery_address: selectedTransaction.delivery_address,
-      delivery_phone: selectedTransaction.delivery_phone,
-      items: (selectedTransaction.lines || []).map((line: any) => ({
-        code: line.product?.code || '',
-        name: line.product?.name || 'Product',
-        quantity: line.quantity,
-        uom: line.uom?.abbreviation || line.uom?.name || 'pc',
-        unit_price: line.unit_price,
-        discount: line.discount_amount || 0,
-        total: line.line_total || line.quantity * line.unit_price - (line.discount_amount || 0),
-      })),
-      subtotal: selectedTransaction.subtotal,
-      discount: selectedTransaction.discount_amount,
-      tax: selectedTransaction.tax_amount,
-      total: selectedTransaction.total_amount,
-      amount_paid: selectedTransaction.amount_paid,
-      balance_due: Math.max(0, selectedTransaction.total_amount - selectedTransaction.amount_paid),
-      payments: (selectedTransaction.payments || []).map((p: any) => ({
-        method: p.payment_method,
-        amount: p.amount,
-        reference: p.reference_number,
-        date: p.payment_date,
-      })),
-      notes: selectedTransaction.notes,
-      prepared_by: 'Staff',
-    }
-  }, [selectedTransaction])
+  }
 
   const handleDeleteTransaction = async () => {
     if (!deleteTransactionId || !user?.id) return
@@ -365,9 +323,14 @@ export default function TransactionHistoryPage() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => setSelectedTransactionId(txn.id)}
+                              onClick={() => handlePrintTransaction(txn.id)}
+                              disabled={printingId === txn.id}
                             >
-                              <Printer className="h-4 w-4 mr-1" />
+                              {printingId === txn.id ? (
+                                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                              ) : (
+                                <Printer className="h-4 w-4 mr-1" />
+                              )}
                               Print
                             </Button>
                             <Button
@@ -418,15 +381,6 @@ export default function TransactionHistoryPage() {
           )}
         </CardContent>
       </Card>
-
-      {/* Print Dialog (shared component with thermal print support) */}
-      <PrintDialog
-        open={!!selectedTransactionId && !isLoadingTransaction}
-        onOpenChange={(open) => !open && setSelectedTransactionId(null)}
-        receiptData={receiptData}
-        invoiceData={invoiceData}
-        onComplete={() => setSelectedTransactionId(null)}
-      />
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog
