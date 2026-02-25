@@ -105,6 +105,7 @@ export interface TransactionInput {
   discount_percentage?: number
   tax_amount?: number
   notes?: string | null
+  transaction_date?: string | null
 }
 
 export interface TransactionLineInput {
@@ -311,7 +312,8 @@ export async function createTransaction(
       payment_status: paymentStatus,
       amount_paid: amountPaid,
       notes: input.notes || null,
-      created_by: userId
+      created_by: userId,
+      ...(input.transaction_date ? { transaction_date: input.transaction_date } : {}),
     } as any)
     .select()
     .single()

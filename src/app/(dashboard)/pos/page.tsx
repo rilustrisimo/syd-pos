@@ -108,6 +108,7 @@ export default function POSPage() {
   const [newCustomerName, setNewCustomerName] = useState('')
   const [newCustomerPhone, setNewCustomerPhone] = useState('')
   const [newCustomerType, setNewCustomerType] = useState<'cash' | 'credit'>('cash')
+  const [saleDate, setSaleDate] = useState(new Date().toISOString().split('T')[0])
 
   // Store
   const {
@@ -359,6 +360,7 @@ export default function POSPage() {
           delivery_phone: deliveryPhone || null,
           discount_amount: getTotalDiscount(),
           notes: notes || null,
+          transaction_date: saleDate ? `${saleDate}T00:00:00` : null,
         },
         lines: items.map((item) => ({
           product_id: item.product_id,
@@ -382,6 +384,7 @@ export default function POSPage() {
 
       // Reset POS immediately so the next transaction can start
       resetAll()
+      setSaleDate(new Date().toISOString().split('T')[0])
       if (walkInCustomer) {
         setCustomer({
           id: walkInCustomer.id,
@@ -1031,6 +1034,23 @@ export default function POSPage() {
                 />
               </div>
             )}
+
+            {/* Sale Date */}
+            <div className="space-y-2">
+              <Label className="text-base font-semibold">Sale Date</Label>
+              <Input
+                type="date"
+                value={saleDate}
+                onChange={(e) => setSaleDate(e.target.value)}
+                max={new Date().toISOString().split('T')[0]}
+                className="h-11"
+              />
+              {saleDate !== new Date().toISOString().split('T')[0] && (
+                <p className="text-xs text-amber-600 font-medium">
+                  Backdated sale — recording as {new Date(saleDate + 'T00:00:00').toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' })}
+                </p>
+              )}
+            </div>
 
             {/* Notes Section */}
             <div className="space-y-3">
