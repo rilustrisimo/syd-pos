@@ -6,6 +6,8 @@ import { useAuthStore } from '@/lib/stores/auth'
 import { usePOSProductSearch, useCreateTransaction, useTodaysSummary } from '@/hooks/useTransactions'
 import { useSearchCustomers, useWalkInCustomer, useCreateCustomer } from '@/hooks/useCustomers'
 import { useBranches } from '@/hooks/useInventory'
+import { useDiscountRules } from '@/hooks/useDiscountRules'
+import { getStandardDiscountForMarkup } from '@/lib/supabase/queries/discount-rules'
 import { toast } from 'sonner'
 import {
   Search,
@@ -25,6 +27,8 @@ import {
   Loader2,
   Receipt,
   UserPlus,
+  Percent,
+  Tag,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -109,6 +113,8 @@ export default function POSPage() {
   const [newCustomerPhone, setNewCustomerPhone] = useState('')
   const [newCustomerType, setNewCustomerType] = useState<'cash' | 'credit'>('cash')
   const [saleDate, setSaleDate] = useState(new Date().toISOString().split('T')[0])
+  const [discountType, setDiscountType] = useState<'none' | 'fixed' | 'percentage' | 'standard'>('none')
+  const [discountInput, setDiscountInput] = useState('')
 
   // Store
   const {
@@ -124,6 +130,7 @@ export default function POSPage() {
     payments,
     addItem,
     updateItemQuantity,
+    updateItemDiscount,
     removeItem,
     setCustomer,
     setBranchId,
@@ -150,6 +157,7 @@ export default function POSPage() {
 
   // Queries
   const { data: branches } = useBranches()
+  const { data: discountRules = [] } = useDiscountRules()
   const { data: walkInCustomer } = useWalkInCustomer()
   const { data: searchedProducts, isLoading: isSearchingProducts } = usePOSProductSearch(
     productSearch,
@@ -199,6 +207,7 @@ export default function POSPage() {
       uom_name: product.uom_abbreviation || product.uom_name,
       unit_price: product.unit_price,
       cogs_per_unit: product.cogs,
+      markup_percentage: product.markup_percentage ?? 0,
       discount_amount: 0,
       available_stock: product.available_stock,
     })
@@ -254,6 +263,33 @@ export default function POSPage() {
       toast.error(error.message || 'Failed to create customer')
     }
   }, [newCustomerName, newCustomerPhone, newCustomerType, createCustomer, setCustomer])
+
+  // Handle discount type change — clears previous discounts then applies new one
+  const handleDiscountTypeChange = useCallback((type: typeof discountType) => {
+    // Clear previous discounts
+    setDiscountAmount(0)
+    setDiscountPercentage(0)
+    items.forEach((item) => updateItemDiscount(item.id, 0))
+    setDiscountInput('')
+    setDiscountType(type)
+
+    // Auto-apply standard discount immediately
+    if (type === 'standard') {
+      items.forEach((item) => {
+        const discPct = getStandardDiscountForMarkup(discountRules, item.markup_percentage)
+        const discAmt = (item.quantity * item.unit_price * discPct) / 100
+        updateItemDiscount(item.id, discAmt)
+      })
+    }
+  }, [discountRules, items, setDiscountAmount, setDiscountPercentage, updateItemDiscount])
+
+  // Apply fixed / percentage order discount when input changes
+  const handleApplyOrderDiscount = useCallback((value: string) => {
+    setDiscountInput(value)
+    const num = parseFloat(value) || 0
+    if (discountType === 'fixed') setDiscountAmount(num)
+    if (discountType === 'percentage') setDiscountPercentage(Math.min(100, num))
+  }, [discountType, setDiscountAmount, setDiscountPercentage])
 
   // Handle add payment
   const handleAddPayment = useCallback(() => {
@@ -385,6 +421,8 @@ export default function POSPage() {
       // Reset POS immediately so the next transaction can start
       resetAll()
       setSaleDate(new Date().toISOString().split('T')[0])
+      setDiscountType('none')
+      setDiscountInput('')
       if (walkInCustomer) {
         setCustomer({
           id: walkInCustomer.id,
@@ -1014,6 +1052,70 @@ export default function POSPage() {
                   <span>{formatCurrency(total)}</span>
                 </div>
               </div>
+            </div>
+
+            {/* Discount Section */}
+            <div className="space-y-3">
+              <h3 className="font-semibold text-lg">Discount</h3>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {(['none', 'fixed', 'percentage', 'standard'] as const).map((type) => (
+                  <Button
+                    key={type}
+                    variant={discountType === type ? 'default' : 'outline'}
+                    className="h-10 text-sm"
+                    onClick={() => handleDiscountTypeChange(type)}
+                  >
+                    {type === 'none' && 'No Discount'}
+                    {type === 'fixed' && <><Tag className="mr-1 h-4 w-4" />Fixed</>}
+                    {type === 'percentage' && <><Percent className="mr-1 h-4 w-4" />Percentage</>}
+                    {type === 'standard' && 'Standard'}
+                  </Button>
+                ))}
+              </div>
+
+              {(discountType === 'fixed' || discountType === 'percentage') && (
+                <div className="flex gap-3 items-center">
+                  <Input
+                    type="number"
+                    min="0"
+                    step={discountType === 'percentage' ? '0.1' : '1'}
+                    max={discountType === 'percentage' ? '100' : undefined}
+                    placeholder={discountType === 'fixed' ? 'Amount (₱)' : 'Percentage (%)'}
+                    value={discountInput}
+                    onChange={(e) => handleApplyOrderDiscount(e.target.value)}
+                    className="flex-1 h-11"
+                  />
+                  <span className="text-muted-foreground font-medium">
+                    {discountType === 'percentage' ? '%' : '₱'}
+                  </span>
+                </div>
+              )}
+
+              {discountType === 'standard' && (
+                <div className="rounded-lg border bg-muted/30 p-3 space-y-2 text-sm">
+                  <p className="font-medium text-muted-foreground">Applied per item based on markup:</p>
+                  {items.map((item) => {
+                    const discPct = getStandardDiscountForMarkup(discountRules, item.markup_percentage)
+                    const discAmt = (item.quantity * item.unit_price * discPct) / 100
+                    return (
+                      <div key={item.id} className="flex justify-between">
+                        <span className="truncate flex-1 mr-2">{item.product_name}</span>
+                        <span className="text-muted-foreground">
+                          {item.markup_percentage.toFixed(0)}% markup → {discPct}% off
+                          {discAmt > 0 && <span className="text-green-600 ml-1">(-{formatCurrency(discAmt)})</span>}
+                          {discAmt === 0 && <span className="text-muted-foreground ml-1">(no rule)</span>}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
+              {getTotalDiscount() > 0 && (
+                <p className="text-sm text-green-700 font-medium">
+                  Total discount: -{formatCurrency(getTotalDiscount())}
+                </p>
+              )}
             </div>
 
             {/* Delivery Details */}

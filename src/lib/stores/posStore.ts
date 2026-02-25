@@ -13,6 +13,7 @@ export interface CartItem {
   uom_name: string
   unit_price: number
   cogs_per_unit: number
+  markup_percentage: number
   discount_amount: number
   available_stock: number
 }

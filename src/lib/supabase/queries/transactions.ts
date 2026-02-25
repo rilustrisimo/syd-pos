@@ -574,11 +574,12 @@ export async function searchProductsForPOS(query: string, branchId: string, limi
   const { data: products, error: productsError } = await supabase
     .from('products')
     .select(`
-      id, 
-      code, 
-      name, 
-      current_selling_price, 
-      latest_cogs, 
+      id,
+      code,
+      name,
+      current_selling_price,
+      latest_cogs,
+      markup_percentage,
       selling_uom_id,
       images:product_images(url, is_primary, sort_order)
     `)
@@ -633,6 +634,7 @@ export async function searchProductsForPOS(query: string, branchId: string, limi
       name: product.name,
       unit_price: product.current_selling_price,
       cogs: product.latest_cogs,
+      markup_percentage: product.markup_percentage,
       uom_id: product.selling_uom_id,
       uom_name: uom?.name || '',
       uom_abbreviation: uom?.code || '', // Using 'code' from DB but naming as 'abbreviation' for backward compatibility
