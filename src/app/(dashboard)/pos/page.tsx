@@ -276,7 +276,7 @@ export default function POSPage() {
     // Auto-apply standard discount immediately
     if (type === 'standard') {
       items.forEach((item) => {
-        const discPct = getStandardDiscountForMarkup(discountRules, item.markup_percentage)
+        const discPct = getStandardDiscountForMarkup(discountRules, item.markup_percentage ?? 0)
         const discAmt = (item.quantity * item.unit_price * discPct) / 100
         updateItemDiscount(item.id, discAmt)
       })
@@ -1095,13 +1095,14 @@ export default function POSPage() {
                 <div className="rounded-lg border bg-muted/30 p-3 space-y-2 text-sm">
                   <p className="font-medium text-muted-foreground">Applied per item based on markup:</p>
                   {items.map((item) => {
-                    const discPct = getStandardDiscountForMarkup(discountRules, item.markup_percentage)
+                    const markup = item.markup_percentage ?? 0
+                    const discPct = getStandardDiscountForMarkup(discountRules, markup)
                     const discAmt = (item.quantity * item.unit_price * discPct) / 100
                     return (
                       <div key={item.id} className="flex justify-between">
                         <span className="truncate flex-1 mr-2">{item.product_name}</span>
                         <span className="text-muted-foreground">
-                          {item.markup_percentage.toFixed(0)}% markup → {discPct}% off
+                          {markup.toFixed(0)}% markup → {discPct}% off
                           {discAmt > 0 && <span className="text-green-600 ml-1">(-{formatCurrency(discAmt)})</span>}
                           {discAmt === 0 && <span className="text-muted-foreground ml-1">(no rule)</span>}
                         </span>
