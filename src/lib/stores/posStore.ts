@@ -56,6 +56,10 @@ interface POSState {
   removeItem: (id: string) => void
   clearCart: () => void
 
+  // Discount type (persisted so it survives modal close/reopen)
+  discountType: 'none' | 'fixed' | 'percentage' | 'standard'
+  setDiscountType: (type: 'none' | 'fixed' | 'percentage' | 'standard') => void
+
   // Actions - Customer
   setCustomer: (customer: Customer | null) => void
   setBranchId: (branchId: string) => void
@@ -101,6 +105,7 @@ const initialState = {
   deliveryPhone: '',
   discountAmount: 0,
   discountPercentage: 0,
+  discountType: 'none' as 'none' | 'fixed' | 'percentage' | 'standard',
   notes: '',
   payments: [] as Payment[],
 }
@@ -180,6 +185,10 @@ export const usePOSStore = create<POSState>()(
 
       setDeliveryPhone: (phone) => {
         set({ deliveryPhone: phone })
+      },
+
+      setDiscountType: (type) => {
+        set({ discountType: type })
       },
 
       setDiscountAmount: (amount) => {
@@ -296,6 +305,7 @@ export const usePOSStore = create<POSState>()(
         deliveryPhone: state.deliveryPhone,
         discountAmount: state.discountAmount,
         discountPercentage: state.discountPercentage,
+        discountType: state.discountType,
         notes: state.notes,
         payments: state.payments,
       }),

@@ -113,7 +113,6 @@ export default function POSPage() {
   const [newCustomerPhone, setNewCustomerPhone] = useState('')
   const [newCustomerType, setNewCustomerType] = useState<'cash' | 'credit'>('cash')
   const [saleDate, setSaleDate] = useState(new Date().toISOString().split('T')[0])
-  const [discountType, setDiscountType] = useState<'none' | 'fixed' | 'percentage' | 'standard'>('none')
   const [discountInput, setDiscountInput] = useState('')
 
   // Store
@@ -137,6 +136,8 @@ export default function POSPage() {
     setDeliveryType,
     setDeliveryAddress,
     setDeliveryPhone,
+    discountType,
+    setDiscountType,
     setDiscountAmount,
     setDiscountPercentage,
     setNotes,
@@ -264,6 +265,13 @@ export default function POSPage() {
     }
   }, [newCustomerName, newCustomerPhone, newCustomerType, createCustomer, setCustomer])
 
+  // Helper: always derive markup from actual pricing data, not cached field
+  const getItemMarkup = useCallback((item: { cogs_per_unit: number; unit_price: number; markup_percentage: number }) => {
+    return item.cogs_per_unit > 0
+      ? ((item.unit_price / item.cogs_per_unit - 1) * 100)
+      : (item.markup_percentage ?? 0)
+  }, [])
+
   // Handle discount type change — clears previous discounts then applies new one
   const handleDiscountTypeChange = useCallback((type: typeof discountType) => {
     // Clear previous discounts
@@ -276,12 +284,13 @@ export default function POSPage() {
     // Auto-apply standard discount immediately
     if (type === 'standard') {
       items.forEach((item) => {
-        const discPct = getStandardDiscountForMarkup(discountRules, item.markup_percentage ?? 0)
+        const markup = getItemMarkup(item)
+        const discPct = getStandardDiscountForMarkup(discountRules, markup)
         const discAmt = (item.quantity * item.unit_price * discPct) / 100
         updateItemDiscount(item.id, discAmt)
       })
     }
-  }, [discountRules, items, setDiscountAmount, setDiscountPercentage, updateItemDiscount])
+  }, [discountRules, items, getItemMarkup, setDiscountAmount, setDiscountPercentage, setDiscountType, updateItemDiscount])
 
   // Apply fixed / percentage order discount when input changes
   const handleApplyOrderDiscount = useCallback((value: string) => {
@@ -317,6 +326,17 @@ export default function POSPage() {
     setPaymentAmount('')
     setPaymentReference('')
   }, [paymentAmount, selectedPaymentMethod, paymentReference, customer, addPayment, wouldExceedCreditLimit, getAvailableCredit, getCreditPaymentTotal])
+
+  // Sync discountInput when checkout modal opens (so fixed/percentage shows its current value)
+  useEffect(() => {
+    if (isCheckoutOpen) {
+      if (discountType === 'fixed' && discountAmount > 0) {
+        setDiscountInput(discountAmount.toString())
+      } else if (discountType === 'percentage' && discountPercentage > 0) {
+        setDiscountInput(discountPercentage.toString())
+      }
+    }
+  }, [isCheckoutOpen]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Get current branch for printing
   const currentBranch = useMemo(() => {
@@ -421,7 +441,6 @@ export default function POSPage() {
       // Reset POS immediately so the next transaction can start
       resetAll()
       setSaleDate(new Date().toISOString().split('T')[0])
-      setDiscountType('none')
       setDiscountInput('')
       if (walkInCustomer) {
         setCustomer({
@@ -1095,7 +1114,7 @@ export default function POSPage() {
                 <div className="rounded-lg border bg-muted/30 p-3 space-y-2 text-sm">
                   <p className="font-medium text-muted-foreground">Applied per item based on markup:</p>
                   {items.map((item) => {
-                    const markup = item.markup_percentage ?? 0
+                    const markup = getItemMarkup(item)
                     const discPct = getStandardDiscountForMarkup(discountRules, markup)
                     const discAmt = (item.quantity * item.unit_price * discPct) / 100
                     return (
