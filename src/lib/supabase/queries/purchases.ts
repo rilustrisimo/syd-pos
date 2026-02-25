@@ -35,7 +35,7 @@ export async function getPurchaseOrders(params?: {
       *,
       supplier:suppliers(id, code, name),
       branch:branches(id, code, name),
-      created_by_user:users(id, full_name)
+      created_by_user:users!purchase_orders_created_by_fkey(id, full_name)
     `, { count: 'exact' })
     .eq('is_deleted', false)
     .order('po_date', { ascending: false })
@@ -80,7 +80,7 @@ export async function getPurchaseOrder(id: string) {
       *,
       supplier:suppliers(*),
       branch:branches(*),
-      created_by_user:users(id, full_name, email)
+      created_by_user:users!purchase_orders_created_by_fkey(id, full_name, email)
     `)
     .eq('id', id)
     .single()
