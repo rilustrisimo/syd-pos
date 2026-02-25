@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { useTransactions, useTransaction, useCreateReturn } from '@/hooks/useTransactions'
+import { useTransactions, useTransaction, useCreateReturn, useSoftDeleteTransaction } from '@/hooks/useTransactions'
 import { getTransaction } from '@/lib/supabase/queries/transactions'
 import { useBranches } from '@/hooks/useInventory'
 import { useAuthStore } from '@/lib/stores/auth'
@@ -19,6 +19,7 @@ import {
   Check,
   X,
   Eye,
+  Trash2,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -47,6 +48,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import {
   Select,
   SelectContent,
@@ -131,6 +142,8 @@ export default function ReturnsPage() {
   )
 
   const createReturn = useCreateReturn()
+  const softDeleteTransaction = useSoftDeleteTransaction()
+  const [deleteTransactionId, setDeleteTransactionId] = useState<string | null>(null)
 
   const transactions = transactionsData?.transactions || []
   const totalPages = transactionsData?.totalPages || 1
@@ -440,6 +453,17 @@ export default function ReturnsPage() {
                               <RotateCcw className="h-4 w-4 mr-1" />
                               Return
                             </Button>
+                            {user?.role && ['admin', 'manager'].includes(user.role) && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setDeleteTransactionId(txn.id)}
+                                className="text-destructive hover:text-destructive"
+                                title="Delete transaction"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>
@@ -876,6 +900,46 @@ export default function ReturnsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Transaction Confirmation */}
+      <AlertDialog open={!!deleteTransactionId} onOpenChange={() => setDeleteTransactionId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Transaction</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will remove the transaction from all views and analytics. The record is kept
+              for audit purposes but will no longer appear in reports or listings.
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                if (!deleteTransactionId || !user?.id) return
+                try {
+                  await softDeleteTransaction.mutateAsync({
+                    transactionId: deleteTransactionId,
+                    userId: user.id,
+                  })
+                  toast.success('Transaction deleted')
+                  setDeleteTransactionId(null)
+                } catch (err: any) {
+                  toast.error(err.message || 'Failed to delete transaction')
+                }
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {softDeleteTransaction.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Trash2 className="mr-2 h-4 w-4" />
+              )}
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

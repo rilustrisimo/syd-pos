@@ -115,10 +115,10 @@ export default function PurchasesPage() {
   }
 
   const handleDelete = async () => {
-    if (!deletingPO) return
+    if (!deletingPO || !user?.id) return
 
     try {
-      await deleteMutation.mutateAsync(deletingPO)
+      await deleteMutation.mutateAsync({ id: deletingPO, userId: user.id })
       toast.success('Purchase order deleted')
       setDeletingPO(null)
     } catch (error: any) {
@@ -463,8 +463,9 @@ export default function PurchasesPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Purchase Order</AlertDialogTitle>
             <AlertDialogDescription>
-              This permanently removes the purchase order and its lines. Deletion is allowed
-              only when no items have been received.
+              This will hide the purchase order from all views and reports. The record is kept
+              for audit purposes but will no longer appear in analytics or listings.
+              Deletion is only allowed when no items have been received.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

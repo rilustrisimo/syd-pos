@@ -368,8 +368,9 @@ export default function PurchaseOrderDetailPage() {
   }
 
   const handleDelete = async () => {
+    if (!user?.id) return
     try {
-      await deleteMutation.mutateAsync(poId)
+      await deleteMutation.mutateAsync({ id: poId, userId: user.id })
       toast.success('Purchase order deleted')
       setIsDeleteDialogOpen(false)
       router.push('/purchases')

@@ -37,6 +37,7 @@ export async function getPurchaseOrders(params?: {
       branch:branches(id, code, name),
       created_by_user:users(id, full_name)
     `, { count: 'exact' })
+    .eq('is_deleted', false)
     .order('po_date', { ascending: false })
     .range(offset, offset + limit - 1)
 
@@ -511,8 +512,8 @@ export async function cancelPurchaseOrder(id: string) {
   return data
 }
 
-// Delete a purchase order (only if nothing was received)
-export async function deletePurchaseOrder(id: string) {
+// Soft-delete a purchase order (only if nothing was received)
+export async function deletePurchaseOrder(id: string, userId: string) {
   const supabase = getClient()
 
   const { data: lines, error: linesError } = await supabase
@@ -524,12 +525,16 @@ export async function deletePurchaseOrder(id: string) {
 
   const hasReceivedItems = lines?.some(line => Number(line.quantity_received) > 0)
   if (hasReceivedItems) {
-    throw new Error('Cannot delete PO with received items')
+    throw new Error('Cannot delete a purchase order that has received items. Cancel it instead.')
   }
 
   const { error } = await supabase
     .from('purchase_orders')
-    .delete()
+    .update({
+      is_deleted: true,
+      deleted_at: new Date().toISOString(),
+      deleted_by: userId,
+    } as any)
     .eq('id', id)
 
   if (error) throw error
@@ -542,7 +547,7 @@ export async function getPOStats(params?: { branchId?: string }) {
   const supabase = getClient()
   const { branchId } = params || {}
 
-  let query = supabase.from('purchase_orders').select('status, total_amount')
+  let query = supabase.from('purchase_orders').select('status, total_amount').eq('is_deleted', false)
 
   if (branchId) {
     query = query.eq('branch_id', branchId)

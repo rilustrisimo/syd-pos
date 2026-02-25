@@ -65,6 +65,7 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     .from('transactions')
     .select('total_amount, payment_status')
     .eq('transaction_type', 'sale')
+    .eq('is_deleted', false)
     .gte('transaction_date', `${today}T00:00:00`)
     .lte('transaction_date', `${today}T23:59:59`)
 
@@ -75,6 +76,7 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     .from('transactions')
     .select('total_amount')
     .eq('transaction_type', 'sale')
+    .eq('is_deleted', false)
     .gte('transaction_date', `${monthStart}T00:00:00`)
 
   if (monthError) throw monthError
@@ -140,6 +142,7 @@ export async function getSalesTrend(days: number = 30): Promise<SalesTrend[]> {
     .from('transactions')
     .select('transaction_date, total_amount')
     .eq('transaction_type', 'sale')
+    .eq('is_deleted', false)
     .gte('transaction_date', startDate.toISOString())
     .order('transaction_date', { ascending: true })
 
@@ -185,7 +188,7 @@ export async function getTopProducts(days: number = 7, limit: number = 10): Prom
       quantity,
       line_total,
       product:products!product_id(id, code, name),
-      transaction:transactions!transaction_id(transaction_type, transaction_date)
+      transaction:transactions!transaction_id(transaction_type, transaction_date, is_deleted)
     `)
     .gte('created_at', startDate.toISOString())
 
@@ -196,6 +199,7 @@ export async function getTopProducts(days: number = 7, limit: number = 10): Prom
 
   for (const line of (data as any[]) || []) {
     if (line.transaction?.transaction_type !== 'sale') continue
+    if (line.transaction?.is_deleted) continue
 
     const productId = line.product?.id
     if (!productId) continue
@@ -229,6 +233,7 @@ export async function getHourlySales(): Promise<HourlySales[]> {
     .from('transactions')
     .select('created_at, total_amount')
     .eq('transaction_type', 'sale')
+    .eq('is_deleted', false)
     .gte('transaction_date', `${today}T00:00:00`)
     .lte('transaction_date', `${today}T23:59:59`)
 
@@ -337,7 +342,8 @@ export async function getSalesByProduct(filters: SalesReportFilters = {}): Promi
       transaction:transactions!transaction_id(
         transaction_type,
         transaction_date,
-        branch_id
+        branch_id,
+        is_deleted
       )
     `)
 
@@ -351,6 +357,7 @@ export async function getSalesByProduct(filters: SalesReportFilters = {}): Promi
   for (const line of (data as any[]) || []) {
     // Filter by transaction type
     if (line.transaction?.transaction_type !== 'sale') continue
+    if (line.transaction?.is_deleted) continue
 
     // Filter by date range
     if (filters.date_from && line.transaction.transaction_date < filters.date_from) continue
@@ -500,6 +507,7 @@ export async function getSupplierPurchaseHistory(filters: SupplierHistoryFilters
       )
     `)
     .in('status', ['confirmed', 'partially_received', 'received'])
+    .eq('is_deleted', false)
 
   if (poError) throw poError
 
@@ -677,7 +685,8 @@ export async function getDemandForecast(filters: DemandForecastFilters = {}): Pr
       transaction:transactions!transaction_id(
         transaction_type,
         transaction_date,
-        branch_id
+        branch_id,
+        is_deleted
       )
     `)
     .gte('created_at', ninetyDaysAgo.toISOString())
@@ -698,6 +707,7 @@ export async function getDemandForecast(filters: DemandForecastFilters = {}): Pr
 
   for (const line of (salesData as any[]) || []) {
     if (line.transaction?.transaction_type !== 'sale') continue
+    if (line.transaction?.is_deleted) continue
     if (filters.branch_id && line.transaction.branch_id !== filters.branch_id) continue
 
     const productId = line.product_id
@@ -787,6 +797,7 @@ export async function getRecentTransactions(limit: number = 5): Promise<RecentTr
       customer:customers!customer_id(name)
     `)
     .eq('transaction_type', 'sale')
+    .eq('is_deleted', false)
     .order('created_at', { ascending: false })
     .limit(limit)
 

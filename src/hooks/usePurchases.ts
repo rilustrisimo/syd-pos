@@ -208,12 +208,12 @@ export function useCancelPurchaseOrder() {
   })
 }
 
-// Delete PO mutation
+// Delete PO mutation (soft delete)
 export function useDeletePurchaseOrder() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (id: string) => deletePurchaseOrder(id),
+    mutationFn: ({ id, userId }: { id: string; userId: string }) => deletePurchaseOrder(id, userId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['purchase-orders'] })
       queryClient.invalidateQueries({ queryKey: ['po-stats'] })

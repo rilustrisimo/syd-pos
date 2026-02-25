@@ -169,6 +169,9 @@ export interface PurchaseOrderRow {
   delivery_charge: number
   total_amount: number
   notes: string | null
+  is_deleted: boolean
+  deleted_at: string | null
+  deleted_by: string | null
   created_by: string
   created_at: string
   updated_at: string
