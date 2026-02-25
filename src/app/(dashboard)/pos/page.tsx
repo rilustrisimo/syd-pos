@@ -481,7 +481,7 @@ export default function POSPage() {
           unit_price: item.unit_price,
           uom: item.uom_name,
           discount: item.discount_amount,
-          total: item.quantity * item.unit_price - item.discount_amount,
+          total: Math.round(item.quantity * item.unit_price * 100) / 100 - item.discount_amount,
         })),
         subtotal: currentSubtotal,
         discount: currentTotalDiscount,
@@ -811,7 +811,7 @@ export default function POSPage() {
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="font-semibold">
-                          {formatCurrency(item.quantity * item.unit_price - item.discount_amount)}
+                          {formatCurrency(Math.round(item.quantity * item.unit_price * 100) / 100 - item.discount_amount)}
                         </span>
                         <Button
                           variant="ghost"
@@ -959,7 +959,7 @@ export default function POSPage() {
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="font-semibold">
-                          {formatCurrency(item.quantity * item.unit_price - item.discount_amount)}
+                          {formatCurrency(Math.round(item.quantity * item.unit_price * 100) / 100 - item.discount_amount)}
                         </span>
                         <Button
                           variant="ghost"
@@ -1057,7 +1057,7 @@ export default function POSPage() {
                       <p className="font-medium">{item.product_name}</p>
                       <p className="text-sm text-muted-foreground">{item.quantity} unit(s)</p>
                     </div>
-                    <span className="font-semibold text-lg">{formatCurrency(item.quantity * item.unit_price)}</span>
+                    <span className="font-semibold text-lg">{formatCurrency(Math.round(item.quantity * item.unit_price * 100) / 100)}</span>
                   </div>
                 ))}
               </div>
@@ -1130,7 +1130,7 @@ export default function POSPage() {
                       <div key={item.id} className="flex justify-between">
                         <span className="truncate flex-1 mr-2">{item.product_name}</span>
                         <span className="text-muted-foreground">
-                          {markup.toFixed(0)}% markup → {discPct}% off
+                          {discPct}% off
                           {discAmt > 0 && <span className="text-green-600 ml-1">(-{formatCurrency(discAmt)})</span>}
                           {discAmt === 0 && <span className="text-muted-foreground ml-1">(no rule)</span>}
                         </span>

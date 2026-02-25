@@ -96,6 +96,11 @@ function generateId(): string {
   return Math.random().toString(36).substring(2, 11)
 }
 
+/** Round to 2 decimal places to avoid floating-point drift in monetary values */
+function round2(n: number): number {
+  return Math.round(n * 100) / 100
+}
+
 const initialState = {
   items: [] as CartItem[],
   customer: null as Customer | null,
@@ -118,9 +123,16 @@ export const usePOSStore = create<POSState>()(
       // Cart Actions
       addItem: (item) => {
         set((state) => {
+          // Normalise prices to 2dp to avoid floating-point drift (e.g. 12.0004 × 100 = 1200.04)
+          const normalised = {
+            ...item,
+            unit_price: round2(item.unit_price),
+            cogs_per_unit: round2(item.cogs_per_unit),
+          }
+
           // Check if item already exists (same product and variant)
           const existingIndex = state.items.findIndex(
-            (i) => i.product_id === item.product_id && i.variant_id === item.variant_id
+            (i) => i.product_id === normalised.product_id && i.variant_id === normalised.variant_id
           )
 
           if (existingIndex >= 0) {
@@ -128,14 +140,14 @@ export const usePOSStore = create<POSState>()(
             const newItems = [...state.items]
             newItems[existingIndex] = {
               ...newItems[existingIndex],
-              quantity: newItems[existingIndex].quantity + item.quantity,
+              quantity: newItems[existingIndex].quantity + normalised.quantity,
             }
             return { items: newItems }
           }
 
           // Add new item
           return {
-            items: [...state.items, { ...item, id: generateId() }],
+            items: [...state.items, { ...normalised, id: generateId() }],
           }
         })
       },
@@ -228,7 +240,7 @@ export const usePOSStore = create<POSState>()(
       // Computed values
       getSubtotal: () => {
         const { items } = get()
-        return items.reduce((sum, item) => sum + item.quantity * item.unit_price, 0)
+        return items.reduce((sum, item) => sum + round2(item.quantity * item.unit_price), 0)
       },
 
       getItemsDiscount: () => {
