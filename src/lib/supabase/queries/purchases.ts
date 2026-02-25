@@ -542,6 +542,30 @@ export async function deletePurchaseOrder(id: string, userId: string) {
   return { success: true }
 }
 
+// Get purchase history for a specific product
+export async function getProductPurchaseHistory(productId: string) {
+  const supabase = getClient()
+
+  const { data, error } = await supabase
+    .from('purchase_order_lines')
+    .select(`
+      id, quantity_ordered, quantity_received, unit_cost,
+      uom:units_of_measure(id, code, name),
+      purchase_order:purchase_orders!purchase_order_lines_po_id_fkey(
+        id, po_number, po_date, status, delivery_charge, is_deleted,
+        supplier:suppliers(id, code, name),
+        branch:branches(id, code, name)
+      )
+    `)
+    .eq('product_id', productId)
+    .order('created_at', { ascending: false })
+
+  if (error) throw error
+
+  // Filter out soft-deleted POs
+  return (data || []).filter((line: any) => !line.purchase_order?.is_deleted)
+}
+
 // Get PO summary stats
 export async function getPOStats(params?: { branchId?: string }) {
   const supabase = getClient()

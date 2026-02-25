@@ -15,6 +15,7 @@ import {
   receiveAllPOLines,
   cancelPurchaseOrder,
   getPOStats,
+  getProductPurchaseHistory,
 } from '@/lib/supabase/queries/purchases'
 import type { InsertTables, UpdateTables, POStatus } from '@/types/database'
 
@@ -205,6 +206,15 @@ export function useCancelPurchaseOrder() {
       queryClient.invalidateQueries({ queryKey: ['purchase-order', id] })
       queryClient.invalidateQueries({ queryKey: ['po-stats'] })
     },
+  })
+}
+
+// Get purchase history for a specific product
+export function useProductPurchaseHistory(productId: string) {
+  return useQuery({
+    queryKey: ['product-purchase-history', productId],
+    queryFn: () => getProductPurchaseHistory(productId),
+    enabled: !!productId,
   })
 }
 

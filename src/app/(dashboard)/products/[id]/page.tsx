@@ -5,20 +5,23 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
 import { useProduct, useDeleteProduct } from '@/hooks/useProducts'
+import { useProductPurchaseHistory } from '@/hooks/usePurchases'
 import { formatCurrency } from '@/lib/utils/formatting'
 import { toast } from 'sonner'
-import { 
-  ArrowLeft, 
-  Pencil, 
-  Trash2, 
-  Package, 
-  DollarSign, 
-  Ruler, 
+import {
+  ArrowLeft,
+  Pencil,
+  Trash2,
+  Package,
+  DollarSign,
+  Ruler,
   AlertTriangle,
   CheckCircle2,
   XCircle,
   Loader2,
-  Image as ImageIcon
+  Image as ImageIcon,
+  ShoppingCart,
+  ExternalLink,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -26,6 +29,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import { cn } from '@/lib/utils'
 
 interface ProductDetailPageProps {
@@ -38,6 +49,7 @@ export default function ProductDetailPage({ params }: ProductDetailPageProps) {
   
   const { data: product, isLoading, error } = useProduct(id)
   const deleteProduct = useDeleteProduct()
+  const { data: purchaseHistory = [], isLoading: historyLoading } = useProductPurchaseHistory(id)
 
   const handleDelete = async () => {
     if (!product) return
@@ -404,6 +416,102 @@ export default function ProductDetailPage({ params }: ProductDetailPageProps) {
           </CardContent>
         </Card>
       </div>
+
+      {/* Purchase History */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <ShoppingCart className="h-5 w-5" />
+            Purchase History
+          </CardTitle>
+          <CardDescription>
+            All purchase orders that included this product
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {historyLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : purchaseHistory.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground text-sm">
+              No purchase orders found for this product.
+            </div>
+          ) : (
+            <div className="border rounded-lg">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Date</TableHead>
+                    <TableHead>PO Number</TableHead>
+                    <TableHead>Supplier</TableHead>
+                    <TableHead>Branch</TableHead>
+                    <TableHead className="text-right">Qty Ordered</TableHead>
+                    <TableHead className="text-right">Qty Received</TableHead>
+                    <TableHead className="text-right">Unit Cost</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="w-[40px]"></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(purchaseHistory as any[]).map((line) => {
+                    const po = line.purchase_order
+                    if (!po) return null
+                    return (
+                      <TableRow key={line.id}>
+                        <TableCell className="whitespace-nowrap">
+                          {new Date(po.po_date).toLocaleDateString('en-PH', {
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric',
+                          })}
+                        </TableCell>
+                        <TableCell className="font-mono text-sm">{po.po_number}</TableCell>
+                        <TableCell>{po.supplier?.name ?? '—'}</TableCell>
+                        <TableCell>{po.branch?.name ?? '—'}</TableCell>
+                        <TableCell className="text-right font-mono">
+                          {Number(line.quantity_ordered).toLocaleString()} {line.uom?.code}
+                        </TableCell>
+                        <TableCell className="text-right font-mono">
+                          <span className={cn(
+                            Number(line.quantity_received) >= Number(line.quantity_ordered)
+                              ? 'text-green-600'
+                              : Number(line.quantity_received) > 0
+                              ? 'text-amber-600'
+                              : 'text-muted-foreground'
+                          )}>
+                            {Number(line.quantity_received).toLocaleString()} {line.uom?.code}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-right font-mono">
+                          {formatCurrency(line.unit_cost)}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={
+                            po.status === 'received' ? 'default' :
+                            po.status === 'partially_received' ? 'secondary' :
+                            po.status === 'cancelled' ? 'destructive' :
+                            'outline'
+                          } className="capitalize text-xs">
+                            {po.status.replace('_', ' ')}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Link href={`/purchases/${po.id}`}>
+                            <Button variant="ghost" size="icon" className="h-7 w-7">
+                              <ExternalLink className="h-3.5 w-3.5" />
+                            </Button>
+                          </Link>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Additional Information */}
       <Card>
