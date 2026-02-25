@@ -634,7 +634,10 @@ export async function searchProductsForPOS(query: string, branchId: string, limi
       name: product.name,
       unit_price: product.current_selling_price,
       cogs: product.latest_cogs,
-      markup_percentage: product.markup_percentage,
+      markup_percentage: product.markup_percentage ||
+        (product.latest_cogs > 0
+          ? ((product.current_selling_price / product.latest_cogs - 1) * 100)
+          : 0),
       uom_id: product.selling_uom_id,
       uom_name: uom?.name || '',
       uom_abbreviation: uom?.code || '', // Using 'code' from DB but naming as 'abbreviation' for backward compatibility
