@@ -558,12 +558,17 @@ export async function getProductPurchaseHistory(productId: string) {
       )
     `)
     .eq('product_id', productId)
-    .order('created_at', { ascending: false })
 
   if (error) throw error
 
-  // Filter out soft-deleted POs
-  return (data || []).filter((line: any) => !line.purchase_order?.is_deleted)
+  // Filter out soft-deleted POs and sort by PO date descending
+  return (data || [])
+    .filter((line: any) => !line.purchase_order?.is_deleted)
+    .sort((a: any, b: any) => {
+      const dateA = a.purchase_order?.po_date ?? ''
+      const dateB = b.purchase_order?.po_date ?? ''
+      return dateB.localeCompare(dateA)
+    })
 }
 
 // Get PO summary stats
