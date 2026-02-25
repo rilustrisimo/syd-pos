@@ -9,7 +9,7 @@ export const useCustomers = (options) => {
                 .from('customers')
                 .select('*')
                 .eq('is_active', true)
-                .order('display_name');
+                .order('name');
             if (error) {
                 throw new Error(`Failed to fetch customers: ${error.message}`);
             }
@@ -33,7 +33,7 @@ export const useSearchCustomers = (query, options) => {
                 .from('customers')
                 .select('*')
                 .eq('is_active', true)
-                .or(`display_name.ilike.${searchTerm},phone.ilike.${searchTerm},email.ilike.${searchTerm}`)
+                .or(`name.ilike.${searchTerm},phone.ilike.${searchTerm},email.ilike.${searchTerm}`)
                 .limit(20);
             if (error) {
                 throw new Error(`Failed to search customers: ${error.message}`);
@@ -69,6 +69,27 @@ export const useCustomer = (id, options) => {
         retry: 2,
     });
 };
+export const useWalkInCustomer = (options) => {
+    return useQuery({
+        queryKey: [...CUSTOMERS_QUERY_KEY, 'walk-in'],
+        queryFn: async () => {
+            const { data, error } = await supabase
+                .from('customers')
+                .select('*')
+                .eq('name', 'Walk-in Customer')
+                .eq('is_active', true)
+                .maybeSingle();
+            if (error) {
+                throw new Error(`Failed to fetch walk-in customer: ${error.message}`);
+            }
+            return (data ?? null);
+        },
+        staleTime: 1000 * 60 * 30,
+        gcTime: 1000 * 60 * 60,
+        enabled: options?.enabled !== false,
+        retry: 2,
+    });
+};
 export const useUpsertCustomer = () => {
     const queryClient = useQueryClient();
     return useMutation({
@@ -99,37 +120,6 @@ export const useUpsertCustomer = () => {
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: CUSTOMERS_QUERY_KEY });
-        },
-    });
-};
-export const useGetOrCreateWalkIn = () => {
-    return useMutation({
-        mutationFn: async (branchId = '') => {
-            const { data: existing, error: fetchError } = await supabase
-                .from('customers')
-                .select('*')
-                .eq('display_name', 'Walk-in')
-                .eq('branch_id', branchId || '')
-                .single();
-            if (existing && !fetchError) {
-                return existing;
-            }
-            const { data, error } = await supabase
-                .from('customers')
-                .insert([
-                {
-                    display_name: 'Walk-in',
-                    customer_type: 'regular',
-                    branch_id: branchId || null,
-                    is_active: true,
-                },
-            ])
-                .select()
-                .single();
-            if (error) {
-                throw new Error(`Failed to create walk-in customer: ${error.message}`);
-            }
-            return data;
         },
     });
 };

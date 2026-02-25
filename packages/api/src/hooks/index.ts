@@ -19,7 +19,7 @@ export {
   useSearchCustomers,
   useCustomer,
   useUpsertCustomer,
-  useGetOrCreateWalkIn,
+  useWalkInCustomer,
   useDeleteCustomer,
 } from './useCustomers'
 export {

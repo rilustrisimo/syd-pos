@@ -85,7 +85,7 @@ export function exportToCSV(products: Product[], selectedColumns: string[]) {
 export async function exportToPDF(products: Product[], selectedColumns: string[]) {
   // Dynamic import to avoid loading jsPDF unless needed
   const { default: jsPDF } = await import('jspdf')
-  await import('jspdf-autotable')
+  const { autoTable } = await import('jspdf-autotable')
 
   const columns = EXPORT_COLUMNS.filter(col => selectedColumns.includes(col.id))
   
@@ -136,7 +136,7 @@ export async function exportToPDF(products: Product[], selectedColumns: string[]
     )
 
     // Add table
-    ;(doc as any).autoTable({
+    autoTable(doc, {
       startY: yPosition,
       head: [columns.map(col => col.label)],
       body: tableData,

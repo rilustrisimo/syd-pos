@@ -1,7 +1,7 @@
 import React from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase, getCurrentUser, login, logout, signup } from '../supabase'
-import { AuthUser } from '../types'
+import { AuthUser, Branch } from '../types'
 
 const AUTH_QUERY_KEY = ['auth']
 
@@ -122,6 +122,32 @@ export const useAuthStateChange = (callback: (user: AuthUser | null) => void) =>
       listener?.subscription.unsubscribe()
     }
   }, [user, callback])
+}
+
+/**
+ * Hook to fetch all active branches
+ */
+export const useBranches = (options?: { enabled?: boolean }) => {
+  return useQuery({
+    queryKey: ['branches'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('branches')
+        .select('id, name, code, address')
+        .eq('is_active', true)
+        .order('name')
+
+      if (error) {
+        throw new Error(`Failed to fetch branches: ${error.message}`)
+      }
+
+      return (data || []) as Pick<Branch, 'id' | 'name' | 'code' | 'address'>[]
+    },
+    staleTime: 1000 * 60 * 60,
+    gcTime: 1000 * 60 * 60 * 24,
+    enabled: options?.enabled !== false,
+    retry: 2,
+  })
 }
 
 export default useAuth

@@ -166,6 +166,7 @@ export interface PurchaseOrderRow {
   expected_delivery_date: string | null
   actual_delivery_date: string | null
   status: POStatus
+  delivery_charge: number
   total_amount: number
   notes: string | null
   created_by: string

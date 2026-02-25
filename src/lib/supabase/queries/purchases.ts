@@ -130,12 +130,15 @@ export async function createPurchaseOrder(
   const poNumber = await generatePONumber()
 
   // Create PO
+  const merchandiseTotal = lines.reduce((sum, line) => sum + (line.quantity_ordered * line.unit_cost), 0)
+  const deliveryCharge = Number((po as any).delivery_charge || 0)
+
   const { data: createdPO, error: poError } = await supabase
     .from('purchase_orders')
     .insert({
       ...po,
       po_number: poNumber,
-      total_amount: lines.reduce((sum, line) => sum + (line.quantity_ordered * line.unit_cost), 0),
+      total_amount: merchandiseTotal + deliveryCharge,
     } as any)
     .select()
     .single()
@@ -323,25 +326,27 @@ export async function receivePOLineItems(
   return { success: true }
 }
 
-// Helper to update PO total amount
+// Helper to update PO total amount (merchandise subtotal + delivery charge)
 async function updatePOTotal(poId: string) {
   const supabase = getClient()
 
-  const { data: lines, error: linesError } = await supabase
-    .from('purchase_order_lines')
-    .select('quantity_ordered, unit_cost')
-    .eq('po_id', poId)
+  const [{ data: lines, error: linesError }, { data: poData, error: poError }] = await Promise.all([
+    supabase.from('purchase_order_lines').select('quantity_ordered, unit_cost').eq('po_id', poId),
+    supabase.from('purchase_orders').select('delivery_charge').eq('id', poId).single(),
+  ])
 
   if (linesError) throw linesError
+  if (poError) throw poError
 
   const linesData = lines as any[] || []
-  const total = linesData.reduce((sum: number, line: any) =>
+  const deliveryCharge = Number((poData as any)?.delivery_charge || 0)
+  const merchandiseTotal = linesData.reduce((sum: number, line: any) =>
     sum + (Number(line.quantity_ordered) * Number(line.unit_cost)), 0
   )
 
   await supabase
     .from('purchase_orders')
-    .update({ total_amount: total } as any)
+    .update({ total_amount: merchandiseTotal + deliveryCharge } as any)
     .eq('id', poId)
 }
 

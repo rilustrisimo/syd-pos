@@ -80,6 +80,7 @@ export default function NewPurchaseOrderPage() {
   const [poDate, setPoDate] = useState(new Date().toISOString().split('T')[0])
   const [expectedDeliveryDate, setExpectedDeliveryDate] = useState('')
   const [notes, setNotes] = useState('')
+  const [deliveryCharge, setDeliveryCharge] = useState(0)
   const [lines, setLines] = useState<POLine[]>([])
 
   const [productSearchOpen, setProductSearchOpen] = useState(false)
@@ -136,8 +137,12 @@ export default function NewPurchaseOrderPage() {
     setLines(lines.filter((_, i) => i !== index))
   }
 
-  const calculateTotal = () => {
+  const calculateSubtotal = () => {
     return lines.reduce((sum, line) => sum + line.quantity_ordered * line.unit_cost, 0)
+  }
+
+  const calculateTotal = () => {
+    return calculateSubtotal() + deliveryCharge
   }
 
   const handleSubmit = async () => {
@@ -170,6 +175,7 @@ export default function NewPurchaseOrderPage() {
           expected_delivery_date: expectedDeliveryDate || null,
           actual_delivery_date: null,
           status: 'draft',
+          delivery_charge: deliveryCharge,
           notes: notes || null,
           created_by: user.id,
           total_amount: calculateTotal(),
@@ -274,6 +280,22 @@ export default function NewPurchaseOrderPage() {
                     value={expectedDeliveryDate}
                     onChange={(e) => setExpectedDeliveryDate(e.target.value)}
                   />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="deliveryCharge">Delivery / Freight Charge</Label>
+                  <Input
+                    id="deliveryCharge"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={deliveryCharge}
+                    onChange={(e) => setDeliveryCharge(parseFloat(e.target.value) || 0)}
+                    placeholder="0.00"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Distributed proportionally into product COGS on receipt
+                  </p>
                 </div>
               </div>
             </CardContent>
@@ -440,8 +462,18 @@ export default function NewPurchaseOrderPage() {
                   {lines.reduce((sum, l) => sum + l.quantity_ordered, 0).toLocaleString()}
                 </span>
               </div>
-              <div className="border-t pt-4">
-                <div className="flex justify-between font-semibold text-lg">
+              <div className="border-t pt-4 space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Subtotal</span>
+                  <span className="font-mono">{formatCurrency(calculateSubtotal())}</span>
+                </div>
+                {deliveryCharge > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Delivery Charge</span>
+                    <span className="font-mono">+ {formatCurrency(deliveryCharge)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between font-semibold text-lg border-t pt-2">
                   <span>Total</span>
                   <span className="font-mono">{formatCurrency(calculateTotal())}</span>
                 </div>

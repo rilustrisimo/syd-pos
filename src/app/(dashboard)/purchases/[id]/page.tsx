@@ -651,13 +651,34 @@ export default function PurchaseOrderDetailPage() {
             <CardHeader>
               <CardTitle>Order Total</CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold font-mono">
-                {formatCurrency(po.total_amount)}
-              </div>
-              <p className="text-sm text-muted-foreground mt-1">
-                {po.lines?.length || 0} line items
-              </p>
+            <CardContent className="space-y-3">
+              {(() => {
+                const deliveryCharge = Number((po as any).delivery_charge || 0)
+                const subtotal = po.total_amount - deliveryCharge
+                return (
+                  <>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Merchandise</span>
+                      <span className="font-mono">{formatCurrency(subtotal)}</span>
+                    </div>
+                    {deliveryCharge > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Delivery Charge</span>
+                        <span className="font-mono">+ {formatCurrency(deliveryCharge)}</span>
+                      </div>
+                    )}
+                    <div className="border-t pt-3">
+                      <div className="text-3xl font-bold font-mono">
+                        {formatCurrency(po.total_amount)}
+                      </div>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        {po.lines?.length || 0} line items
+                        {deliveryCharge > 0 && ' · delivery charge included in COGS'}
+                      </p>
+                    </div>
+                  </>
+                )
+              })()}
             </CardContent>
           </Card>
 

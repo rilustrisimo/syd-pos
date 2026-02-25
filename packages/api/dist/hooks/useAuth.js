@@ -88,5 +88,25 @@ export const useAuthStateChange = (callback) => {
         };
     }, [user, callback]);
 };
+export const useBranches = (options) => {
+    return useQuery({
+        queryKey: ['branches'],
+        queryFn: async () => {
+            const { data, error } = await supabase
+                .from('branches')
+                .select('id, name, code, address')
+                .eq('is_active', true)
+                .order('name');
+            if (error) {
+                throw new Error(`Failed to fetch branches: ${error.message}`);
+            }
+            return (data || []);
+        },
+        staleTime: 1000 * 60 * 60,
+        gcTime: 1000 * 60 * 60 * 24,
+        enabled: options?.enabled !== false,
+        retry: 2,
+    });
+};
 export default useAuth;
 //# sourceMappingURL=useAuth.js.map

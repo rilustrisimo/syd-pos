@@ -1,18 +1,20 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../supabase';
 const PRODUCTS_QUERY_KEY = ['products'];
+const PRODUCT_SELECT = `
+  *,
+  category:product_categories(id, name),
+  subcategory:product_subcategories(id, name),
+  variants:product_variants(*),
+  images:product_images(id, url, alt_text, is_primary, sort_order)
+`;
 export const useProducts = (options) => {
     return useQuery({
         queryKey: PRODUCTS_QUERY_KEY,
         queryFn: async () => {
             const { data, error } = await supabase
                 .from('products')
-                .select(`
-          *,
-          category:product_categories(id, name),
-          subcategory:product_subcategories(id, name),
-          variants:product_variants(*)
-        `)
+                .select(PRODUCT_SELECT)
                 .eq('is_active', true)
                 .order('name');
             if (error) {
@@ -36,12 +38,7 @@ export const useSearchProducts = (query, options) => {
             const searchTerm = `%${query}%`;
             const { data, error } = await supabase
                 .from('products')
-                .select(`
-          *,
-          category:product_categories(id, name),
-          subcategory:product_subcategories(id, name),
-          variants:product_variants(*)
-        `)
+                .select(PRODUCT_SELECT)
                 .eq('is_active', true)
                 .or(`name.ilike.${searchTerm},code.ilike.${searchTerm}`)
                 .limit(20);
@@ -65,12 +62,7 @@ export const useProduct = (id, options) => {
             }
             const { data, error } = await supabase
                 .from('products')
-                .select(`
-          *,
-          category:product_categories(id, name),
-          subcategory:product_subcategories(id, name),
-          variants:product_variants(*)
-        `)
+                .select(PRODUCT_SELECT)
                 .eq('id', id)
                 .single();
             if (error) {
@@ -93,12 +85,7 @@ export const useProductsByCategory = (categoryId, options) => {
             }
             const { data, error } = await supabase
                 .from('products')
-                .select(`
-          *,
-          category:product_categories(id, name),
-          subcategory:product_subcategories(id, name),
-          variants:product_variants(*)
-        `)
+                .select(PRODUCT_SELECT)
                 .eq('category_id', categoryId)
                 .eq('is_active', true)
                 .order('name');
@@ -110,6 +97,26 @@ export const useProductsByCategory = (categoryId, options) => {
         staleTime: 1000 * 60 * 5,
         gcTime: 1000 * 60 * 60,
         enabled: options?.enabled !== false && !!categoryId,
+        retry: 2,
+    });
+};
+export const useProductCategories = (options) => {
+    return useQuery({
+        queryKey: ['product-categories'],
+        queryFn: async () => {
+            const { data, error } = await supabase
+                .from('product_categories')
+                .select('id, name')
+                .eq('is_active', true)
+                .order('name');
+            if (error) {
+                throw new Error(`Failed to fetch categories: ${error.message}`);
+            }
+            return (data || []);
+        },
+        staleTime: 1000 * 60 * 60,
+        gcTime: 1000 * 60 * 60 * 24,
+        enabled: options?.enabled !== false,
         retry: 2,
     });
 };

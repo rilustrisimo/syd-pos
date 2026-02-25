@@ -15,7 +15,7 @@ export const useCustomers = (options?: { enabled?: boolean }) => {
         .from('customers')
         .select('*')
         .eq('is_active', true)
-        .order('display_name')
+        .order('name')
 
       if (error) {
         throw new Error(`Failed to fetch customers: ${error.message}`)
@@ -31,7 +31,7 @@ export const useCustomers = (options?: { enabled?: boolean }) => {
 }
 
 /**
- * Hook to search customers by name or phone
+ * Hook to search customers by name, phone, or email
  */
 export const useSearchCustomers = (query: string, options?: { enabled?: boolean }) => {
   return useQuery({
@@ -47,7 +47,7 @@ export const useSearchCustomers = (query: string, options?: { enabled?: boolean 
         .from('customers')
         .select('*')
         .eq('is_active', true)
-        .or(`display_name.ilike.${searchTerm},phone.ilike.${searchTerm},email.ilike.${searchTerm}`)
+        .or(`name.ilike.${searchTerm},phone.ilike.${searchTerm},email.ilike.${searchTerm}`)
         .limit(20)
 
       if (error) {
@@ -94,6 +94,33 @@ export const useCustomer = (id: string | undefined, options?: { enabled?: boolea
 }
 
 /**
+ * Hook to fetch the default walk-in customer
+ */
+export const useWalkInCustomer = (options?: { enabled?: boolean }) => {
+  return useQuery({
+    queryKey: [...CUSTOMERS_QUERY_KEY, 'walk-in'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('customers')
+        .select('*')
+        .eq('name', 'Walk-in Customer')
+        .eq('is_active', true)
+        .maybeSingle()
+
+      if (error) {
+        throw new Error(`Failed to fetch walk-in customer: ${error.message}`)
+      }
+
+      return (data ?? null) as Customer | null
+    },
+    staleTime: 1000 * 60 * 30,
+    gcTime: 1000 * 60 * 60,
+    enabled: options?.enabled !== false,
+    retry: 2,
+  })
+}
+
+/**
  * Hook to create or update a customer
  */
 export const useUpsertCustomer = () => {
@@ -114,7 +141,7 @@ export const useUpsertCustomer = () => {
           throw new Error(`Failed to update customer: ${error.message}`)
         }
 
-        return data
+        return data as Customer
       } else {
         // Create
         const { data, error } = await supabase
@@ -127,52 +154,11 @@ export const useUpsertCustomer = () => {
           throw new Error(`Failed to create customer: ${error.message}`)
         }
 
-        return data
+        return data as Customer
       }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: CUSTOMERS_QUERY_KEY })
-    },
-  })
-}
-
-/**
- * Hook to get or create a walk-in customer
- */
-export const useGetOrCreateWalkIn = () => {
-  return useMutation({
-    mutationFn: async (branchId: string = '') => {
-      // Check if walk-in customer exists for this branch
-      const { data: existing, error: fetchError } = await supabase
-        .from('customers')
-        .select('*')
-        .eq('display_name', 'Walk-in')
-        .eq('branch_id', branchId || '')
-        .single()
-
-      if (existing && !fetchError) {
-        return existing as Customer
-      }
-
-      // Create new walk-in customer
-      const { data, error } = await supabase
-        .from('customers')
-        .insert([
-          {
-            display_name: 'Walk-in',
-            customer_type: 'regular',
-            branch_id: branchId || null,
-            is_active: true,
-          },
-        ])
-        .select()
-        .single()
-
-      if (error) {
-        throw new Error(`Failed to create walk-in customer: ${error.message}`)
-      }
-
-      return data as Customer
     },
   })
 }

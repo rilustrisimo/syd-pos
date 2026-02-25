@@ -74,6 +74,15 @@ export interface ProductVariant {
   created_at: string
 }
 
+export interface ProductImage {
+  id: string
+  product_id: string
+  url: string
+  alt_text: string | null
+  is_primary: boolean
+  sort_order: number
+}
+
 export interface Product {
   id: string
   code: string
@@ -97,6 +106,7 @@ export interface Product {
   category?: ProductCategory
   uom?: UnitOfMeasure
   variants?: ProductVariant[]
+  images?: ProductImage[]
 }
 
 export interface Supplier {

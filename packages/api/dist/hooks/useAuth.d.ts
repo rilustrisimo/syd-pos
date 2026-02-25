@@ -1,4 +1,4 @@
-import { AuthUser } from '../types';
+import { AuthUser, Branch } from '../types';
 export declare const useAuth: () => import("@tanstack/react-query").UseQueryResult<AuthUser | null, Error>;
 export declare const useLogin: () => import("@tanstack/react-query").UseMutationResult<{
     user: import("@supabase/auth-js").User;
@@ -17,5 +17,8 @@ export declare const useSignup: () => import("@tanstack/react-query").UseMutatio
     password: string;
 }, unknown>;
 export declare const useAuthStateChange: (callback: (user: AuthUser | null) => void) => void;
+export declare const useBranches: (options?: {
+    enabled?: boolean;
+}) => import("@tanstack/react-query").UseQueryResult<Pick<Branch, "id" | "name" | "code" | "address">[], Error>;
 export default useAuth;
 //# sourceMappingURL=useAuth.d.ts.map

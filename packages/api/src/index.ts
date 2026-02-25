@@ -5,12 +5,13 @@ export * from './types'
 export { supabase, createSupabaseClient, isAuthenticated, getCurrentUser, login, logout, signup } from './supabase'
 
 // Export all hooks
-export { useAuth, useLogin, useLogout, useSignup, useAuthStateChange } from './hooks/useAuth'
+export { useAuth, useLogin, useLogout, useSignup, useAuthStateChange, useBranches } from './hooks/useAuth'
 export {
   useProducts,
   useSearchProducts,
   useProduct,
   useProductsByCategory,
+  useProductCategories,
   useUpsertProduct,
 } from './hooks/useProducts'
 export {
@@ -26,7 +27,7 @@ export {
   useSearchCustomers,
   useCustomer,
   useUpsertCustomer,
-  useGetOrCreateWalkIn,
+  useWalkInCustomer,
   useDeleteCustomer,
 } from './hooks/useCustomers'
 export {
