@@ -321,7 +321,7 @@ export interface Database {
       }
       purchase_orders: {
         Row: PurchaseOrderRow
-        Insert: Omit<PurchaseOrderRow, 'id' | 'created_at' | 'updated_at'> & { id?: string; created_at?: string; updated_at?: string }
+        Insert: Omit<PurchaseOrderRow, 'id' | 'created_at' | 'updated_at' | 'is_deleted' | 'deleted_at' | 'deleted_by'> & { id?: string; created_at?: string; updated_at?: string; is_deleted?: boolean; deleted_at?: string | null; deleted_by?: string | null }
         Update: Partial<Omit<PurchaseOrderRow, 'id' | 'created_at' | 'updated_at'>>
       }
       purchase_order_lines: {
