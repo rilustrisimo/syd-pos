@@ -290,6 +290,14 @@ export default function POSPage() {
         updateItemDiscount(item.id, discAmt)
       })
     }
+
+    // At-cost discount: discount away the entire markup so customer pays COGS
+    if (type === 'cost') {
+      items.forEach((item) => {
+        const discAmt = item.quantity * Math.max(0, item.unit_price - item.cogs_per_unit)
+        updateItemDiscount(item.id, discAmt)
+      })
+    }
   }, [discountRules, items, getItemMarkup, setDiscountAmount, setDiscountPercentage, setDiscountType, updateItemDiscount])
 
   // Apply fixed / percentage order discount when input changes
@@ -1076,8 +1084,8 @@ export default function POSPage() {
             {/* Discount Section */}
             <div className="space-y-3">
               <h3 className="font-semibold text-lg">Discount</h3>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {(['none', 'fixed', 'percentage', 'standard'] as const).map((type) => (
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                {(['none', 'fixed', 'percentage', 'standard', 'cost'] as const).map((type) => (
                   <Button
                     key={type}
                     variant={discountType === type ? 'default' : 'outline'}
@@ -1088,6 +1096,7 @@ export default function POSPage() {
                     {type === 'fixed' && <><Tag className="mr-1 h-4 w-4" />Fixed</>}
                     {type === 'percentage' && <><Percent className="mr-1 h-4 w-4" />Percentage</>}
                     {type === 'standard' && 'Standard'}
+                    {type === 'cost' && 'At Cost'}
                   </Button>
                 ))}
               </div>
@@ -1124,6 +1133,25 @@ export default function POSPage() {
                           {markup.toFixed(0)}% markup → {discPct}% off
                           {discAmt > 0 && <span className="text-green-600 ml-1">(-{formatCurrency(discAmt)})</span>}
                           {discAmt === 0 && <span className="text-muted-foreground ml-1">(no rule)</span>}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
+              {discountType === 'cost' && (
+                <div className="rounded-lg border bg-muted/30 p-3 space-y-2 text-sm">
+                  <p className="font-medium text-muted-foreground">Customer pays cost price only:</p>
+                  {items.map((item) => {
+                    const discAmt = item.quantity * Math.max(0, item.unit_price - item.cogs_per_unit)
+                    const costTotal = item.quantity * item.cogs_per_unit
+                    return (
+                      <div key={item.id} className="flex justify-between">
+                        <span className="truncate flex-1 mr-2">{item.product_name}</span>
+                        <span className="text-muted-foreground">
+                          Cost: {formatCurrency(costTotal)}
+                          {discAmt > 0 && <span className="text-green-600 ml-1">(-{formatCurrency(discAmt)})</span>}
                         </span>
                       </div>
                     )
