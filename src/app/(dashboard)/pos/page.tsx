@@ -33,9 +33,8 @@ import {
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import type { ReceiptData } from '@/components/print/receipt-template'
-import { printUSBReceipt } from '@/lib/utils/usb-thermal-print'
-import { usePrinterStore } from '@/lib/stores/printer'
+import { PrintDialog } from '@/components/print/print-dialog'
+import type { InvoiceData } from '@/components/print/invoice-template'
 import {
   Card,
   CardContent,
@@ -172,7 +171,8 @@ export default function POSPage() {
 
   // Get authenticated user
   const { user } = useAuthStore()
-  const { cupsQueueName } = usePrinterStore()
+  const [isPrintOpen, setIsPrintOpen] = useState(false)
+  const [pendingInvoice, setPendingInvoice] = useState<InvoiceData | null>(null)
 
   // Set default branch and walk-in customer
   useEffect(() => {
@@ -405,7 +405,7 @@ export default function POSPage() {
     }
 
     try {
-      // Store current items and payments before reset
+      // Store current values before reset
       const currentItems = [...items]
       const currentPayments = [...payments]
       const currentCustomer = checkoutCustomer
@@ -413,6 +413,10 @@ export default function POSPage() {
       const currentTotalDiscount = totalDiscount
       const currentTotal = total
       const currentTotalPaid = totalPaid
+      const currentDeliveryType = deliveryType
+      const currentDeliveryAddress = deliveryAddress
+      const currentDeliveryPhone = deliveryPhone
+      const currentNotes = notes
 
       const result = await createTransaction.mutateAsync({
         input: {
@@ -461,25 +465,32 @@ export default function POSPage() {
         })
       }
 
-      // Build receipt from the captured values and print directly to USB printer
-      const txnDate = new Date(result.transaction_date || new Date())
-      const receiptForPrint: ReceiptData = {
+      // Build A4 invoice from captured values and open the print dialog
+      const invoiceData: InvoiceData = {
+        invoice_number: result.transaction_number.replace('TXN', 'INV'),
         transaction_number: result.transaction_number,
-        date: txnDate.toLocaleDateString('en-PH'),
-        time: txnDate.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' }),
-        cashier: 'Staff',
-        branch: currentBranch?.name || 'Main Branch',
+        date: result.transaction_date || new Date().toISOString(),
+        branch: {
+          name: currentBranch?.name || 'Main Branch',
+          address: (currentBranch as any)?.address || '',
+          phone: (currentBranch as any)?.phone || '',
+          email: (currentBranch as any)?.email || null,
+        },
         customer: {
           name: currentCustomer?.name || 'Walk-in Customer',
           phone: currentCustomer?.phone || null,
+          address: null,
+          email: null,
         },
-        delivery_type: deliveryType,
-        delivery_address: deliveryAddress || null,
+        delivery_type: currentDeliveryType,
+        delivery_address: currentDeliveryAddress || null,
+        delivery_phone: currentDeliveryPhone || null,
         items: currentItems.map((item) => ({
+          code: item.product_code,
           name: item.product_name,
           quantity: item.quantity,
-          unit_price: item.unit_price,
           uom: item.uom_name,
+          unit_price: item.unit_price,
           discount: item.discount_amount,
           total: Math.round(item.quantity * item.unit_price * 100) / 100 - item.discount_amount,
         })),
@@ -487,22 +498,19 @@ export default function POSPage() {
         discount: currentTotalDiscount,
         tax: 0,
         total: currentTotal,
+        amount_paid: currentTotalPaid,
+        balance_due: Math.max(0, currentTotal - currentTotalPaid),
         payments: currentPayments.map((p) => ({
           method: p.payment_method,
           amount: p.amount,
           reference: p.reference_number,
+          date: result.transaction_date || new Date().toISOString(),
         })),
-        amount_paid: currentTotalPaid,
-        change: Math.max(0, currentTotalPaid - currentTotal),
-        notes: notes || null,
+        notes: currentNotes || null,
+        prepared_by: user?.fullName || user?.email || 'Staff',
       }
-
-      const printToastId = toast.loading('Printing receipt…')
-      printUSBReceipt(receiptForPrint, cupsQueueName)
-        .then(() => toast.success('Receipt printed!', { id: printToastId }))
-        .catch((err: any) =>
-          toast.error(err?.message || 'Print failed — check USB printer in Settings', { id: printToastId })
-        )
+      setPendingInvoice(invoiceData)
+      setIsPrintOpen(true)
     } catch (error: any) {
       toast.error(error.message || 'Failed to complete transaction')
     }
@@ -1393,6 +1401,15 @@ export default function POSPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* A4 Print Dialog — shown after each completed checkout */}
+      <PrintDialog
+        open={isPrintOpen}
+        onOpenChange={setIsPrintOpen}
+        receiptData={null}
+        invoiceData={pendingInvoice}
+        onComplete={() => setPendingInvoice(null)}
+      />
 
       {/* New Customer Dialog */}
       <Dialog open={isNewCustomerOpen} onOpenChange={setIsNewCustomerOpen}>

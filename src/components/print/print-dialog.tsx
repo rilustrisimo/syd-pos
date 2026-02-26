@@ -34,7 +34,10 @@ export function PrintDialog({
   packingSlipData,
   onComplete,
 }: PrintDialogProps) {
-  const [activeTab, setActiveTab] = useState<'receipt' | 'invoice' | 'packing'>('receipt')
+  const hasReceiptTab = receiptData !== null && receiptData !== undefined
+  const [activeTab, setActiveTab] = useState<'receipt' | 'invoice' | 'packing'>(
+    hasReceiptTab ? 'receipt' : 'invoice'
+  )
   const [receiptWidth] = useState<'58mm' | '80mm'>('80mm')
   const receiptRef = useRef<HTMLDivElement>(null)
   const invoiceRef = useRef<HTMLDivElement>(null)
@@ -101,11 +104,13 @@ export function PrintDialog({
           onValueChange={(v) => setActiveTab(v as 'receipt' | 'invoice' | 'packing')}
           className="flex-1 overflow-hidden flex flex-col"
         >
-          <TabsList className={`grid w-full ${hasPackingSlip ? 'grid-cols-3' : 'grid-cols-2'}`}>
-            <TabsTrigger value="receipt" className="flex items-center gap-2">
-              <Receipt className="h-4 w-4" />
-              Receipt
-            </TabsTrigger>
+          <TabsList className={`grid w-full ${hasReceiptTab && hasPackingSlip ? 'grid-cols-3' : hasReceiptTab || hasPackingSlip ? 'grid-cols-2' : 'grid-cols-1'}`}>
+            {hasReceiptTab && (
+              <TabsTrigger value="receipt" className="flex items-center gap-2">
+                <Receipt className="h-4 w-4" />
+                Receipt
+              </TabsTrigger>
+            )}
             <TabsTrigger value="invoice" className="flex items-center gap-2">
               <FileText className="h-4 w-4" />
               A4 Invoice
@@ -118,21 +123,23 @@ export function PrintDialog({
             )}
           </TabsList>
 
-          <TabsContent value="receipt" className="flex-1 overflow-auto mt-4 flex flex-col">
-            <div className="flex-1 overflow-auto bg-gray-100 rounded-lg p-4 flex justify-center">
-              <div className="bg-white shadow-lg">
-                {receiptData && (
-                  <ReceiptTemplate ref={receiptRef} data={receiptData} width={receiptWidth} />
-                )}
+          {hasReceiptTab && (
+            <TabsContent value="receipt" className="flex-1 overflow-auto mt-4 flex flex-col">
+              <div className="flex-1 overflow-auto bg-gray-100 rounded-lg p-4 flex justify-center">
+                <div className="bg-white shadow-lg">
+                  {receiptData && (
+                    <ReceiptTemplate ref={receiptRef} data={receiptData} width={receiptWidth} />
+                  )}
+                </div>
               </div>
-            </div>
-            <div className="mt-4 flex justify-end">
-              <Button onClick={handlePrintReceipt}>
-                <Printer className="mr-2 h-4 w-4" />
-                Print Receipt
-              </Button>
-            </div>
-          </TabsContent>
+              <div className="mt-4 flex justify-end">
+                <Button onClick={handlePrintReceipt}>
+                  <Printer className="mr-2 h-4 w-4" />
+                  Print Receipt
+                </Button>
+              </div>
+            </TabsContent>
+          )}
 
           <TabsContent value="invoice" className="flex-1 overflow-auto mt-4 flex flex-col">
             <div className="flex-1 overflow-auto bg-gray-100 rounded-lg p-4">
