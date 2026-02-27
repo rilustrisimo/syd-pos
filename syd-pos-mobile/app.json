@@ -1,13 +1,13 @@
 {
   "expo": {
-    "name": "syd-pos-mobile",
+    "name": "SYD POS",
     "slug": "syd-pos-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
     "scheme": "sydpos",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -47,6 +47,12 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "eac90e98-f7d2-48fe-b915-ef6478f05bf4"
+      }
     }
   }
 }

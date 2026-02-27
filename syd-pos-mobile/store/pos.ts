@@ -5,7 +5,8 @@ export type CartItem = {
   name: string
   quantity: number
   price: number
-  discount: number  // per-unit discount amount (default 0)
+  cogs_per_unit: number  // cost of goods sold per unit (for markup/at-cost discounts)
+  discount: number       // per-unit discount amount (default 0)
 }
 
 type PosState = {

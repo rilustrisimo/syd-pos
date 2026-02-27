@@ -5,7 +5,6 @@ import {
   FlatList,
   Modal,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -13,6 +12,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import { Image } from 'expo-image'
 import {
   useAuth,
@@ -123,12 +123,13 @@ interface ProductCardProps {
 function ProductCard({ product, quantityInCart, onAdd, onOpenGallery }: ProductCardProps) {
   const images = product.images ?? []
   const primaryImage = images.find((i) => i.is_primary) ?? images[0]
+  const isOutOfStock = (product.available_stock ?? 0) <= 0
 
   return (
     <Pressable
-      style={styles.productCard}
-      onPress={() => onAdd(product)}
-      android_ripple={{ color: '#e0f2fe' }}
+      style={[styles.productCard, isOutOfStock && styles.productCardOOS]}
+      onPress={() => !isOutOfStock && onAdd(product)}
+      android_ripple={isOutOfStock ? undefined : { color: '#e0f2fe' }}
     >
       {/* Thumbnail */}
       <View style={styles.productThumb}>

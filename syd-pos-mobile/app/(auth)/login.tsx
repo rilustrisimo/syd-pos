@@ -61,7 +61,7 @@ export default function LoginScreen() {
           {/* Logo Section */}
           <View style={styles.logoContainer}>
             <Image
-              source={require('../../assets/syd-logo.svg')}
+              source={require('../../assets/syd-logo.png')}
               style={styles.logo}
               contentFit="contain"
             />
