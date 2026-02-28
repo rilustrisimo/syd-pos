@@ -8,6 +8,7 @@ import { useSearchCustomers, useWalkInCustomer, useCreateCustomer } from '@/hook
 import { useBranches } from '@/hooks/useInventory'
 import { useDiscountRules } from '@/hooks/useDiscountRules'
 import { useProductSellingUnits } from '@/hooks/useProductSellingUnits'
+import { getProductSellingUnits } from '@/lib/supabase/queries/product-selling-units'
 import { getStandardDiscountForMarkup } from '@/lib/supabase/queries/discount-rules'
 import { toast } from 'sonner'
 import {
@@ -217,17 +218,87 @@ export default function POSPage() {
   }, [sellingUnits, selectedUnitId])
 
   // Handle product selection
-  const handleAddProduct = useCallback((product: any) => {
+  const handleAddProduct = useCallback(async (product: any) => {
     // Prevent adding out of stock items
     if (product.available_stock <= 0) {
       toast.error(`${product.name} is out of stock`)
       return
     }
     
-    // Store product and open unit selector
-    setSelectedProduct(product)
-    setIsUnitSelectorOpen(true)
-  }, [])
+    // Fetch selling units for this product
+    try {
+      const units = await getProductSellingUnits(product.id)
+      const activeUnits = units.filter(u => u.is_active)
+      
+      // If only 0 or 1 active unit, add directly without showing dialog
+      if (activeUnits.length <= 1) {
+        const unit = activeUnits[0]
+        
+        if (!unit) {
+          // No selling units configured, use product's default
+          addItem({
+            product_id: product.id,
+            product_code: product.code,
+            product_name: product.name,
+            variant_id: null,
+            variant_name: null,
+            quantity: 1,
+            uom_id: product.uom_id,
+            uom_name: product.uom_abbreviation || product.uom_name,
+            unit_price: product.unit_price,
+            cogs_per_unit: product.cogs,
+            markup_percentage: product.markup_percentage ?? 0,
+            discount_amount: 0,
+            available_stock: product.available_stock,
+          })
+        } else {
+          // Use the single active unit
+          addItem({
+            product_id: product.id,
+            product_code: product.code,
+            product_name: product.name,
+            variant_id: null,
+            variant_name: null,
+            quantity: 1,
+            uom_id: unit.uom_id,
+            uom_name: unit.uom?.code || unit.uom?.name || '',
+            unit_price: unit.selling_price,
+            cogs_per_unit: product.cogs / unit.conversion_factor,
+            markup_percentage: unit.markup_percentage,
+            discount_amount: 0,
+            available_stock: product.available_stock,
+          })
+        }
+        
+        setProductSearch('')
+        toast.success(`Added ${product.name} to cart`)
+      } else {
+        // Multiple units available, show selector dialog
+        setSelectedProduct(product)
+        setIsUnitSelectorOpen(true)
+      }
+    } catch (error) {
+      console.error('Error fetching selling units:', error)
+      // Fallback to default unit on error
+      addItem({
+        product_id: product.id,
+        product_code: product.code,
+        product_name: product.name,
+        variant_id: null,
+        variant_name: null,
+        quantity: 1,
+        uom_id: product.uom_id,
+        uom_name: product.uom_abbreviation || product.uom_name,
+        unit_price: product.unit_price,
+        cogs_per_unit: product.cogs,
+        markup_percentage: product.markup_percentage ?? 0,
+        discount_amount: 0,
+        available_stock: product.available_stock,
+      })
+      setProductSearch('')
+      toast.success(`Added ${product.name} to cart`)
+    }
+  }, [addItem])
   
   // Handle adding product with selected unit
   const handleAddWithUnit = useCallback(() => {
@@ -1521,7 +1592,7 @@ export default function POSPage() {
                           </span>
                         </div>
                         <div className="text-xs text-muted-foreground mt-1">
-                          {unit.conversion_factor} {unit.uom?.code} per base unit • {unit.markup_percentage.toFixed(1)}% markup
+                          {unit.conversion_factor} {unit.uom?.code} per base unit
                         </div>
                       </div>
                     </Button>
