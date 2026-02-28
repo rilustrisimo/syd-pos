@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { useBranches, useAdjustInventory } from '@/hooks/useInventory'
 import type { Branch } from '@/lib/supabase/queries/inventory'
 import { useProducts } from '@/hooks/useProducts'
-import { useAuthStore } from '@/store/auth'
+import { useAuthStore } from '@/lib/stores/auth'
 import { toast } from 'sonner'
 import { ArrowLeft, Plus, Minus, Loader2, Save } from 'lucide-react'
 
