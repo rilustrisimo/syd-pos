@@ -1,4 +1,4 @@
-import { getClient } from '../client'
+import { getClient, createClient } from '../client'
 import type { Tables, InsertTables } from '@/types/database'
 
 export type BranchInventory = Tables<'branch_inventory'> & {
