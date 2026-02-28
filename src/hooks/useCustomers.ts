@@ -50,7 +50,8 @@ export function useSearchCustomers(query: string, limit = 10) {
     queryKey: customerKeys.search(query),
     queryFn: () => searchCustomers(query, limit),
     enabled: true, // Always enabled, will show recent customers when query is empty
-    staleTime: 10000, // 10 seconds
+    staleTime: 0, // Always fetch fresh results on search
+    gcTime: 30000, // Keep results in cache for 30 seconds for back navigation
   })
 }
 

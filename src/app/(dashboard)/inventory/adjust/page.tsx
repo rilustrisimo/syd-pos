@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useBranches, useAdjustInventory } from '@/hooks/useInventory'
@@ -40,16 +40,29 @@ export default function AdjustStockPage() {
   const [quantity, setQuantity] = useState('')
   const [notes, setNotes] = useState('')
   const [productSearch, setProductSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+
+  // Debounce search to prevent UI freezing
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(productSearch)
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [productSearch])
 
   const { data: branches, isLoading: branchesLoading } = useBranches()
   const branchesList: Branch[] = branches || []
   const { data: productsData, isLoading: productsLoading } = useProducts({
-    search: productSearch,
+    search: debouncedSearch,
     limit: 20,
   })
   const adjustMutation = useAdjustInventory()
 
   const products = productsData?.data || []
+  const selectedProductData = useMemo(
+    () => products.find((p) => p.id === selectedProduct),
+    [products, selectedProduct]
+  )
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -99,8 +112,6 @@ export default function AdjustStockPage() {
       toast.error(error.message || 'Failed to adjust inventory')
     }
   }
-
-  const selectedProductData = products.find((p) => p.id === selectedProduct)
 
   return (
     <div className="max-w-3xl space-y-6">
@@ -165,14 +176,20 @@ export default function AdjustStockPage() {
               <Label htmlFor="product-search">
                 Product <span className="text-destructive">*</span>
               </Label>
-              <Input
-                id="product-search"
-                placeholder="Search for a product..."
-                value={productSearch}
-                onChange={(e) => setProductSearch(e.target.value)}
-                disabled={productsLoading}
-              />
-              {productSearch && products.length > 0 && (
+              <div className="relative">
+                <Input
+                  id="product-search"
+                  placeholder="Search for a product..."
+                  value={productSearch}
+                  onChange={(e) => setProductSearch(e.target.value)}
+                />
+                {productsLoading && productSearch && (
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                  </div>
+                )}
+              </div>
+              {debouncedSearch && products.length > 0 && (
                 <div className="mt-2 space-y-1 border rounded-lg p-2 max-h-64 overflow-y-auto">
                   {products.map((product) => (
                     <button

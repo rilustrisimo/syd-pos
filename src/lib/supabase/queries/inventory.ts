@@ -286,7 +286,7 @@ export async function adjustInventory(params: {
   notes: string
   userId: string
 }) {
-  const supabase = getClient()
+  const supabase = createClient()
   const { branchId, productId, quantityChange, notes, userId } = params
 
   // Get current inventory
