@@ -494,11 +494,17 @@ export default function TransactionHistoryPage() {
               <Separator />
 
               {/* Delivery Address (if applicable) */}
-              {detailsTransaction.delivery_type === 'delivery' && detailsTransaction.delivery_address && (
+              {detailsTransaction.delivery_type === 'delivery' && (
                 <>
-                  <div>
-                    <p className="text-sm font-semibold mb-2">Delivery Address</p>
-                    <p className="text-sm">{detailsTransaction.delivery_address}</p>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-sm font-semibold mb-2">Delivery Address</p>
+                      <p className="text-sm">{detailsTransaction.delivery_address || 'Not provided'}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold mb-2">Delivery Phone</p>
+                      <p className="text-sm">{detailsTransaction.delivery_phone || 'Not provided'}</p>
+                    </div>
                   </div>
                   <Separator />
                 </>
@@ -539,6 +545,18 @@ export default function TransactionHistoryPage() {
                   <div className="flex justify-between text-green-600">
                     <span>Discount</span>
                     <span>-{formatCurrency(detailsTransaction.discount_amount)}</span>
+                  </div>
+                )}
+                {(detailsTransaction as any).delivery_fee > 0 && (
+                  <div className="flex justify-between text-blue-600">
+                    <span>Delivery Fee</span>
+                    <span>+{formatCurrency((detailsTransaction as any).delivery_fee)}</span>
+                  </div>
+                )}
+                {(detailsTransaction as any).other_fees > 0 && (
+                  <div className="flex justify-between text-amber-600">
+                    <span>Other Fees {(detailsTransaction as any).other_fees_notes && `(${(detailsTransaction as any).other_fees_notes})`}</span>
+                    <span>+{formatCurrency((detailsTransaction as any).other_fees)}</span>
                   </div>
                 )}
                 {detailsTransaction.tax_amount > 0 && (

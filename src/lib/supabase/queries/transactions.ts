@@ -101,6 +101,9 @@ export interface TransactionInput {
   delivery_type: 'pickup' | 'delivery'
   delivery_address?: string | null
   delivery_phone?: string | null
+  delivery_fee?: number
+  other_fees?: number
+  other_fees_notes?: string | null
   discount_amount?: number
   discount_percentage?: number
   tax_amount?: number
@@ -279,7 +282,9 @@ export async function createTransaction(
 
   const discountAmount = input.discount_amount || 0
   const taxAmount = input.tax_amount || 0
-  const totalAmount = subtotal - discountAmount + taxAmount
+  const deliveryFee = input.delivery_fee || 0
+  const otherFees = input.other_fees || 0
+  const totalAmount = subtotal - discountAmount + taxAmount + deliveryFee + otherFees
   const amountPaid = payments.reduce((sum, p) => sum + p.amount, 0)
 
   // Determine payment status
@@ -304,6 +309,9 @@ export async function createTransaction(
       delivery_type: input.delivery_type,
       delivery_address: input.delivery_address || null,
       delivery_phone: input.delivery_phone || null,
+      delivery_fee: deliveryFee,
+      other_fees: otherFees,
+      other_fees_notes: input.other_fees_notes || null,
       subtotal: subtotal,
       discount_amount: discountAmount,
       discount_percentage: input.discount_percentage || 0,

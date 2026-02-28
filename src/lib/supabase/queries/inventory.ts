@@ -43,58 +43,142 @@ export async function getBranchInventory(params?: {
   const { branchId, search, lowStockOnly, page = 1, limit = 50 } = params || {}
   const offset = (page - 1) * limit
 
+  // Start from products table to show ALL products, not just those with inventory
   let query = supabase
-    .from('branch_inventory')
+    .from('products')
     .select(`
-      *,
-      product:products(
-        *,
-        category:product_categories(*),
-        base_uom:units_of_measure!products_base_uom_id_fkey(*)
-      ),
-      branch:branches(*)
+      id,
+      code,
+      name,
+      latest_cogs,
+      current_selling_price,
+      reorder_point,
+      is_active,
+      category:product_categories(*),
+      base_uom:units_of_measure!products_base_uom_id_fkey(*)
     `, { count: 'exact' })
-    .order('quantity_on_hand', { ascending: true })
+    .eq('is_active', true)
+    .order('name')
     .range(offset, offset + limit - 1)
 
-  if (branchId) {
-    query = query.eq('branch_id', branchId)
-  }
-
   if (search) {
-    // This is a workaround - ideally we'd filter on the joined table
-    // but for now we'll filter client-side after fetching
-  }
-
-  if (lowStockOnly) {
-    // Will filter client-side based on product.reorder_point
-  }
-
-  const { data, error, count } = await query
-
-  if (error) throw error
-
-  let filteredData = data || []
-
-  // Client-side filtering for search
-  if (search && filteredData.length > 0) {
     const searchLower = search.toLowerCase()
-    filteredData = filteredData.filter((item: any) => 
-      item.product?.name?.toLowerCase().includes(searchLower) ||
-      item.product?.code?.toLowerCase().includes(searchLower)
-    )
+    query = query.or(`name.ilike.%${searchLower}%,code.ilike.%${searchLower}%`)
   }
 
-  // Client-side filtering for low stock
-  if (lowStockOnly && filteredData.length > 0) {
-    filteredData = filteredData.filter((item: any) => 
+  const { data: products, error: productsError, count } = await query
+
+  if (productsError) throw productsError
+
+  if (!products || products.length === 0) {
+    return {
+      data: [],
+      count: 0,
+      totalPages: 0,
+    }
+  }
+
+  // Get inventory data for these products
+  const productIds = products.map(p => p.id)
+  let inventoryQuery = supabase
+    .from('branch_inventory')
+    .select(`
+      product_id,
+      branch_id,
+      quantity_on_hand,
+      quantity_reserved,
+      last_movement_at,
+      branch:branches(*)
+    `)
+    .in('product_id', productIds)
+
+  if (branchId) {
+    inventoryQuery = inventoryQuery.eq('branch_id', branchId)
+  }
+
+  const { data: inventoryData, error: inventoryError } = await inventoryQuery
+
+  if (inventoryError) throw inventoryError
+
+  // Create a map of product_id -> inventory data
+  const inventoryMap = new Map(
+    (inventoryData || []).map((inv: any) => [
+      `${inv.product_id}-${inv.branch_id}`,
+      inv
+    ])
+  )
+
+  // Get branches if no specific branch is selected
+  let branches: any[] = []
+  if (!branchId) {
+    const { data: branchesData } = await supabase
+      .from('branches')
+      .select('*')
+      .eq('is_active', true)
+    branches = branchesData || []
+  } else {
+    const { data: branchData } = await supabase
+      .from('branches')
+      .select('*')
+      .eq('id', branchId)
+      .single()
+    branches = branchData ? [branchData] : []
+  }
+
+  // Combine products with inventory data
+  let combinedData: any[] = []
+  
+  if (branchId) {
+    // Single branch: create one record per product
+    combinedData = products.map((product: any) => {
+      const invKey = `${product.id}-${branchId}`
+      const inventory = inventoryMap.get(invKey)
+      
+      return {
+        id: inventory?.id || `temp-${product.id}-${branchId}`,
+        product_id: product.id,
+        branch_id: branchId,
+        quantity_on_hand: inventory?.quantity_on_hand || 0,
+        quantity_reserved: inventory?.quantity_reserved || 0,
+        last_movement_at: inventory?.last_movement_at || null,
+        product: product,
+        branch: branches[0] || null,
+      }
+    })
+  } else {
+    // Multiple branches: create one record per product per branch
+    products.forEach((product: any) => {
+      branches.forEach((branch: any) => {
+        const invKey = `${product.id}-${branch.id}`
+        const inventory = inventoryMap.get(invKey)
+        
+        combinedData.push({
+          id: inventory?.id || `temp-${product.id}-${branch.id}`,
+          product_id: product.id,
+          branch_id: branch.id,
+          quantity_on_hand: inventory?.quantity_on_hand || 0,
+          quantity_reserved: inventory?.quantity_reserved || 0,
+          last_movement_at: inventory?.last_movement_at || null,
+          product: product,
+          branch: branch,
+        })
+      })
+    })
+  }
+
+  // Filter for low stock if requested
+  if (lowStockOnly) {
+    combinedData = combinedData.filter((item: any) => 
       Number(item.quantity_on_hand) <= Number(item.product?.reorder_point || 0)
     )
   }
 
+  // Sort by quantity (lowest first)
+  combinedData.sort((a, b) => a.quantity_on_hand - b.quantity_on_hand)
+
   return {
-    data: filteredData,
-    count: filteredData.length,
+    data: combinedData,
+    count: combinedData.length,
     totalPages: Math.ceil((count || 0) / limit),
   }
 }
