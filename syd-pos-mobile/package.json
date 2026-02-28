@@ -17,6 +17,7 @@
     "@syd/api": "file:../packages/api",
     "@tanstack/react-query": "^5.90.21",
     "expo": "~54.0.33",
+    "expo-dev-client": "~6.0.20",
     "expo-image": "~3.0.11",
     "expo-linking": "~8.0.11",
     "expo-router": "~6.0.23",

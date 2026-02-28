@@ -10,7 +10,7 @@ const PRODUCT_SELECT = `
   subcategory:product_subcategories(id, name),
   variants:product_variants(*),
   images:product_images(id, url, alt_text, is_primary, sort_order),
-  inventory(quantity_on_hand, quantity_reserved)
+  inventory:branch_inventory(quantity_on_hand, quantity_reserved)
 `
 
 /** Compute available_stock by summing inventory across all branches. */

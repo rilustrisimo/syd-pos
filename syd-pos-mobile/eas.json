@@ -3,13 +3,6 @@
     "version": ">= 16.0.0"
   },
   "build": {
-    "development": {
-      "developmentClient": true,
-      "distribution": "internal",
-      "android": {
-        "buildType": "apk"
-      }
-    },
     "preview": {
       "distribution": "internal",
       "android": {
@@ -20,14 +13,6 @@
         "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_9B--J8SF_Cn93S0X3BD-sg_2AWm94tQ",
         "EXPO_PUBLIC_PRINT_SERVER_URL": "http://192.168.254.107:9100"
       }
-    },
-    "production": {
-      "android": {
-        "buildType": "app-bundle"
-      }
     }
-  },
-  "submit": {
-    "production": {}
   }
 }

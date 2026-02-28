@@ -42,7 +42,7 @@ function getManager(): BleManager {
       throw new Error(
         'Bluetooth is not available in this build.\n\n' +
         'BLE printing requires an EAS custom development build (not Expo Go). ' +
-        'Run: eas build --profile development --platform ios'
+        'Run: eas build --profile development --platform android'
       )
     }
 

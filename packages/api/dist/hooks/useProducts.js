@@ -7,7 +7,7 @@ const PRODUCT_SELECT = `
   subcategory:product_subcategories(id, name),
   variants:product_variants(*),
   images:product_images(id, url, alt_text, is_primary, sort_order),
-  inventory(quantity_on_hand, quantity_reserved)
+  inventory:branch_inventory(quantity_on_hand, quantity_reserved)
 `;
 function computeAvailableStock(raw) {
     if (!Array.isArray(raw.inventory))
