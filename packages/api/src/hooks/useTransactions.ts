@@ -151,7 +151,7 @@ export const useCreateTransaction = () => {
             delivery_address: input.delivery_address || null,
             delivery_phone: input.delivery_phone || null,
             notes: input.notes || null,
-            user_id: payload.userId,
+            created_by: payload.userId,
           },
         ])
         .select()

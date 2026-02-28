@@ -459,21 +459,25 @@ export async function getSalesTrendByDateRange(
 ): Promise<SalesTrendPoint[]> {
   const supabase = createClient()
 
+  // Get all transaction lines with their transaction details
+  // Filter by transaction_date on the transactions table
   const { data, error } = await supabase
-    .from('transaction_lines')
+    .from('transactions')
     .select(`
-      quantity,
-      unit_price,
-      cogs_per_unit,
-      transaction:transactions!transaction_id(
-        id,
-        transaction_type,
-        transaction_date,
-        is_deleted
+      id,
+      transaction_type,
+      transaction_date,
+      is_deleted,
+      lines:transaction_lines(
+        quantity,
+        unit_price,
+        cogs_per_unit
       )
     `)
-    .gte('created_at', `${dateFrom}T00:00:00`)
-    .lte('created_at', `${dateTo}T23:59:59`)
+    .eq('transaction_type', 'sale')
+    .eq('is_deleted', false)
+    .gte('transaction_date', `${dateFrom}T00:00:00`)
+    .lte('transaction_date', `${dateTo}T23:59:59`)
 
   if (error) throw error
 
@@ -486,28 +490,22 @@ export async function getSalesTrendByDateRange(
     dateMap.set(key, { date: key, revenue: 0, cost: 0, profit: 0, transactions: 0 })
   }
 
-  // Track transaction IDs to count unique transactions per day
-  const txnDayMap = new Map<string, string>() // txnId -> date
-
-  for (const line of (data as any[]) || []) {
-    if (line.transaction?.transaction_type !== 'sale') continue
-    if (line.transaction?.is_deleted) continue
-
-    const dateStr: string = line.transaction.transaction_date?.split('T')[0]
+  // Process each transaction
+  for (const txn of (data as any[]) || []) {
+    const dateStr: string = txn.transaction_date?.split('T')[0]
     if (!dateStr || !dateMap.has(dateStr)) continue
 
-    const revenue = (line.quantity || 0) * (line.unit_price || 0)
-    const cost = (line.quantity || 0) * (line.cogs_per_unit || 0)
-
     const point = dateMap.get(dateStr)!
-    point.revenue += revenue
-    point.cost += cost
-    point.profit += revenue - cost
+    point.transactions += 1
 
-    const txnKey = `${line.transaction.id}_${dateStr}`
-    if (!txnDayMap.has(txnKey)) {
-      txnDayMap.set(txnKey, dateStr)
-      point.transactions += 1
+    // Sum all lines for this transaction
+    for (const line of txn.lines || []) {
+      const revenue = (line.quantity || 0) * (line.unit_price || 0)
+      const cost = (line.quantity || 0) * (line.cogs_per_unit || 0)
+      
+      point.revenue += revenue
+      point.cost += cost
+      point.profit += revenue - cost
     }
   }
 

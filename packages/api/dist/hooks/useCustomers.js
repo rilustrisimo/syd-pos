@@ -82,7 +82,23 @@ export const useWalkInCustomer = (options) => {
             if (error) {
                 throw new Error(`Failed to fetch walk-in customer: ${error.message}`);
             }
-            return (data ?? null);
+            if (data)
+                return data;
+            const { data: created, error: createError } = await supabase
+                .from('customers')
+                .insert([{
+                    name: 'Walk-in Customer',
+                    customer_type: 'cash',
+                    is_active: true,
+                    credit_limit: 0,
+                    outstanding_balance: 0,
+                }])
+                .select()
+                .single();
+            if (createError) {
+                throw new Error(`Failed to create walk-in customer: ${createError.message}`);
+            }
+            return created;
         },
         staleTime: 1000 * 60 * 30,
         gcTime: 1000 * 60 * 60,

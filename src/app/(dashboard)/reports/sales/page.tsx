@@ -218,12 +218,12 @@ export default function SalesReportPage() {
   const [selectedPreset, setSelectedPreset] = useState<string>('this_month')
   const [dateFrom, setDateFrom] = useState(() => getPresetRange('this_month').from)
   const [dateTo, setDateTo] = useState(() => getPresetRange('this_month').to)
-  const [categoryFilter, setCategoryFilter] = useState<string>('')
+  const [categoryFilter, setCategoryFilter] = useState<string>('all')
 
   const filters = {
     date_from: dateFrom,
     date_to: dateTo,
-    category_id: categoryFilter || undefined,
+    category_id: categoryFilter && categoryFilter !== 'all' ? categoryFilter : undefined,
   }
 
   const { data: categories } = useCategories()
@@ -388,7 +388,7 @@ export default function SalesReportPage() {
                   <SelectValue placeholder="All Categories" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Categories</SelectItem>
+                  <SelectItem value="all">All Categories</SelectItem>
                   {categories?.map((cat) => (
                     <SelectItem key={cat.id} value={cat.id}>
                       {cat.name}
@@ -403,7 +403,7 @@ export default function SalesReportPage() {
                 className="w-full"
                 onClick={() => {
                   applyPreset('this_month')
-                  setCategoryFilter('')
+                  setCategoryFilter('all')
                 }}
               >
                 Reset

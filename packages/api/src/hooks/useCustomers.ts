@@ -94,12 +94,14 @@ export const useCustomer = (id: string | undefined, options?: { enabled?: boolea
 }
 
 /**
- * Hook to fetch the default walk-in customer
+ * Hook to fetch the default walk-in customer.
+ * Auto-creates the record if it doesn't exist in the DB.
  */
 export const useWalkInCustomer = (options?: { enabled?: boolean }) => {
   return useQuery({
     queryKey: [...CUSTOMERS_QUERY_KEY, 'walk-in'],
     queryFn: async () => {
+      // Try to find existing walk-in customer
       const { data, error } = await supabase
         .from('customers')
         .select('*')
@@ -111,7 +113,26 @@ export const useWalkInCustomer = (options?: { enabled?: boolean }) => {
         throw new Error(`Failed to fetch walk-in customer: ${error.message}`)
       }
 
-      return (data ?? null) as Customer | null
+      if (data) return data as Customer
+
+      // Not found — create it automatically so the app is always self-sufficient
+      const { data: created, error: createError } = await supabase
+        .from('customers')
+        .insert([{
+          name: 'Walk-in Customer',
+          customer_type: 'cash',
+          is_active: true,
+          credit_limit: 0,
+          outstanding_balance: 0,
+        }])
+        .select()
+        .single()
+
+      if (createError) {
+        throw new Error(`Failed to create walk-in customer: ${createError.message}`)
+      }
+
+      return created as Customer
     },
     staleTime: 1000 * 60 * 30,
     gcTime: 1000 * 60 * 60,

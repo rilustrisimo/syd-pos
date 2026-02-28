@@ -184,7 +184,7 @@ WHERE COALESCE(current_qty, 0) != correct_qty;
 -- ✓ All changes in one atomic transaction (all or nothing)
 -- ============================================================================
 
-ROLLBACK;  -- ⚠️ Change this to COMMIT when ready to apply fixes
+COMMIT;  -- ⚠️ Change this to COMMIT when ready to apply fixes
 
 -- After changing to COMMIT and running:
 -- - All inventory quantities will be corrected

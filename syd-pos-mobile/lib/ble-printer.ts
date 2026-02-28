@@ -13,7 +13,7 @@
  */
 
 import { BleManager, Device, Characteristic, State } from 'react-native-ble-plx'
-import { Platform, PermissionsAndroid, NativeModules } from 'react-native'
+import { Platform, PermissionsAndroid } from 'react-native'
 import { buildReceiptBytes, buildDeliverySlipBytes, ReceiptData } from './escpos-mobile'
 import { usePrinterStore, ScannedDevice } from '../store/printer'
 
@@ -31,22 +31,17 @@ let scanTimeout: ReturnType<typeof setTimeout> | null = null
 
 function getManager(): BleManager {
   if (!manager) {
-    // react-native-ble-plx native module is only available in EAS/custom builds.
-    // In Expo Go it is null, which causes NativeEventEmitter to throw.
-    const nativeModule =
-      NativeModules.BleClientManager ??   // Android
-      NativeModules.BleClientManageriOS ?? // some iOS builds
-      null
-
-    if (!nativeModule) {
+    // react-native-ble-plx is only available in EAS preview/production builds.
+    // In Expo Go the native module is absent and the BleManager constructor throws.
+    try {
+      manager = new BleManager()
+    } catch {
       throw new Error(
         'Bluetooth is not available in this build.\n\n' +
-        'BLE printing requires an EAS custom development build (not Expo Go). ' +
-        'Run: eas build --profile development --platform android'
+        'BLE printing requires an EAS preview build. ' +
+        'Run: eas build --profile preview --platform android'
       )
     }
-
-    manager = new BleManager()
   }
   return manager
 }
