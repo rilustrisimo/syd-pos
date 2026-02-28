@@ -234,7 +234,7 @@ export default function ProductsPage() {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        {product.selling_uom?.code || product.base_uom?.code || '-'}
+                        {product.base_uom?.code || '-'}
                       </TableCell>
                       <TableCell className="text-right font-mono">
                         {formatCurrency(product.latest_cogs)}
