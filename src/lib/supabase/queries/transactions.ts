@@ -627,7 +627,7 @@ export async function searchProductsForPOS(query: string, branchId: string, limi
       current_selling_price,
       latest_cogs,
       markup_percentage,
-      selling_uom_id,
+      base_uom_id,
       images:product_images(url, is_primary, sort_order)
     `)
     .eq('is_active', true)
@@ -642,7 +642,7 @@ export async function searchProductsForPOS(query: string, branchId: string, limi
   if (!uniqueProducts || uniqueProducts.length === 0) return []
 
   // Get UOM details for the products
-  const uomIds = [...new Set(uniqueProducts.map(p => p.selling_uom_id))]
+  const uomIds = [...new Set(uniqueProducts.map(p => p.base_uom_id))]
   const { data: uoms, error: uomsError } = await supabase
     .from('units_of_measure')
     .select('id, name, code')
@@ -670,7 +670,7 @@ export async function searchProductsForPOS(query: string, branchId: string, limi
   )
 
   return uniqueProducts.map(product => {
-    const uom = uomMap.get(product.selling_uom_id)
+    const uom = uomMap.get(product.base_uom_id)
     // Get primary image or first image
     const images = (product as any).images || []
     const primaryImage = images.find((img: any) => img.is_primary)?.url || images[0]?.url || null
@@ -685,7 +685,7 @@ export async function searchProductsForPOS(query: string, branchId: string, limi
         (product.latest_cogs > 0
           ? ((product.current_selling_price / product.latest_cogs - 1) * 100)
           : 0),
-      uom_id: product.selling_uom_id,
+      uom_id: product.base_uom_id,
       uom_name: uom?.name || '',
       uom_abbreviation: uom?.code || '', // Using 'code' from DB but naming as 'abbreviation' for backward compatibility
       available_stock: inventoryMap.get(`${product.id}-null`) || 0,

@@ -42,6 +42,9 @@ interface POSState {
   deliveryType: 'pickup' | 'delivery'
   deliveryAddress: string
   deliveryPhone: string
+  deliveryFee: number
+  otherFees: number
+  otherFeesNotes: string
   discountAmount: number
   discountPercentage: number
   notes: string
@@ -66,6 +69,9 @@ interface POSState {
   setDeliveryType: (type: 'pickup' | 'delivery') => void
   setDeliveryAddress: (address: string) => void
   setDeliveryPhone: (phone: string) => void
+  setDeliveryFee: (fee: number) => void
+  setOtherFees: (fees: number) => void
+  setOtherFeesNotes: (notes: string) => void
   setDiscountAmount: (amount: number) => void
   setDiscountPercentage: (percentage: number) => void
   setNotes: (notes: string) => void
@@ -108,6 +114,9 @@ const initialState = {
   deliveryType: 'pickup' as const,
   deliveryAddress: '',
   deliveryPhone: '',
+  deliveryFee: 0,
+  otherFees: 0,
+  otherFeesNotes: '',
   discountAmount: 0,
   discountPercentage: 0,
   discountType: 'none' as 'none' | 'fixed' | 'percentage' | 'standard' | 'cost',
@@ -199,6 +208,18 @@ export const usePOSStore = create<POSState>()(
         set({ deliveryPhone: phone })
       },
 
+      setDeliveryFee: (fee) => {
+        set({ deliveryFee: Math.max(0, fee) })
+      },
+
+      setOtherFees: (fees) => {
+        set({ otherFees: Math.max(0, fees) })
+      },
+
+      setOtherFeesNotes: (notes) => {
+        set({ otherFeesNotes: notes })
+      },
+
       setDiscountType: (type) => {
         set({ discountType: type })
       },
@@ -266,7 +287,8 @@ export const usePOSStore = create<POSState>()(
       getTotal: () => {
         const subtotal = get().getSubtotal()
         const totalDiscount = get().getTotalDiscount()
-        return Math.max(0, subtotal - totalDiscount)
+        const { deliveryFee, otherFees } = get()
+        return Math.max(0, subtotal - totalDiscount + deliveryFee + otherFees)
       },
 
       getTotalPaid: () => {
@@ -315,6 +337,9 @@ export const usePOSStore = create<POSState>()(
         deliveryType: state.deliveryType,
         deliveryAddress: state.deliveryAddress,
         deliveryPhone: state.deliveryPhone,
+        deliveryFee: state.deliveryFee,
+        otherFees: state.otherFees,
+        otherFeesNotes: state.otherFeesNotes,
         discountAmount: state.discountAmount,
         discountPercentage: state.discountPercentage,
         discountType: state.discountType,

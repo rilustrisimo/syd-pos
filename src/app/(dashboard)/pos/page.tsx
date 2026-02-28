@@ -127,6 +127,9 @@ export default function POSPage() {
     deliveryType,
     deliveryAddress,
     deliveryPhone,
+    deliveryFee,
+    otherFees,
+    otherFeesNotes,
     discountAmount,
     discountPercentage,
     notes,
@@ -140,6 +143,9 @@ export default function POSPage() {
     setDeliveryType,
     setDeliveryAddress,
     setDeliveryPhone,
+    setDeliveryFee,
+    setOtherFees,
+    setOtherFeesNotes,
     discountType,
     setDiscountType,
     setDiscountAmount,
@@ -535,6 +541,9 @@ export default function POSPage() {
       const currentDeliveryType = deliveryType
       const currentDeliveryAddress = deliveryAddress
       const currentDeliveryPhone = deliveryPhone
+      const currentDeliveryFee = deliveryFee
+      const currentOtherFees = otherFees
+      const currentOtherFeesNotes = otherFeesNotes
       const currentNotes = notes
 
       const result = await createTransaction.mutateAsync({
@@ -604,15 +613,35 @@ export default function POSPage() {
         delivery_type: currentDeliveryType,
         delivery_address: currentDeliveryAddress || null,
         delivery_phone: currentDeliveryPhone || null,
-        items: currentItems.map((item) => ({
-          code: item.product_code,
-          name: item.product_name,
-          quantity: item.quantity,
-          uom: item.uom_name,
-          unit_price: item.unit_price,
-          discount: item.discount_amount,
-          total: Math.round(item.quantity * item.unit_price * 100) / 100 - item.discount_amount,
-        })),
+        items: [
+          ...currentItems.map((item) => ({
+            code: item.product_code,
+            name: item.product_name,
+            quantity: item.quantity,
+            uom: item.uom_name,
+            unit_price: item.unit_price,
+            discount: item.discount_amount,
+            total: Math.round(item.quantity * item.unit_price * 100) / 100 - item.discount_amount,
+          })),
+          ...(currentDeliveryFee > 0 ? [{
+            code: 'FEE-DEL',
+            name: 'Delivery Fee',
+            quantity: 1,
+            uom: 'service',
+            unit_price: currentDeliveryFee,
+            discount: 0,
+            total: currentDeliveryFee,
+          }] : []),
+          ...(currentOtherFees > 0 ? [{
+            code: 'FEE-OTHER',
+            name: currentOtherFeesNotes || 'Other Fees',
+            quantity: 1,
+            uom: 'service',
+            unit_price: currentOtherFees,
+            discount: 0,
+            total: currentOtherFees,
+          }] : []),
+        ],
         subtotal: currentSubtotal,
         discount: currentTotalDiscount,
         tax: 0,
@@ -1132,6 +1161,18 @@ export default function POSPage() {
               <span>-{formatCurrency(totalDiscount)}</span>
             </div>
           )}
+          {deliveryFee > 0 && (
+            <div className="flex justify-between text-sm text-blue-600">
+              <span>Delivery Fee</span>
+              <span>+{formatCurrency(deliveryFee)}</span>
+            </div>
+          )}
+          {otherFees > 0 && (
+            <div className="flex justify-between text-sm text-amber-600">
+              <span>Other Fees</span>
+              <span>+{formatCurrency(otherFees)}</span>
+            </div>
+          )}
           <Separator />
           <div className="flex justify-between text-lg font-bold">
             <span>Total</span>
@@ -1211,6 +1252,18 @@ export default function POSPage() {
                   <div className="flex justify-between text-base text-green-600">
                     <span>Discount</span>
                     <span className="font-medium">-{formatCurrency(totalDiscount)}</span>
+                  </div>
+                )}
+                {deliveryFee > 0 && (
+                  <div className="flex justify-between text-base text-blue-600">
+                    <span>Delivery Fee</span>
+                    <span className="font-medium">+{formatCurrency(deliveryFee)}</span>
+                  </div>
+                )}
+                {otherFees > 0 && (
+                  <div className="flex justify-between text-base text-amber-600">
+                    <span>Other Fees {otherFeesNotes && `(${otherFeesNotes})`}</span>
+                    <span className="font-medium">+{formatCurrency(otherFees)}</span>
                   </div>
                 )}
                 <Separator />
@@ -1322,8 +1375,45 @@ export default function POSPage() {
                   onChange={(e) => setDeliveryPhone(e.target.value)}
                   className="h-12"
                 />
+                <div className="space-y-2">
+                  <Label>Delivery Fee</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={deliveryFee || ''}
+                    onChange={(e) => setDeliveryFee(Number(e.target.value) || 0)}
+                    className="h-12"
+                  />
+                </div>
               </div>
             )}
+
+            {/* Other Fees */}
+            <div className="space-y-3 bg-amber-50 rounded-lg p-4 border border-amber-200">
+              <h3 className="font-semibold">Additional Fees (optional)</h3>
+              <div className="space-y-2">
+                <Label>Fee Amount</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={otherFees || ''}
+                  onChange={(e) => setOtherFees(Number(e.target.value) || 0)}
+                  className="h-12"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Fee Description</Label>
+                <Input
+                  placeholder="e.g., Service charge, Processing fee"
+                  value={otherFeesNotes}
+                  onChange={(e) => setOtherFeesNotes(e.target.value)}
+                  className="h-12"
+                  disabled={!otherFees || otherFees === 0}
+                />
+              </div>
+            </div>
 
             {/* Sale Date */}
             <div className="space-y-2">
