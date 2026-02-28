@@ -796,7 +796,7 @@ export default function POSPage() {
                       <div className="font-mono text-xs text-muted-foreground">
                         {item.product_code}
                       </div>
-                      <div className="font-medium text-sm truncate">
+                      <div className="font-medium text-sm line-clamp-2">
                         {item.product_name}
                       </div>
                       <div className="text-sm text-muted-foreground">
@@ -944,7 +944,7 @@ export default function POSPage() {
                       <div className="font-mono text-xs text-muted-foreground">
                         {item.product_code}
                       </div>
-                      <div className="font-medium text-sm truncate">
+                      <div className="font-medium text-sm line-clamp-2">
                         {item.product_name}
                       </div>
                       <div className="text-sm text-muted-foreground">

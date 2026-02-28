@@ -107,6 +107,8 @@ export interface Product {
   uom?: UnitOfMeasure
   variants?: ProductVariant[]
   images?: ProductImage[]
+  // Computed from inventory (present when fetched with inventory join)
+  available_stock?: number
 }
 
 export interface Supplier {

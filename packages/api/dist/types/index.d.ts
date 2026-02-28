@@ -90,6 +90,7 @@ export interface Product {
     uom?: UnitOfMeasure;
     variants?: ProductVariant[];
     images?: ProductImage[];
+    available_stock?: number;
 }
 export interface Supplier {
     id: string;
