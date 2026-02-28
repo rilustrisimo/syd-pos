@@ -118,6 +118,19 @@ export interface UnitConversionRow {
   created_at: string
 }
 
+export interface ProductSellingUnitRow {
+  id: string
+  product_id: string
+  uom_id: string
+  conversion_factor: number
+  markup_percentage: number
+  selling_price: number
+  is_primary: boolean
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
 export interface SupplierRow {
   id: string
   code: string

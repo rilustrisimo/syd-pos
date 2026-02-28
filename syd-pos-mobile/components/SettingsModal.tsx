@@ -56,7 +56,16 @@ export function SettingsModal({ visible, onClose }: Props) {
     try {
       await blePrinter.scanForDevices(
         () => { /* devices stream into the store automatically */ },
-        () => { /* onDone: status resets to idle in blePrinter */ },
+        () => {
+          // Scan done — warn if nothing found
+          const found = usePrinterStore.getState().scannedDevices.length
+          if (found === 0) {
+            Alert.alert(
+              'No Printers Found',
+              'No BLE devices were detected.\n\n• Make sure the printer is powered on\n• Disconnect the printer from Android System Bluetooth settings first\n• Move the phone closer to the printer\n• Then tap Scan again',
+            )
+          }
+        },
         12_000,
       )
     } catch (err: unknown) {
@@ -320,7 +329,7 @@ export function SettingsModal({ visible, onClose }: Props) {
               </View>
 
               <Text style={styles.hint}>
-                Requires EAS custom build — does not work in Expo Go.
+                Tip: If your printer is not found, first unpair/disconnect it from Android System Bluetooth settings, then tap Scan here. Thermal printers must be in advertising mode (not already connected) to appear in the list.
               </Text>
             </View>
           </View>

@@ -35,6 +35,7 @@ import type { Product } from '@/lib/supabase/queries/products'
 import { ProductImageUpload } from '@/components/products/product-image-upload'
 import type { ProductImage } from '@/lib/supabase/storage/product-images'
 import { addProductImageRecord } from '@/lib/supabase/storage/product-images'
+import { ProductSellingUnitsManager } from '@/components/products/product-selling-units-manager'
 
 const productFormSchema = z.object({
   code: z.string().min(1, 'Product code is required'),
@@ -629,6 +630,25 @@ export function ProductForm({ product, mode }: ProductFormProps) {
             </div>
           </CardContent>
         </Card>
+
+        {/* Multi-Unit Selling - Only show in edit mode */}
+        {mode === 'edit' && product && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Multiple Selling Units</CardTitle>
+              <CardDescription>
+                Sell this product in different units with different pricing
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ProductSellingUnitsManager
+                productId={product.id}
+                baseUomId={watchBaseUom || product.base_uom_id}
+                productCOGS={Number(watchCost) || product.latest_cogs}
+              />
+            </CardContent>
+          </Card>
+        )}
 
         {/* Inventory Settings */}
         <Card>

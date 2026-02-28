@@ -185,6 +185,13 @@ function ProductCard({ product, quantityInCart, onAdd, onOpenGallery }: ProductC
         <Text style={styles.productName} numberOfLines={2}>
           {product.name}
         </Text>
+        {product.available_stock !== undefined && (
+          <Text style={[styles.productStock, product.available_stock <= 0 && styles.productStockOOS]}>
+            {product.available_stock <= 0
+              ? 'Out of stock'
+              : `Stock: ${Number.isInteger(product.available_stock) ? product.available_stock : product.available_stock.toFixed(2)}`}
+          </Text>
+        )}
         <View style={styles.productFooter}>
           <Text style={styles.productPrice}>
             ₱
@@ -240,6 +247,7 @@ export default function SalesScreen() {
   // POS store
   const cart = usePosStore((s) => s.cart)
   const addItem = usePosStore((s) => s.addItem)
+  const updateQuantity = usePosStore((s) => s.updateQuantity)
   const incrementItem = usePosStore((s) => s.incrementItem)
   const decrementItem = usePosStore((s) => s.decrementItem)
   const removeItem = usePosStore((s) => s.removeItem)
@@ -252,12 +260,14 @@ export default function SalesScreen() {
   const { data: customers = [], isLoading: customersLoading } = useCustomers()
   const { data: walkInCustomer } = useWalkInCustomer()
 
-  // Default to walk-in customer on first load
+  // Default to walk-in customer on first load (use dedicated query or fall back to customers list)
   useEffect(() => {
-    if (walkInCustomer && !customer) {
-      setCustomer(walkInCustomer)
+    const effective =
+      walkInCustomer ?? customers.find((c: Customer) => c.name === 'Walk-in Customer') ?? null
+    if (effective && !customer) {
+      setCustomer(effective)
     }
-  }, [walkInCustomer, customer])
+  }, [walkInCustomer, customers, customer])
   const { data: categories = [] } = useProductCategories()
   const { products, isLoading: productsLoading } = useInventoryCache()
 
@@ -293,6 +303,10 @@ export default function SalesScreen() {
   // ── Customer list (walk-in pinned to top) ─────────────────────────────────
   const filteredCustomers = useMemo(() => {
     const q = customerSearch.toLowerCase()
+    // Use the dedicated walk-in query result, or fall back to the walk-in record
+    // already present in the main customers list (avoids it disappearing during load)
+    const effectiveWalkIn =
+      walkInCustomer ?? customers.find((c: Customer) => c.name === 'Walk-in Customer') ?? null
     const regular = customers.filter(
       (c: Customer) =>
         c.name !== 'Walk-in Customer' &&
@@ -301,7 +315,7 @@ export default function SalesScreen() {
           (c.email ?? '').toLowerCase().includes(q))
     )
     const walkIn =
-      walkInCustomer && (q === '' || 'walk-in'.includes(q)) ? [walkInCustomer] : []
+      effectiveWalkIn && (q === '' || 'walk-in customer'.includes(q)) ? [effectiveWalkIn] : []
     return [...walkIn, ...regular]
   }, [customers, walkInCustomer, customerSearch])
 
@@ -525,6 +539,9 @@ export default function SalesScreen() {
         }
       })
 
+      const paymentStatus =
+        totalPaid >= total ? 'paid' : totalPaid > 0 ? 'partial' : 'unpaid'
+
       const tx = await createTransaction.mutateAsync({
         input: {
           branch_id: effectiveBranchId,
@@ -533,6 +550,11 @@ export default function SalesScreen() {
           delivery_type: deliveryType,
           delivery_address: deliveryType === 'delivery' ? deliveryAddress.trim() : null,
           notes: orderNotes.trim() || null,
+          subtotal,
+          discount_amount: orderDiscount,
+          total_amount: total,
+          amount_paid: totalPaid,
+          payment_status: paymentStatus,
         },
         lines: txLines,
         payments: payments.map((p) => ({
@@ -939,7 +961,22 @@ export default function SalesScreen() {
                   >
                     <Ionicons name="remove" size={16} color="#64748b" />
                   </Pressable>
-                  <Text style={styles.qtyText}>{item.quantity}</Text>
+                  <TextInput
+                    key={`qty-${item.productId}-${item.quantity}`}
+                    style={styles.qtyText}
+                    defaultValue={
+                      Number.isInteger(item.quantity)
+                        ? String(item.quantity)
+                        : item.quantity.toFixed(2)
+                    }
+                    keyboardType="decimal-pad"
+                    selectTextOnFocus
+                    onEndEditing={(e) => {
+                      const v = parseFloat(e.nativeEvent.text)
+                      if (v > 0) updateQuantity(item.productId, v)
+                      else removeItem(item.productId)
+                    }}
+                  />
                   <Pressable
                     style={styles.qtyBtn}
                     onPress={() => incrementItem(item.productId)}
@@ -1547,6 +1584,14 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     lineHeight: 17,
   },
+  productStock: {
+    fontSize: 11,
+    color: '#16a34a',
+    fontWeight: '500',
+  },
+  productStockOOS: {
+    color: '#ef4444',
+  },
   productFooter: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1830,8 +1875,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: '#0f172a',
-    minWidth: 22,
+    minWidth: 36,
     textAlign: 'center',
+    padding: 0,
   },
   cartItemRight: {
     alignItems: 'flex-end',

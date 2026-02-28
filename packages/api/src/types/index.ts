@@ -221,6 +221,12 @@ export interface CreateTransactionInput {
   delivery_address?: string | null
   delivery_phone?: string | null
   notes?: string | null
+  // Financial totals — must be provided by the caller
+  subtotal: number
+  discount_amount: number
+  total_amount: number
+  amount_paid: number
+  payment_status: PaymentStatus
 }
 
 export interface TransactionLineInput {

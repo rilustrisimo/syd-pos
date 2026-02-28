@@ -106,6 +106,11 @@ export const useCreateTransaction = () => {
                     delivery_address: input.delivery_address || null,
                     delivery_phone: input.delivery_phone || null,
                     notes: input.notes || null,
+                    subtotal: input.subtotal,
+                    discount_amount: input.discount_amount,
+                    total_amount: input.total_amount,
+                    amount_paid: input.amount_paid,
+                    payment_status: input.payment_status,
                     created_by: payload.userId,
                 },
             ])
@@ -115,8 +120,9 @@ export const useCreateTransaction = () => {
                 throw new Error(`Failed to create transaction: ${txError.message}`);
             }
             if (payload.lines && payload.lines.length > 0) {
-                const linesData = payload.lines.map((line) => ({
+                const linesData = payload.lines.map((line, index) => ({
                     transaction_id: transaction.id,
+                    line_number: index + 1,
                     product_id: line.product_id,
                     variant_id: line.variant_id || null,
                     quantity: line.quantity,
@@ -140,6 +146,7 @@ export const useCreateTransaction = () => {
                     amount: payment.amount,
                     reference_number: payment.reference_number || null,
                     status: 'completed',
+                    created_by: payload.userId,
                 }));
                 const { error: paymentsError } = await supabase
                     .from('transaction_payments')
