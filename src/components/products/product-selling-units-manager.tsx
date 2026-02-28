@@ -104,12 +104,20 @@ export function ProductSellingUnitsManager({
   const handleConversionChange = (value: string) => {
     setFormData(prev => {
       const conversionFactor = Number(value) || 1
-      const markup = Number(prev.markup_percentage) || 0
-      const price = calculateSellingPrice(productCOGS, conversionFactor, markup)
+      const sellingPrice = Number(prev.selling_price) || 0
+      
+      // Calculate base price for this unit: base COGS / conversion factor
+      const basePricePerUnit = productCOGS / conversionFactor
+      
+      // Calculate markup percentage based on current selling price
+      const markup = basePricePerUnit > 0 
+        ? ((sellingPrice - basePricePerUnit) / basePricePerUnit) * 100 
+        : Number(prev.markup_percentage) || 0
+      
       return {
         ...prev,
         conversion_factor: value,
-        selling_price: price.toFixed(2),
+        markup_percentage: markup.toFixed(2),
       }
     })
   }
@@ -123,6 +131,27 @@ export function ProductSellingUnitsManager({
         ...prev,
         markup_percentage: value,
         selling_price: price.toFixed(2),
+      }
+    })
+  }
+
+  const handlePriceChange = (value: string) => {
+    setFormData(prev => {
+      const sellingPrice = Number(value) || 0
+      const conversionFactor = Number(prev.conversion_factor) || 1
+      
+      // Calculate base price for this unit: base COGS / conversion factor
+      const basePricePerUnit = productCOGS / conversionFactor
+      
+      // Calculate markup percentage: ((selling - base) / base) * 100
+      const markup = basePricePerUnit > 0 
+        ? ((sellingPrice - basePricePerUnit) / basePricePerUnit) * 100 
+        : 0
+      
+      return {
+        ...prev,
+        selling_price: value,
+        markup_percentage: markup.toFixed(2),
       }
     })
   }
@@ -325,7 +354,7 @@ export function ProductSellingUnitsManager({
                 step="0.01"
                 placeholder="0.00"
                 value={formData.selling_price}
-                onChange={(e) => setFormData(prev => ({ ...prev, selling_price: e.target.value }))}
+                onChange={(e) => handlePriceChange(e.target.value)}
               />
               <p className="text-xs text-muted-foreground">
                 Auto-calculated from COGS, conversion, and markup. Can be edited.
