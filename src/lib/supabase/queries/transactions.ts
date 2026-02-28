@@ -367,18 +367,8 @@ export async function createTransaction(
     if (paymentError) throw paymentError
   }
 
-  // Update inventory (the trigger should handle this, but let's do it manually for safety)
-  for (const line of lines) {
-    await updateInventoryForSale(
-      input.branch_id,
-      line.product_id,
-      line.variant_id || null,
-      line.quantity,
-      txn.id,
-      userId,
-      line.uom_id
-    )
-  }
+  // Inventory is now handled by database trigger (process_transaction_inventory)
+  // No need to update manually - trigger uses correct multi-unit conversion logic
 
   // Update customer balance if credit payment
   const creditPayment = payments.find(p => p.payment_method === 'credit')
@@ -818,17 +808,9 @@ export async function createReturnTransaction(
 
     if (lineError) throw lineError
 
-    // Restock inventory if applicable
-    if (line.restock) {
-      await updateInventoryForReturn(
-        input.branch_id,
-        line.product_id,
-        line.variant_id || null,
-        line.quantity,
-        returnTransaction.id,
-        userId
-      )
-    }
+    // Inventory restocking is now handled by database trigger (process_transaction_inventory)
+    // TODO: If conditional restocking is needed, add a 'restock' column to transaction_lines
+    // and update the trigger to check it before updating inventory
   }
 
   // Record refund
