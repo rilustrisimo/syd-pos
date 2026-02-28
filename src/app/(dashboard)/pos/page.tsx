@@ -7,6 +7,7 @@ import { usePOSProductSearch, useCreateTransaction, useTodaysSummary } from '@/h
 import { useSearchCustomers, useWalkInCustomer, useCreateCustomer } from '@/hooks/useCustomers'
 import { useBranches } from '@/hooks/useInventory'
 import { useDiscountRules } from '@/hooks/useDiscountRules'
+import { useProductSellingUnits } from '@/hooks/useProductSellingUnits'
 import { getStandardDiscountForMarkup } from '@/lib/supabase/queries/discount-rules'
 import { toast } from 'sonner'
 import {
@@ -113,6 +114,9 @@ export default function POSPage() {
   const [newCustomerType, setNewCustomerType] = useState<'cash' | 'credit'>('cash')
   const [saleDate, setSaleDate] = useState(new Date().toISOString().split('T')[0])
   const [discountInput, setDiscountInput] = useState('')
+  const [isUnitSelectorOpen, setIsUnitSelectorOpen] = useState(false)
+  const [selectedProduct, setSelectedProduct] = useState<any>(null)
+  const [selectedUnitId, setSelectedUnitId] = useState<string>('')
 
   // Store
   const {
@@ -165,6 +169,7 @@ export default function POSPage() {
   )
   const { data: searchedCustomers } = useSearchCustomers(customerSearch, 10)
   const { data: todaysSummary } = useTodaysSummary(branchId || undefined)
+  const { data: sellingUnits = [], isLoading: isLoadingUnits } = useProductSellingUnits(selectedProduct?.id)
 
   const createTransaction = useCreateTransaction()
   const createCustomer = useCreateCustomer()
@@ -195,6 +200,22 @@ export default function POSPage() {
     }
   }, [walkInCustomer, customer, setCustomer])
 
+  // Auto-select primary unit when selling units are loaded
+  useEffect(() => {
+    if (sellingUnits.length > 0 && !selectedUnitId) {
+      const primaryUnit = sellingUnits.find(su => su.is_primary && su.is_active)
+      if (primaryUnit) {
+        setSelectedUnitId(primaryUnit.uom_id)
+      } else {
+        // Fallback to first active unit
+        const firstActive = sellingUnits.find(su => su.is_active)
+        if (firstActive) {
+          setSelectedUnitId(firstActive.uom_id)
+        }
+      }
+    }
+  }, [sellingUnits, selectedUnitId])
+
   // Handle product selection
   const handleAddProduct = useCallback((product: any) => {
     // Prevent adding out of stock items
@@ -203,24 +224,45 @@ export default function POSPage() {
       return
     }
     
+    // Store product and open unit selector
+    setSelectedProduct(product)
+    setIsUnitSelectorOpen(true)
+  }, [])
+  
+  // Handle adding product with selected unit
+  const handleAddWithUnit = useCallback(() => {
+    if (!selectedProduct || !selectedUnitId) return
+    
+    // Find the selected selling unit
+    const sellingUnit = sellingUnits.find(su => su.uom_id === selectedUnitId)
+    
+    if (!sellingUnit) {
+      toast.error('Please select a unit')
+      return
+    }
+    
     addItem({
-      product_id: product.id,
-      product_code: product.code,
-      product_name: product.name,
+      product_id: selectedProduct.id,
+      product_code: selectedProduct.code,
+      product_name: selectedProduct.name,
       variant_id: null,
       variant_name: null,
       quantity: 1,
-      uom_id: product.uom_id,
-      uom_name: product.uom_abbreviation || product.uom_name,
-      unit_price: product.unit_price,
-      cogs_per_unit: product.cogs,
-      markup_percentage: product.markup_percentage ?? 0,
+      uom_id: sellingUnit.uom_id,
+      uom_name: sellingUnit.uom?.code || sellingUnit.uom?.name || '',
+      unit_price: sellingUnit.selling_price,
+      cogs_per_unit: selectedProduct.cogs / sellingUnit.conversion_factor,
+      markup_percentage: sellingUnit.markup_percentage,
       discount_amount: 0,
-      available_stock: product.available_stock,
+      available_stock: selectedProduct.available_stock,
     })
+    
     setProductSearch('')
-    toast.success(`Added ${product.name} to cart`)
-  }, [addItem])
+    setIsUnitSelectorOpen(false)
+    setSelectedProduct(null)
+    setSelectedUnitId('')
+    toast.success(`Added ${selectedProduct.name} to cart`)
+  }, [selectedProduct, selectedUnitId, sellingUnits, addItem])
 
   // Handle customer selection
   const handleSelectCustomer = useCallback((cust: any) => {
@@ -1429,6 +1471,86 @@ export default function POSPage() {
         invoiceData={pendingInvoice}
         onComplete={() => setPendingInvoice(null)}
       />
+
+      {/* Unit Selector Dialog */}
+      <Dialog open={isUnitSelectorOpen} onOpenChange={(open) => {
+        setIsUnitSelectorOpen(open)
+        if (!open) {
+          setSelectedProduct(null)
+          setSelectedUnitId('')
+        }
+      }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Select Unit</DialogTitle>
+            <DialogDescription>
+              {selectedProduct?.name} can be sold in multiple units. Choose one:
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            {isLoadingUnits ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : sellingUnits.length === 0 ? (
+              <div className="text-sm text-muted-foreground text-center py-4">
+                No selling units configured. Using default unit.
+              </div>
+            ) : (
+              <div className="grid gap-2">
+                {sellingUnits
+                  .filter(su => su.is_active)
+                  .map((unit) => (
+                    <Button
+                      key={unit.id}
+                      type="button"
+                      variant={selectedUnitId === unit.uom_id ? 'default' : 'outline'}
+                      className="w-full justify-start h-auto py-3"
+                      onClick={() => setSelectedUnitId(unit.uom_id)}
+                    >
+                      <div className="flex flex-col items-start w-full">
+                        <div className="flex items-center justify-between w-full">
+                          <span className="font-medium">
+                            {unit.uom?.name} ({unit.uom?.code})
+                            {unit.is_primary && (
+                              <Badge variant="secondary" className="ml-2">Primary</Badge>
+                            )}
+                          </span>
+                          <span className="font-bold">
+                            {formatCurrency(unit.selling_price)}
+                          </span>
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-1">
+                          {unit.conversion_factor} {unit.uom?.code} per base unit • {unit.markup_percentage.toFixed(1)}% markup
+                        </div>
+                      </div>
+                    </Button>
+                  ))}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setIsUnitSelectorOpen(false)
+                setSelectedProduct(null)
+                setSelectedUnitId('')
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={handleAddWithUnit}
+              disabled={!selectedUnitId || isLoadingUnits}
+            >
+              Add to Cart
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* New Customer Dialog */}
       <Dialog open={isNewCustomerOpen} onOpenChange={setIsNewCustomerOpen}>

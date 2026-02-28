@@ -463,15 +463,32 @@ async function updateInventoryForSale(
 
   const productData = product as any
   let baseUnitQty = quantity
+  let conversionFactor = 1
 
-  // Convert selling units to base units if needed
-  // Example: Selling 20 kg, where 1 box = 20 kg → deduct 1 box from inventory
-  if (
-    uomId === productData.selling_uom_id &&
-    productData.base_uom_id !== productData.selling_uom_id &&
-    productData.conversion_factor > 0
-  ) {
-    baseUnitQty = quantity / productData.conversion_factor
+  // If the UOM used is not the base unit, we need to convert
+  if (uomId !== productData.base_uom_id) {
+    // First check if it's a selling unit with its own conversion factor
+    const { data: sellingUnit, error: suError } = await supabase
+      .from('product_selling_units')
+      .select('conversion_factor')
+      .eq('product_id', productId)
+      .eq('uom_id', uomId)
+      .eq('is_active', true)
+      .single()
+
+    if (suError && suError.code !== 'PGRST116') throw suError
+
+    if (sellingUnit) {
+      // Use the selling unit's conversion factor
+      conversionFactor = sellingUnit.conversion_factor
+    } else if (uomId === productData.selling_uom_id && productData.conversion_factor > 0) {
+      // Fall back to product's default conversion factor
+      conversionFactor = productData.conversion_factor
+    }
+
+    // Convert to base units: quantity sold ÷ conversion factor
+    // Example: Selling 20 sacks, where 20 sacks = 1 m³ → deduct 20 ÷ 20 = 1 m³
+    baseUnitQty = quantity / conversionFactor
   }
 
   // Get current inventory
@@ -518,8 +535,8 @@ async function updateInventoryForSale(
 
   // Record movement (in base units, with note if conversion happened)
   const notes =
-    baseUnitQty !== quantity
-      ? `Sold ${quantity} selling units, deducted ${baseUnitQty} base units`
+    conversionFactor !== 1
+      ? `Sold ${quantity} selling units (conversion: ${conversionFactor}), deducted ${baseUnitQty.toFixed(4)} base units`
       : null
 
   await supabase
