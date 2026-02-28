@@ -6,8 +6,20 @@ const PRODUCT_SELECT = `
   category:product_categories(id, name),
   subcategory:product_subcategories(id, name),
   variants:product_variants(*),
-  images:product_images(id, url, alt_text, is_primary, sort_order)
+  images:product_images(id, url, alt_text, is_primary, sort_order),
+  inventory(quantity_on_hand, quantity_reserved)
 `;
+function computeAvailableStock(raw) {
+    if (!Array.isArray(raw.inventory))
+        return undefined;
+    return raw.inventory.reduce((sum, inv) => sum + (inv.quantity_on_hand - inv.quantity_reserved), 0);
+}
+function mapProduct(raw) {
+    return {
+        ...raw,
+        available_stock: computeAvailableStock(raw),
+    };
+}
 export const useProducts = (options) => {
     return useQuery({
         queryKey: PRODUCTS_QUERY_KEY,
@@ -20,7 +32,7 @@ export const useProducts = (options) => {
             if (error) {
                 throw new Error(`Failed to fetch products: ${error.message}`);
             }
-            return (data || []);
+            return (data || []).map(mapProduct);
         },
         staleTime: 1000 * 60 * 5,
         gcTime: 1000 * 60 * 60,
@@ -45,7 +57,7 @@ export const useSearchProducts = (query, options) => {
             if (error) {
                 throw new Error(`Failed to search products: ${error.message}`);
             }
-            return (data || []);
+            return (data || []).map(mapProduct);
         },
         staleTime: 1000 * 60 * 5,
         gcTime: 1000 * 60 * 30,
@@ -68,7 +80,7 @@ export const useProduct = (id, options) => {
             if (error) {
                 throw new Error(`Failed to fetch product: ${error.message}`);
             }
-            return data;
+            return mapProduct(data);
         },
         staleTime: 1000 * 60 * 5,
         gcTime: 1000 * 60 * 60,
@@ -92,7 +104,7 @@ export const useProductsByCategory = (categoryId, options) => {
             if (error) {
                 throw new Error(`Failed to fetch products: ${error.message}`);
             }
-            return (data || []);
+            return (data || []).map(mapProduct);
         },
         staleTime: 1000 * 60 * 5,
         gcTime: 1000 * 60 * 60,

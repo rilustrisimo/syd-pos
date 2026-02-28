@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
-import { Alert, Pressable, SafeAreaView, ScrollView, Text, View, StyleSheet } from 'react-native'
+import { Alert, Pressable, ScrollView, Text, View, StyleSheet } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import { useLocalSearchParams } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import { TransactionLine, useTransaction, useAuth } from '@syd/api'

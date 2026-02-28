@@ -367,7 +367,8 @@ export async function createTransaction(
       line.variant_id || null,
       line.quantity,
       txn.id,
-      userId
+      userId,
+      line.uom_id
     )
   }
 
@@ -446,9 +447,32 @@ async function updateInventoryForSale(
   variantId: string | null,
   quantity: number,
   transactionId: string,
-  userId: string
+  userId: string,
+  uomId: string
 ) {
   const supabase = createClient()
+
+  // Get product's unit information for conversion
+  const { data: product, error: prodError } = await supabase
+    .from('products')
+    .select('base_uom_id, selling_uom_id, conversion_factor')
+    .eq('id', productId)
+    .single()
+
+  if (prodError) throw prodError
+
+  const productData = product as any
+  let baseUnitQty = quantity
+
+  // Convert selling units to base units if needed
+  // Example: Selling 20 kg, where 1 box = 20 kg → deduct 1 box from inventory
+  if (
+    uomId === productData.selling_uom_id &&
+    productData.base_uom_id !== productData.selling_uom_id &&
+    productData.conversion_factor > 0
+  ) {
+    baseUnitQty = quantity / productData.conversion_factor
+  }
 
   // Get current inventory
   let invQuery = supabase
@@ -468,10 +492,10 @@ async function updateInventoryForSale(
   if (invError && invError.code !== 'PGRST116') throw invError
 
   const currentQty = (inventory as any)?.quantity_on_hand || 0
-  const newQty = currentQty - quantity
+  const newQty = currentQty - baseUnitQty
 
   if (inventory) {
-    // Update existing inventory
+    // Update existing inventory (in base units)
     await supabase
       .from('branch_inventory')
       .update({
@@ -487,12 +511,17 @@ async function updateInventoryForSale(
         branch_id: branchId,
         product_id: productId,
         variant_id: variantId,
-        quantity_on_hand: -quantity,
+        quantity_on_hand: -baseUnitQty,
         last_movement_at: new Date().toISOString()
       } as any)
   }
 
-  // Record movement
+  // Record movement (in base units, with note if conversion happened)
+  const notes =
+    baseUnitQty !== quantity
+      ? `Sold ${quantity} selling units, deducted ${baseUnitQty} base units`
+      : null
+
   await supabase
     .from('inventory_movements')
     .insert({
@@ -500,12 +529,13 @@ async function updateInventoryForSale(
       product_id: productId,
       variant_id: variantId,
       movement_type: 'sale',
-      quantity_change: -quantity,
+      quantity_change: -baseUnitQty,
       quantity_before: currentQty,
       quantity_after: newQty,
       reference_id: transactionId,
       reference_type: 'transaction',
-      created_by: userId
+      created_by: userId,
+      notes: notes
     } as any)
 }
 

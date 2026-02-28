@@ -10,6 +10,7 @@ import {
   getRecentTransactions,
   getSalesByProduct,
   getSalesByCategory,
+  getSalesTrendByDateRange,
   getSupplierPurchaseHistory,
   getDemandForecast,
   SalesReportFilters,
@@ -104,6 +105,16 @@ export function useSalesByCategory(filters: SalesReportFilters = {}) {
     queryKey: [...dashboardKeys.all, 'sales-by-category', filters],
     queryFn: () => getSalesByCategory(filters),
     staleTime: 300000, // 5 minutes
+  })
+}
+
+// Hook to get daily sales trend for an arbitrary date range
+export function useSalesTrendByDateRange(dateFrom: string, dateTo: string) {
+  return useQuery({
+    queryKey: [...dashboardKeys.all, 'sales-trend-range', dateFrom, dateTo],
+    queryFn: () => getSalesTrendByDateRange(dateFrom, dateTo),
+    staleTime: 300000, // 5 minutes
+    enabled: !!dateFrom && !!dateTo,
   })
 }
 

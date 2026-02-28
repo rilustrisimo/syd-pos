@@ -9,8 +9,26 @@ const PRODUCT_SELECT = `
   category:product_categories(id, name),
   subcategory:product_subcategories(id, name),
   variants:product_variants(*),
-  images:product_images(id, url, alt_text, is_primary, sort_order)
+  images:product_images(id, url, alt_text, is_primary, sort_order),
+  inventory(quantity_on_hand, quantity_reserved)
 `
+
+/** Compute available_stock by summing inventory across all branches. */
+function computeAvailableStock(raw: any): number | undefined {
+  if (!Array.isArray(raw.inventory)) return undefined
+  return raw.inventory.reduce(
+    (sum: number, inv: { quantity_on_hand: number; quantity_reserved: number }) =>
+      sum + (inv.quantity_on_hand - inv.quantity_reserved),
+    0
+  )
+}
+
+function mapProduct(raw: any): Product {
+  return {
+    ...raw,
+    available_stock: computeAvailableStock(raw),
+  }
+}
 
 /**
  * Hook to fetch all products (with images and categories)
@@ -29,7 +47,7 @@ export const useProducts = (options?: { enabled?: boolean }) => {
         throw new Error(`Failed to fetch products: ${error.message}`)
       }
 
-      return (data || []) as Product[]
+      return (data || []).map(mapProduct) as Product[]
     },
     staleTime: 1000 * 60 * 5, // 5 minutes
     gcTime: 1000 * 60 * 60, // 1 hour in cache
@@ -62,7 +80,7 @@ export const useSearchProducts = (query: string, options?: { enabled?: boolean }
         throw new Error(`Failed to search products: ${error.message}`)
       }
 
-      return (data || []) as Product[]
+      return (data || []).map(mapProduct) as Product[]
     },
     staleTime: 1000 * 60 * 5,
     gcTime: 1000 * 60 * 30,
@@ -92,7 +110,7 @@ export const useProduct = (id: string | undefined, options?: { enabled?: boolean
         throw new Error(`Failed to fetch product: ${error.message}`)
       }
 
-      return data as Product
+      return mapProduct(data) as Product
     },
     staleTime: 1000 * 60 * 5,
     gcTime: 1000 * 60 * 60,
@@ -126,7 +144,7 @@ export const useProductsByCategory = (
         throw new Error(`Failed to fetch products: ${error.message}`)
       }
 
-      return (data || []) as Product[]
+      return (data || []).map(mapProduct) as Product[]
     },
     staleTime: 1000 * 60 * 5,
     gcTime: 1000 * 60 * 60,

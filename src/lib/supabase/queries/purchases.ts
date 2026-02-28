@@ -467,7 +467,7 @@ export async function receiveAllPOLines(poId: string, userId: string, receiveDat
 
     if (remaining <= 0) continue
 
-    // Update line quantity_received (triggers DB pricing update)
+    // Update line quantity_received (DB trigger handles inventory update automatically)
     const { error: updateError } = await supabase
       .from('purchase_order_lines')
       .update({ quantity_received: ordered } as any)
@@ -475,9 +475,8 @@ export async function receiveAllPOLines(poId: string, userId: string, receiveDat
 
     if (updateError) throw updateError
 
-    // Update branch inventory
-    const po = line.purchase_order as any
-    await updateBranchInventory(po.branch_id, line.product_id, remaining, userId, poId)
+    // Note: Inventory is automatically updated by the database trigger 'update_inventory_on_receive'
+    // No manual inventory update needed here to avoid double-counting
   }
 
   // Set PO status to received with custom date

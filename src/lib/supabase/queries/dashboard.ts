@@ -444,6 +444,76 @@ export async function getSalesByCategory(filters: SalesReportFilters = {}): Prom
   return categories.sort((a, b) => b.total_revenue - a.total_revenue)
 }
 
+// Get daily sales trend for an arbitrary date range (revenue + cost + profit per day)
+export interface SalesTrendPoint {
+  date: string
+  revenue: number
+  cost: number
+  profit: number
+  transactions: number
+}
+
+export async function getSalesTrendByDateRange(
+  dateFrom: string,
+  dateTo: string
+): Promise<SalesTrendPoint[]> {
+  const supabase = createClient()
+
+  const { data, error } = await supabase
+    .from('transaction_lines')
+    .select(`
+      quantity,
+      unit_price,
+      cogs_per_unit,
+      transaction:transactions!transaction_id(
+        id,
+        transaction_type,
+        transaction_date,
+        is_deleted
+      )
+    `)
+    .gte('created_at', `${dateFrom}T00:00:00`)
+    .lte('created_at', `${dateTo}T23:59:59`)
+
+  if (error) throw error
+
+  // Build date map with all days in range initialized to 0
+  const dateMap = new Map<string, SalesTrendPoint>()
+  const start = new Date(dateFrom)
+  const end = new Date(dateTo)
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    const key = d.toISOString().split('T')[0]
+    dateMap.set(key, { date: key, revenue: 0, cost: 0, profit: 0, transactions: 0 })
+  }
+
+  // Track transaction IDs to count unique transactions per day
+  const txnDayMap = new Map<string, string>() // txnId -> date
+
+  for (const line of (data as any[]) || []) {
+    if (line.transaction?.transaction_type !== 'sale') continue
+    if (line.transaction?.is_deleted) continue
+
+    const dateStr: string = line.transaction.transaction_date?.split('T')[0]
+    if (!dateStr || !dateMap.has(dateStr)) continue
+
+    const revenue = (line.quantity || 0) * (line.unit_price || 0)
+    const cost = (line.quantity || 0) * (line.cogs_per_unit || 0)
+
+    const point = dateMap.get(dateStr)!
+    point.revenue += revenue
+    point.cost += cost
+    point.profit += revenue - cost
+
+    const txnKey = `${line.transaction.id}_${dateStr}`
+    if (!txnDayMap.has(txnKey)) {
+      txnDayMap.set(txnKey, dateStr)
+      point.transactions += 1
+    }
+  }
+
+  return Array.from(dateMap.values())
+}
+
 // ============================================
 // SUPPLIER PURCHASE HISTORY
 // ============================================

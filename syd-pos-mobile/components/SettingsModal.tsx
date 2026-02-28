@@ -4,12 +4,12 @@ import {
   Alert,
   Modal,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { useLogout, useAuth, useBranches } from '@syd/api'
 import { useAuthStore } from '../store/auth'
