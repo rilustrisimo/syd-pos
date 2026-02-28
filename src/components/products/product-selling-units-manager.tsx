@@ -174,7 +174,7 @@ export function ProductSellingUnitsManager({
             Add multiple selling units with different prices
           </p>
         </div>
-        <Button onClick={() => handleOpenDialog()} size="sm">
+        <Button type="button" onClick={() => handleOpenDialog()} size="sm">
           <Plus className="h-4 w-4 mr-2" />
           Add Selling Unit
         </Button>
@@ -225,6 +225,7 @@ export function ProductSellingUnitsManager({
                     <div className="flex items-center justify-end gap-2">
                       {!unit.is_primary && (
                         <Button
+                          type="button"
                           variant="ghost"
                           size="sm"
                           onClick={() => handleSetPrimary(unit.id)}
@@ -234,6 +235,7 @@ export function ProductSellingUnitsManager({
                         </Button>
                       )}
                       <Button
+                        type="button"
                         variant="ghost"
                         size="sm"
                         onClick={() => handleOpenDialog(unit)}
@@ -241,6 +243,7 @@ export function ProductSellingUnitsManager({
                         <Pencil className="h-4 w-4" />
                       </Button>
                       <Button
+                        type="button"
                         variant="ghost"
                         size="sm"
                         onClick={() => handleDelete(unit.id)}
@@ -331,10 +334,11 @@ export function ProductSellingUnitsManager({
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={handleCloseDialog}>
+            <Button type="button" variant="outline" onClick={handleCloseDialog}>
               Cancel
             </Button>
             <Button
+              type="button"
               onClick={handleSubmit}
               disabled={!formData.uom_id || createUnit.isPending || updateUnit.isPending}
             >
