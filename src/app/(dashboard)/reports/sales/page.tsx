@@ -63,6 +63,13 @@ function todayStr(): string {
   return new Date().toISOString().split('T')[0]
 }
 
+function formatLocalDate(year: number, month: number, day: number): string {
+  const yyyy = year.toString()
+  const mm = (month + 1).toString().padStart(2, '0')
+  const dd = day.toString().padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
+}
+
 function getPresetRange(preset: string): { from: string; to: string } {
   const now = new Date()
   const y = now.getFullYear()
@@ -73,58 +80,67 @@ function getPresetRange(preset: string): { from: string; to: string } {
     case 'today':
       return { from: todayStr(), to: todayStr() }
     case 'yesterday': {
-      const yest = new Date(y, m, d - 1).toISOString().split('T')[0]
-      return { from: yest, to: yest }
+      const yest = new Date(y, m, d - 1)
+      return { 
+        from: formatLocalDate(yest.getFullYear(), yest.getMonth(), yest.getDate()), 
+        to: formatLocalDate(yest.getFullYear(), yest.getMonth(), yest.getDate()) 
+      }
     }
     case 'this_week': {
       const dow = now.getDay() // 0=Sun
-      const weekStart = new Date(y, m, d - dow).toISOString().split('T')[0]
-      return { from: weekStart, to: todayStr() }
+      const weekStart = new Date(y, m, d - dow)
+      return { 
+        from: formatLocalDate(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate()), 
+        to: todayStr() 
+      }
     }
     case 'last_week': {
       const dow = now.getDay()
       const prevSun = new Date(y, m, d - dow - 7)
       const prevSat = new Date(y, m, d - dow - 1)
       return {
-        from: prevSun.toISOString().split('T')[0],
-        to: prevSat.toISOString().split('T')[0],
+        from: formatLocalDate(prevSun.getFullYear(), prevSun.getMonth(), prevSun.getDate()),
+        to: formatLocalDate(prevSat.getFullYear(), prevSat.getMonth(), prevSat.getDate()),
       }
     }
     case 'this_month':
       return {
-        from: new Date(y, m, 1).toISOString().split('T')[0],
+        from: formatLocalDate(y, m, 1),
         to: todayStr(),
       }
     case 'last_month': {
       const firstOfLast = new Date(y, m - 1, 1)
       const lastOfLast = new Date(y, m, 0)
       return {
-        from: firstOfLast.toISOString().split('T')[0],
-        to: lastOfLast.toISOString().split('T')[0],
+        from: formatLocalDate(firstOfLast.getFullYear(), firstOfLast.getMonth(), firstOfLast.getDate()),
+        to: formatLocalDate(lastOfLast.getFullYear(), lastOfLast.getMonth(), lastOfLast.getDate()),
       }
     }
     case 'this_quarter': {
       const qStart = new Date(y, Math.floor(m / 3) * 3, 1)
-      return { from: qStart.toISOString().split('T')[0], to: todayStr() }
+      return { 
+        from: formatLocalDate(qStart.getFullYear(), qStart.getMonth(), qStart.getDate()), 
+        to: todayStr() 
+      }
     }
     case 'last_quarter': {
       const thisQStart = Math.floor(m / 3) * 3
       const lqStart = new Date(y, thisQStart - 3, 1)
       const lqEnd = new Date(y, thisQStart, 0)
       return {
-        from: lqStart.toISOString().split('T')[0],
-        to: lqEnd.toISOString().split('T')[0],
+        from: formatLocalDate(lqStart.getFullYear(), lqStart.getMonth(), lqStart.getDate()),
+        to: formatLocalDate(lqEnd.getFullYear(), lqEnd.getMonth(), lqEnd.getDate()),
       }
     }
     case 'this_year':
       return {
-        from: new Date(y, 0, 1).toISOString().split('T')[0],
+        from: formatLocalDate(y, 0, 1),
         to: todayStr(),
       }
     case 'last_year':
       return {
-        from: new Date(y - 1, 0, 1).toISOString().split('T')[0],
-        to: new Date(y - 1, 11, 31).toISOString().split('T')[0],
+        from: formatLocalDate(y - 1, 0, 1),
+        to: formatLocalDate(y - 1, 11, 31),
       }
     default:
       return {

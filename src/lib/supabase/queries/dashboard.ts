@@ -343,7 +343,10 @@ export async function getSalesByProduct(filters: SalesReportFilters = {}): Promi
         transaction_type,
         transaction_date,
         branch_id,
-        is_deleted
+        is_deleted,
+        delivery_fee,
+        other_fees,
+        subtotal
       )
     `)
 
@@ -372,7 +375,18 @@ export async function getSalesByProduct(filters: SalesReportFilters = {}): Promi
     const productId = line.product?.id
     if (!productId) continue
 
-    const revenue = line.quantity * line.unit_price
+    // Use line_total which already includes discounts
+    // Add proportional share of delivery_fee and other_fees
+    const subtotal = line.transaction?.subtotal || 0
+    const deliveryFee = line.transaction?.delivery_fee || 0
+    const otherFees = line.transaction?.other_fees || 0
+    
+    // Calculate proportional share of fees based on line_total vs subtotal
+    const lineRatio = subtotal > 0 ? (line.line_total || 0) / subtotal : 0
+    const proportionalDeliveryFee = deliveryFee * lineRatio
+    const proportionalOtherFees = otherFees * lineRatio
+    
+    const revenue = (line.line_total || 0) + proportionalDeliveryFee + proportionalOtherFees
     const cost = line.quantity * line.cogs_per_unit
 
     const existing = productMap.get(productId)
@@ -468,10 +482,14 @@ export async function getSalesTrendByDateRange(
       transaction_type,
       transaction_date,
       is_deleted,
+      delivery_fee,
+      other_fees,
+      subtotal,
       lines:transaction_lines(
         quantity,
         unit_price,
-        cogs_per_unit
+        cogs_per_unit,
+        line_total
       )
     `)
     .eq('transaction_type', 'sale')
@@ -498,15 +516,33 @@ export async function getSalesTrendByDateRange(
     const point = dateMap.get(dateStr)!
     point.transactions += 1
 
+    const deliveryFee = txn.delivery_fee || 0
+    const otherFees = txn.other_fees || 0
+    const subtotal = txn.subtotal || 0
+
     // Sum all lines for this transaction
+    let txnRevenue = 0
+    let txnCost = 0
+    
     for (const line of txn.lines || []) {
-      const revenue = (line.quantity || 0) * (line.unit_price || 0)
+      // Use line_total which includes discounts
+      const lineTotal = line.line_total || 0
       const cost = (line.quantity || 0) * (line.cogs_per_unit || 0)
       
-      point.revenue += revenue
-      point.cost += cost
-      point.profit += revenue - cost
+      // Calculate proportional share of fees
+      const lineRatio = subtotal > 0 ? lineTotal / subtotal : 0
+      const proportionalDeliveryFee = deliveryFee * lineRatio
+      const proportionalOtherFees = otherFees * lineRatio
+      
+      const revenue = lineTotal + proportionalDeliveryFee + proportionalOtherFees
+      
+      txnRevenue += revenue
+      txnCost += cost
     }
+    
+    point.revenue += txnRevenue
+    point.cost += txnCost
+    point.profit += txnRevenue - txnCost
   }
 
   return Array.from(dateMap.values())
