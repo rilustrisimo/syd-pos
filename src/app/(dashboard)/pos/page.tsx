@@ -174,7 +174,7 @@ export default function POSPage() {
     productSearch,
     branchId || ''
   )
-  const { data: searchedCustomers, isLoading: isLoadingCustomers } = useSearchCustomers(customerSearch, 10)
+  const { data: searchedCustomers, isFetching: isFetchingCustomers } = useSearchCustomers(customerSearch, 10)
   const { data: todaysSummary } = useTodaysSummary(branchId || undefined)
   const { data: sellingUnits = [], isLoading: isLoadingUnits } = useProductSellingUnits(selectedProduct?.id)
 
@@ -735,7 +735,7 @@ export default function POSPage() {
                   onValueChange={setCustomerSearch}
                 />
                 <CommandList>
-                  {isLoadingCustomers && customerSearch ? (
+                  {isFetchingCustomers ? (
                     <div className="flex items-center justify-center py-6 text-sm text-muted-foreground">
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       Searching...
