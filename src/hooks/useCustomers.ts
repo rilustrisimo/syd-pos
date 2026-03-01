@@ -52,6 +52,7 @@ export function useSearchCustomers(query: string, limit = 10) {
     enabled: true, // Always enabled, will show recent customers when query is empty
     staleTime: 0, // Always fetch fresh results on search
     gcTime: 30000, // Keep results in cache for 30 seconds for back navigation
+    placeholderData: undefined, // Don't show stale data from previous queries while fetching
   })
 }
 
