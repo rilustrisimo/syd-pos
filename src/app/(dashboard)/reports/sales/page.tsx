@@ -472,35 +472,29 @@ export default function SalesReportPage() {
       {/* ── Fee & Discount Summary Cards ── */}
       {feeSummary && (feeSummary.total_delivery_fees > 0 || feeSummary.total_other_fees > 0 || feeSummary.total_discounts > 0) && (
         <div className="grid gap-4 md:grid-cols-4">
-          {feeSummary.total_discounts > 0 && (
-            <SummaryCard
-              title="Total Discounts"
-              value={formatCurrency(feeSummary.total_discounts)}
-              sub={`${feeSummary.items_with_discount} item${feeSummary.items_with_discount !== 1 ? 's' : ''} discounted`}
-              icon={<Percent className="h-4 w-4 text-muted-foreground" />}
-              highlight="red"
-            />
-          )}
-          {feeSummary.total_delivery_fees > 0 && (
-            <SummaryCard
-              title="Delivery Fees"
-              value={formatCurrency(feeSummary.total_delivery_fees)}
-              sub={`${feeSummary.transactions_with_delivery_fee} transaction${feeSummary.transactions_with_delivery_fee !== 1 ? 's' : ''}`}
-              icon={<Truck className="h-4 w-4 text-muted-foreground" />}
-            />
-          )}
-          {feeSummary.total_other_fees > 0 && (
-            <SummaryCard
-              title="Other Fees"
-              value={formatCurrency(feeSummary.total_other_fees)}
-              sub={`${feeSummary.transactions_with_other_fees} transaction${feeSummary.transactions_with_other_fees !== 1 ? 's' : ''}`}
-              icon={<DollarSign className="h-4 w-4 text-muted-foreground" />}
-            />
-          )}
           <SummaryCard
-            title="Fees - Discounts"
+            title="Total Discounts"
+            value={formatCurrency(feeSummary.total_discounts)}
+            sub={`${feeSummary.items_with_discount} item${feeSummary.items_with_discount !== 1 ? 's' : ''} discounted`}
+            icon={<Percent className="h-4 w-4 text-muted-foreground" />}
+            highlight={feeSummary.total_discounts > 0 ? "red" : undefined}
+          />
+          <SummaryCard
+            title="Delivery Fees"
+            value={formatCurrency(feeSummary.total_delivery_fees)}
+            sub={`${feeSummary.transactions_with_delivery_fee} transaction${feeSummary.transactions_with_delivery_fee !== 1 ? 's' : ''}`}
+            icon={<Truck className="h-4 w-4 text-muted-foreground" />}
+          />
+          <SummaryCard
+            title="Other Fees"
+            value={formatCurrency(feeSummary.total_other_fees)}
+            sub={`${feeSummary.transactions_with_other_fees} transaction${feeSummary.transactions_with_other_fees !== 1 ? 's' : ''}`}
+            icon={<DollarSign className="h-4 w-4 text-muted-foreground" />}
+          />
+          <SummaryCard
+            title="Net Fees"
             value={formatCurrency(feeSummary.total_fees - feeSummary.total_discounts)}
-            sub="Net adjustment to revenue"
+            sub={`₱${feeSummary.total_fees.toFixed(2)} fees - ₱${feeSummary.total_discounts.toFixed(2)} discounts`}
             icon={<Package className="h-4 w-4 text-muted-foreground" />}
             highlight={(feeSummary.total_fees - feeSummary.total_discounts) >= 0 ? 'green' : 'red'}
           />

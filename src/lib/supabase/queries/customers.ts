@@ -81,7 +81,7 @@ export async function getCustomer(id: string) {
 
   const { data, error } = await supabase
     .from('customers')
-    .select('*')
+    .select('id, name, phone, email, address, customer_type, credit_limit, outstanding_balance, payment_terms, is_active, created_at, updated_at')
     .eq('id', id)
     .single()
 
@@ -120,7 +120,7 @@ export async function getWalkInCustomer() {
 
   const { data, error } = await supabase
     .from('customers')
-    .select('*')
+    .select('id, name, phone, email, address, customer_type, credit_limit, outstanding_balance, payment_terms, is_active, created_at, updated_at')
     .eq('name', 'Walk-in Customer')
     .eq('is_active', true)
     .single()
