@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { usePOSStore } from '@/lib/stores/posStore'
 import { useAuthStore } from '@/lib/stores/auth'
 import { usePOSProductSearch, useCreateTransaction, useTodaysSummary } from '@/hooks/useTransactions'
-import { useSearchCustomers, useWalkInCustomer, useCreateCustomer } from '@/hooks/useCustomers'
+import { useSearchCustomers, useAllActiveCustomers, useCreateCustomer } from '@/hooks/useCustomers'
 import { useBranches } from '@/hooks/useInventory'
 import { useDiscountRules } from '@/hooks/useDiscountRules'
 import { useProductSellingUnits } from '@/hooks/useProductSellingUnits'
@@ -169,17 +169,38 @@ export default function POSPage() {
   // Queries
   const { data: branches } = useBranches()
   const { data: discountRules = [] } = useDiscountRules()
-  const { data: walkInCustomer } = useWalkInCustomer()
+  const { data: allCustomers = [], isLoading: isLoadingCustomers } = useAllActiveCustomers()
   const { data: searchedProducts, isLoading: isSearchingProducts } = usePOSProductSearch(
     productSearch,
     branchId || ''
   )
-  const { data: searchedCustomers, isFetching: isFetchingCustomers } = useSearchCustomers(customerSearch, 10)
   const { data: todaysSummary } = useTodaysSummary(branchId || undefined)
   const { data: sellingUnits = [], isLoading: isLoadingUnits } = useProductSellingUnits(selectedProduct?.id)
 
   const createTransaction = useCreateTransaction()
   const createCustomer = useCreateCustomer()
+
+  // Hardcoded Walk-in Customer (always available, no API call)
+  const WALK_IN_CUSTOMER = {
+    id: 'walk-in',
+    name: 'Walk-in Customer',
+    phone: null,
+    customer_type: 'cash' as const,
+    credit_limit: 0,
+    outstanding_balance: 0,
+  }
+
+  // Filter customers based on search
+  const filteredCustomers = useMemo(() => {
+    if (!customerSearch.trim()) {
+      return allCustomers
+    }
+    const searchLower = customerSearch.toLowerCase()
+    return allCustomers.filter(c => 
+      c.name.toLowerCase().includes(searchLower) ||
+      (c.phone && c.phone.toLowerCase().includes(searchLower))
+    )
+  }, [allCustomers, customerSearch])
 
   // Get authenticated user
   const { user } = useAuthStore()
@@ -195,17 +216,10 @@ export default function POSPage() {
   }, [branches, branchId, setBranchId])
 
   useEffect(() => {
-    if (walkInCustomer && !customer) {
-      setCustomer({
-        id: walkInCustomer.id,
-        name: walkInCustomer.name,
-        phone: walkInCustomer.phone,
-        customer_type: walkInCustomer.customer_type,
-        credit_limit: walkInCustomer.credit_limit,
-        outstanding_balance: walkInCustomer.outstanding_balance,
-      })
+    if (!customer) {
+      setCustomer(WALK_IN_CUSTOMER)
     }
-  }, [walkInCustomer, customer, setCustomer])
+  }, [customer, setCustomer])
 
   // Auto-select primary unit when selling units are loaded
   useEffect(() => {
@@ -485,14 +499,7 @@ export default function POSPage() {
     }
 
     // Use walk-in customer as fallback if none selected
-    const checkoutCustomer = customer || (walkInCustomer ? {
-      id: walkInCustomer.id,
-      name: walkInCustomer.name,
-      phone: walkInCustomer.phone,
-      customer_type: walkInCustomer.customer_type,
-      credit_limit: walkInCustomer.credit_limit,
-      outstanding_balance: walkInCustomer.outstanding_balance,
-    } : null)
+    const checkoutCustomer = customer || WALK_IN_CUSTOMER
 
     if (!checkoutCustomer) {
       toast.error('No customer available')
@@ -585,16 +592,7 @@ export default function POSPage() {
       resetAll()
       setSaleDate(new Date().toISOString().split('T')[0])
       setDiscountInput('')
-      if (walkInCustomer) {
-        setCustomer({
-          id: walkInCustomer.id,
-          name: walkInCustomer.name,
-          phone: walkInCustomer.phone,
-          customer_type: walkInCustomer.customer_type,
-          credit_limit: walkInCustomer.credit_limit,
-          outstanding_balance: walkInCustomer.outstanding_balance,
-        })
-      }
+      setCustomer(WALK_IN_CUSTOMER)
 
       // Build A4 invoice from captured values and open the print dialog
       const invoiceData: InvoiceData = {
@@ -735,10 +733,10 @@ export default function POSPage() {
                   onValueChange={setCustomerSearch}
                 />
                 <CommandList>
-                  {isFetchingCustomers ? (
+                  {isLoadingCustomers ? (
                     <div className="flex items-center justify-center py-6 text-sm text-muted-foreground">
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Searching...
+                      Loading...
                     </div>
                   ) : (
                     <>
@@ -746,19 +744,19 @@ export default function POSPage() {
                         No customers found. Try a different search or add a new customer.
                       </CommandEmpty>
                       <CommandGroup heading={customerSearch ? 'Search Results' : 'All Customers'}>
-                        {walkInCustomer && (
-                          <CommandItem
-                            onSelect={() => handleSelectCustomer(walkInCustomer)}
-                            className="cursor-pointer"
-                          >
-                            <User className="mr-2 h-4 w-4" />
-                            <span>{walkInCustomer.name}</span>
-                            <Badge variant="outline" className="ml-auto">
-                              Default
-                            </Badge>
-                          </CommandItem>
-                        )}
-                        {searchedCustomers?.map((cust) => (
+                        {/* Walk-in Customer - Always on top */}
+                        <CommandItem
+                          onSelect={() => handleSelectCustomer(WALK_IN_CUSTOMER)}
+                          className="cursor-pointer"
+                        >
+                          <User className="mr-2 h-4 w-4" />
+                          <span>{WALK_IN_CUSTOMER.name}</span>
+                          <Badge variant="outline" className="ml-auto">
+                            Default
+                          </Badge>
+                        </CommandItem>
+                        {/* Other customers */}
+                        {filteredCustomers?.map((cust) => (
                           <CommandItem
                             key={cust.id}
                             onSelect={() => handleSelectCustomer(cust)}

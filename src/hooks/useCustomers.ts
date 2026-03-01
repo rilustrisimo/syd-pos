@@ -5,7 +5,7 @@ import {
   getCustomers,
   getCustomer,
   searchCustomers,
-  getWalkInCustomer,
+  getAllActiveCustomers,
   createCustomer,
   updateCustomer,
   deleteCustomer,
@@ -22,7 +22,7 @@ export const customerKeys = {
   details: () => [...customerKeys.all, 'detail'] as const,
   detail: (id: string) => [...customerKeys.details(), id] as const,
   search: (query: string) => [...customerKeys.all, 'search', query] as const,
-  walkIn: () => [...customerKeys.all, 'walk-in'] as const,
+  allActive: () => [...customerKeys.all, 'all-active'] as const,
   stats: () => [...customerKeys.all, 'stats'] as const,
 }
 
@@ -44,6 +44,15 @@ export function useCustomer(id: string) {
   })
 }
 
+// Hook to get all active customers (for POS)
+export function useAllActiveCustomers() {
+  return useQuery({
+    queryKey: customerKeys.allActive(),
+    queryFn: getAllActiveCustomers,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  })
+}
+
 // Hook to search customers (for autocomplete)
 export function useSearchCustomers(query: string, limit = 10) {
   return useQuery({
@@ -52,15 +61,6 @@ export function useSearchCustomers(query: string, limit = 10) {
     enabled: true, // Always enabled, will show recent customers when query is empty
     staleTime: 0, // Always fetch fresh results on search
     gcTime: 30000, // Keep results in cache for 30 seconds for back navigation
-  })
-}
-
-// Hook to get walk-in customer
-export function useWalkInCustomer() {
-  return useQuery({
-    queryKey: customerKeys.walkIn(),
-    queryFn: getWalkInCustomer,
-    staleTime: 300000, // 5 minutes - this rarely changes
   })
 }
 

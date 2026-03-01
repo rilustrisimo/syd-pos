@@ -90,6 +90,21 @@ export async function getCustomer(id: string) {
   return data as Customer
 }
 
+// Get all active customers (for POS - simple and reliable)
+export async function getAllActiveCustomers() {
+  const supabase = createClient()
+
+  const { data, error } = await supabase
+    .from('customers')
+    .select('id, name, phone, customer_type, outstanding_balance, credit_limit')
+    .eq('is_active', true)
+    .order('name')
+
+  if (error) throw error
+
+  return data as Pick<Customer, 'id' | 'name' | 'phone' | 'customer_type' | 'outstanding_balance' | 'credit_limit'>[]
+}
+
 // Search customers (for autocomplete/quick search)
 export async function searchCustomers(query: string, limit = 10) {
   const supabase = createClient()
@@ -112,22 +127,6 @@ export async function searchCustomers(query: string, limit = 10) {
   if (error) throw error
 
   return data as Pick<Customer, 'id' | 'name' | 'phone' | 'customer_type' | 'outstanding_balance' | 'credit_limit'>[]
-}
-
-// Get the default walk-in customer
-export async function getWalkInCustomer() {
-  const supabase = createClient()
-
-  const { data, error } = await supabase
-    .from('customers')
-    .select('id, name, phone, email, address, customer_type, credit_limit, outstanding_balance, payment_terms, is_active, created_at, updated_at')
-    .eq('name', 'Walk-in Customer')
-    .eq('is_active', true)
-    .single()
-
-  if (error) throw error
-
-  return data as Customer
 }
 
 // Create a new customer
