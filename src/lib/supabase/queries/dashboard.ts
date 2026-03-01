@@ -333,6 +333,7 @@ export async function getSalesByProduct(filters: SalesReportFilters = {}): Promi
       cogs_per_unit,
       line_total,
       line_profit,
+      discount_amount,
       product:products!product_id(
         id,
         code,
@@ -553,14 +554,17 @@ export interface SalesFeeSummary {
   total_delivery_fees: number
   total_other_fees: number
   total_fees: number
+  total_discounts: number
   transactions_with_delivery_fee: number
   transactions_with_other_fees: number
+  items_with_discount: number
 }
 
 export async function getSalesFeeSummary(filters: SalesReportFilters = {}): Promise<SalesFeeSummary> {
   const supabase = createClient()
 
-  let query = supabase
+  // Get transaction fees
+  let txnQuery = supabase
     .from('transactions')
     .select('delivery_fee, other_fees, transaction_date, branch_id')
     .eq('transaction_type', 'sale')
@@ -568,28 +572,46 @@ export async function getSalesFeeSummary(filters: SalesReportFilters = {}): Prom
 
   // Apply filters
   if (filters.date_from) {
-    query = query.gte('transaction_date', `${filters.date_from}T00:00:00`)
+    txnQuery = txnQuery.gte('transaction_date', `${filters.date_from}T00:00:00`)
   }
   if (filters.date_to) {
-    query = query.lte('transaction_date', `${filters.date_to}T23:59:59`)
+    txnQuery = txnQuery.lte('transaction_date', `${filters.date_to}T23:59:59`)
   }
   if (filters.branch_id) {
-    query = query.eq('branch_id', filters.branch_id)
+    txnQuery = txnQuery.eq('branch_id', filters.branch_id)
   }
 
-  const { data, error } = await query
+  const { data: txnData, error: txnError } = await txnQuery
+  if (txnError) throw txnError
 
-  if (error) throw error
+  // Get discount amounts from transaction_lines
+  let lineQuery = supabase
+    .from('transaction_lines')
+    .select(`
+      discount_amount,
+      transaction:transactions!transaction_id(
+        transaction_type,
+        transaction_date,
+        branch_id,
+        is_deleted
+      )
+    `)
+
+  const { data: lineData, error: lineError } = await lineQuery
+  if (lineError) throw lineError
 
   const summary: SalesFeeSummary = {
     total_delivery_fees: 0,
     total_other_fees: 0,
     total_fees: 0,
+    total_discounts: 0,
     transactions_with_delivery_fee: 0,
     transactions_with_other_fees: 0,
+    items_with_discount: 0,
   }
 
-  for (const txn of (data as any[]) || []) {
+  // Sum transaction fees
+  for (const txn of (txnData as any[]) || []) {
     const deliveryFee = txn.delivery_fee || 0
     const otherFees = txn.other_fees || 0
 
@@ -599,6 +621,24 @@ export async function getSalesFeeSummary(filters: SalesReportFilters = {}): Prom
 
     if (deliveryFee > 0) summary.transactions_with_delivery_fee++
     if (otherFees > 0) summary.transactions_with_other_fees++
+  }
+
+  // Sum discounts from lines
+  for (const line of (lineData as any[]) || []) {
+    // Filter by transaction type and deleted status
+    if (line.transaction?.transaction_type !== 'sale') continue
+    if (line.transaction?.is_deleted) continue
+
+    // Filter by date range
+    if (filters.date_from && line.transaction.transaction_date < filters.date_from) continue
+    if (filters.date_to && line.transaction.transaction_date > filters.date_to + 'T23:59:59') continue
+
+    // Filter by branch
+    if (filters.branch_id && line.transaction.branch_id !== filters.branch_id) continue
+
+    const discount = line.discount_amount || 0
+    summary.total_discounts += discount
+    if (discount > 0) summary.items_with_discount++
   }
 
   return summary

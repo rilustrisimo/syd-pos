@@ -34,6 +34,7 @@ import {
   TrendingDown,
   Calendar,
   Truck,
+  Percent,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils/formatting'
 import {
@@ -468,27 +469,40 @@ export default function SalesReportPage() {
         />
       </div>
 
-      {/* ── Fee Summary Cards ── */}
-      {feeSummary && (feeSummary.total_delivery_fees > 0 || feeSummary.total_other_fees > 0) && (
-        <div className="grid gap-4 md:grid-cols-3">
+      {/* ── Fee & Discount Summary Cards ── */}
+      {feeSummary && (feeSummary.total_delivery_fees > 0 || feeSummary.total_other_fees > 0 || feeSummary.total_discounts > 0) && (
+        <div className="grid gap-4 md:grid-cols-4">
+          {feeSummary.total_discounts > 0 && (
+            <SummaryCard
+              title="Total Discounts"
+              value={formatCurrency(feeSummary.total_discounts)}
+              sub={`${feeSummary.items_with_discount} item${feeSummary.items_with_discount !== 1 ? 's' : ''} discounted`}
+              icon={<Percent className="h-4 w-4 text-muted-foreground" />}
+              highlight="red"
+            />
+          )}
+          {feeSummary.total_delivery_fees > 0 && (
+            <SummaryCard
+              title="Delivery Fees"
+              value={formatCurrency(feeSummary.total_delivery_fees)}
+              sub={`${feeSummary.transactions_with_delivery_fee} transaction${feeSummary.transactions_with_delivery_fee !== 1 ? 's' : ''}`}
+              icon={<Truck className="h-4 w-4 text-muted-foreground" />}
+            />
+          )}
+          {feeSummary.total_other_fees > 0 && (
+            <SummaryCard
+              title="Other Fees"
+              value={formatCurrency(feeSummary.total_other_fees)}
+              sub={`${feeSummary.transactions_with_other_fees} transaction${feeSummary.transactions_with_other_fees !== 1 ? 's' : ''}`}
+              icon={<DollarSign className="h-4 w-4 text-muted-foreground" />}
+            />
+          )}
           <SummaryCard
-            title="Delivery Fees"
-            value={formatCurrency(feeSummary.total_delivery_fees)}
-            sub={`${feeSummary.transactions_with_delivery_fee} transaction${feeSummary.transactions_with_delivery_fee !== 1 ? 's' : ''}`}
-            icon={<Truck className="h-4 w-4 text-muted-foreground" />}
-          />
-          <SummaryCard
-            title="Other Fees"
-            value={formatCurrency(feeSummary.total_other_fees)}
-            sub={`${feeSummary.transactions_with_other_fees} transaction${feeSummary.transactions_with_other_fees !== 1 ? 's' : ''}`}
-            icon={<DollarSign className="h-4 w-4 text-muted-foreground" />}
-          />
-          <SummaryCard
-            title="Total Fees"
-            value={formatCurrency(feeSummary.total_fees)}
-            sub="Included in revenue above"
+            title="Fees - Discounts"
+            value={formatCurrency(feeSummary.total_fees - feeSummary.total_discounts)}
+            sub="Net adjustment to revenue"
             icon={<Package className="h-4 w-4 text-muted-foreground" />}
-            highlight="blue"
+            highlight={(feeSummary.total_fees - feeSummary.total_discounts) >= 0 ? 'green' : 'red'}
           />
         </div>
       )}
