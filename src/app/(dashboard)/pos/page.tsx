@@ -180,9 +180,9 @@ export default function POSPage() {
   const createTransaction = useCreateTransaction()
   const createCustomer = useCreateCustomer()
 
-  // Hardcoded Walk-in Customer (always available, no API call)
+  // Walk-in Customer from database (hardcoded to avoid API calls)
   const WALK_IN_CUSTOMER = {
-    id: 'walk-in',
+    id: '446961e1-fcce-40bb-9f5a-3ea10cf976ea',
     name: 'Walk-in Customer',
     phone: null,
     customer_type: 'cash' as const,
