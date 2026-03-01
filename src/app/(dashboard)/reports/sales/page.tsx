@@ -536,6 +536,10 @@ export default function SalesReportPage() {
                         <stop offset="5%" stopColor="#22c55e" stopOpacity={0.18} />
                         <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
                       </linearGradient>
+                      <linearGradient id="discGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#ef4444" stopOpacity={0.18} />
+                        <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
+                      </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                     <XAxis
@@ -570,6 +574,15 @@ export default function SalesReportPage() {
                       stroke="#22c55e"
                       strokeWidth={2}
                       fill="url(#profGrad)"
+                      dot={false}
+                      activeDot={{ r: 4 }}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="Discounts"
+                      stroke="#ef4444"
+                      strokeWidth={2}
+                      fill="url(#discGrad)"
                       dot={false}
                       activeDot={{ r: 4 }}
                     />

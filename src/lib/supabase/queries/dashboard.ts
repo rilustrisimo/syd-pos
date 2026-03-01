@@ -350,6 +350,7 @@ export async function getSalesByProduct(filters: SalesReportFilters = {}): Promi
         is_deleted,
         delivery_fee,
         other_fees,
+        discount_amount,
         subtotal
       )
     `)
@@ -380,18 +381,20 @@ export async function getSalesByProduct(filters: SalesReportFilters = {}): Promi
     const productId = line.product?.id
     if (!productId) continue
 
-    // Use line_total which already includes discounts
-    // Add proportional share of delivery_fee and other_fees
+    // Use line_total which already includes line-level discounts
+    // Add proportional share of fees and subtract proportional share of transaction discount
     const subtotal = line.transaction?.subtotal || 0
     const deliveryFee = line.transaction?.delivery_fee || 0
     const otherFees = line.transaction?.other_fees || 0
+    const transactionDiscount = line.transaction?.discount_amount || 0
     
-    // Calculate proportional share of fees based on line_total vs subtotal
+    // Calculate proportional share based on line_total vs subtotal
     const lineRatio = subtotal > 0 ? (line.line_total || 0) / subtotal : 0
     const proportionalDeliveryFee = deliveryFee * lineRatio
     const proportionalOtherFees = otherFees * lineRatio
+    const proportionalTransactionDiscount = transactionDiscount * lineRatio
     
-    const revenue = (line.line_total || 0) + proportionalDeliveryFee + proportionalOtherFees
+    const revenue = (line.line_total || 0) + proportionalDeliveryFee + proportionalOtherFees - proportionalTransactionDiscount
     const cost = line.quantity * line.cogs_per_unit
 
     const existing = productMap.get(productId)
@@ -469,6 +472,7 @@ export interface SalesTrendPoint {
   revenue: number
   cost: number
   profit: number
+  discounts: number
   transactions: number
 }
 
@@ -489,6 +493,7 @@ export async function getSalesTrendByDateRange(
       is_deleted,
       delivery_fee,
       other_fees,
+      discount_amount,
       subtotal,
       lines:transaction_lines(
         quantity,
@@ -510,7 +515,7 @@ export async function getSalesTrendByDateRange(
   const end = new Date(dateTo)
   for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
     const key = d.toISOString().split('T')[0]
-    dateMap.set(key, { date: key, revenue: 0, cost: 0, profit: 0, transactions: 0 })
+    dateMap.set(key, { date: key, revenue: 0, cost: 0, profit: 0, discounts: 0, transactions: 0 })
   }
 
   // Process each transaction
@@ -523,23 +528,33 @@ export async function getSalesTrendByDateRange(
 
     const deliveryFee = txn.delivery_fee || 0
     const otherFees = txn.other_fees || 0
+    const transactionDiscount = txn.discount_amount || 0
     const subtotal = txn.subtotal || 0
+
+    // Track total transaction-level discount
+    let txnTotalDiscount = transactionDiscount
 
     // Sum all lines for this transaction
     let txnRevenue = 0
     let txnCost = 0
     
     for (const line of txn.lines || []) {
-      // Use line_total which includes discounts
+      // Use line_total which includes line-level discounts
       const lineTotal = line.line_total || 0
       const cost = (line.quantity || 0) * (line.cogs_per_unit || 0)
       
-      // Calculate proportional share of fees
+      // Track line-level discount (difference between gross and line_total)
+      const lineGross = (line.quantity || 0) * (line.unit_price || 0)
+      const lineDiscount = lineGross - lineTotal
+      txnTotalDiscount += lineDiscount
+      
+      // Calculate proportional share of fees and transaction discount
       const lineRatio = subtotal > 0 ? lineTotal / subtotal : 0
       const proportionalDeliveryFee = deliveryFee * lineRatio
       const proportionalOtherFees = otherFees * lineRatio
+      const proportionalTransactionDiscount = transactionDiscount * lineRatio
       
-      const revenue = lineTotal + proportionalDeliveryFee + proportionalOtherFees
+      const revenue = lineTotal + proportionalDeliveryFee + proportionalOtherFees - proportionalTransactionDiscount
       
       txnRevenue += revenue
       txnCost += cost
@@ -548,6 +563,7 @@ export async function getSalesTrendByDateRange(
     point.revenue += txnRevenue
     point.cost += txnCost
     point.profit += txnRevenue - txnCost
+    point.discounts += txnTotalDiscount
   }
 
   return Array.from(dateMap.values())
