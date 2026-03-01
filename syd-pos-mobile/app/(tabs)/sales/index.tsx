@@ -26,7 +26,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { useAuthStore } from '../../../store/auth'
 import { usePosStore, CartItem } from '../../../store/pos'
 import { usePrinterStore } from '../../../store/printer'
-import { blePrinter } from '../../../lib/ble-printer'
+import { btPrinter } from '../../../lib/bt-printer'
 import { useInventoryCache } from '../../../hooks/useInventoryCache'
 import { SettingsModal } from '../../../components/SettingsModal'
 import type { Customer, PaymentMethod, Product, ProductImage } from '@syd/api'
@@ -566,7 +566,7 @@ export default function SalesScreen() {
       })
 
       // ── Auto-print if printer is connected ──────────────────────────────
-      if (blePrinter.isConnected()) {
+      if (btPrinter.isConnected()) {
         setIsPrinting(true)
         const now = new Date()
         const receiptData: ReceiptData = {
@@ -601,9 +601,9 @@ export default function SalesScreen() {
         }
 
         try {
-          await blePrinter.printReceipt(receiptData, paperWidth)
+          await btPrinter.printReceipt(receiptData, paperWidth)
           if (deliveryType === 'delivery') {
-            await blePrinter.printDeliverySlip(receiptData, paperWidth)
+            await btPrinter.printDeliverySlip(receiptData, paperWidth)
           }
         } catch (printErr: unknown) {
           // Sale was saved — just warn about print failure
@@ -621,7 +621,7 @@ export default function SalesScreen() {
       clearCart()
       setCustomer(null)
 
-      const printNote = blePrinter.isConnected()
+      const printNote = btPrinter.isConnected()
         ? (deliveryType === 'delivery' ? ' Receipt & delivery slip printed.' : ' Receipt printed.')
         : ''
       Alert.alert('Sale Complete', `Transaction saved successfully.${printNote}`)

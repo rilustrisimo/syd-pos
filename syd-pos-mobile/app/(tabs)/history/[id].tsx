@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { useLocalSearchParams } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import { TransactionLine, useTransaction, useAuth } from '@syd/api'
-import { blePrinter } from '../../../lib/ble-printer'
+import { btPrinter } from '../../../lib/bt-printer'
 import { usePrinterStore } from '../../../store/printer'
 import type { ReceiptData } from '../../../lib/escpos-mobile'
 
@@ -104,7 +104,7 @@ export default function TransactionDetailScreen() {
 
     try {
       setIsPrinting(true)
-      await blePrinter.printReceipt(receiptData, '80mm')
+      await btPrinter.printReceipt(receiptData, '80mm')
       Alert.alert('Printed', 'Receipt sent to printer.')
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Print failed'

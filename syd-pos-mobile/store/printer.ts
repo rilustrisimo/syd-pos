@@ -2,12 +2,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 
-export type PrinterStatus = 'idle' | 'scanning' | 'connecting' | 'connected' | 'error'
+export type PrinterStatus = 'idle' | 'loading' | 'connecting' | 'connected' | 'error'
 
-export type ScannedDevice = {
-  id: string
+/** A Classic Bluetooth device that is already paired in Android Settings. */
+export type PairedDevice = {
+  id:   string       // MAC address  e.g. "00:11:22:33:44:55"
   name: string | null
-  rssi: number | null
 }
 
 type PrinterState = {
@@ -15,22 +15,22 @@ type PrinterState = {
   deviceId: string | null
   deviceName: string | null
   errorMessage: string | null
-  /** Persisted: last successfully connected printer ID */
+  /** Persisted: last successfully connected printer ID (MAC address) */
   savedPrinterId: string | null
   /** Persisted: last successfully connected printer display name */
   savedPrinterName: string | null
   /** Persisted: paper width preference */
   paperWidth: '58mm' | '80mm'
-  /** Ephemeral: devices found during the current BLE scan */
-  scannedDevices: ScannedDevice[]
+  /** Ephemeral: paired devices loaded from Android Bluetooth */
+  pairedDevices: PairedDevice[]
 
   setStatus: (status: PrinterStatus, deviceId?: string | null, deviceName?: string | null) => void
   setError: (message: string) => void
   setSavedPrinter: (id: string, name: string | null) => void
   clearSavedPrinter: () => void
   setPaperWidth: (width: '58mm' | '80mm') => void
-  addScannedDevice: (device: ScannedDevice) => void
-  clearScannedDevices: () => void
+  setPairedDevices: (devices: PairedDevice[]) => void
+  clearPairedDevices: () => void
   reset: () => void
 }
 
@@ -44,7 +44,7 @@ export const usePrinterStore = create<PrinterState>()(
       savedPrinterId: null,
       savedPrinterName: null,
       paperWidth: '80mm',
-      scannedDevices: [],
+      pairedDevices: [],
 
       setStatus: (status, deviceId = null, deviceName = null) =>
         set({ status, deviceId, deviceName, errorMessage: null }),
@@ -59,14 +59,9 @@ export const usePrinterStore = create<PrinterState>()(
 
       setPaperWidth: (width) => set({ paperWidth: width }),
 
-      addScannedDevice: (device) =>
-        set((s) => ({
-          scannedDevices: s.scannedDevices.some((d) => d.id === device.id)
-            ? s.scannedDevices
-            : [...s.scannedDevices, device],
-        })),
+      setPairedDevices: (devices) => set({ pairedDevices: devices }),
 
-      clearScannedDevices: () => set({ scannedDevices: [] }),
+      clearPairedDevices: () => set({ pairedDevices: [] }),
 
       reset: () =>
         set({ status: 'idle', deviceId: null, deviceName: null, errorMessage: null }),
@@ -74,11 +69,11 @@ export const usePrinterStore = create<PrinterState>()(
     {
       name: 'syd-printer-store',
       storage: createJSONStorage(() => AsyncStorage),
-      // Only persist settings, not ephemeral scan/connection state
+      // Only persist settings; ephemeral connection state is not persisted
       partialize: (state) => ({
-        savedPrinterId: state.savedPrinterId,
+        savedPrinterId:  state.savedPrinterId,
         savedPrinterName: state.savedPrinterName,
-        paperWidth: state.paperWidth,
+        paperWidth:      state.paperWidth,
       }),
     }
   )

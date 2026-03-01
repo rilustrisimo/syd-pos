@@ -14,8 +14,8 @@ import { Ionicons } from '@expo/vector-icons'
 import { useLogout, useAuth, useBranches } from '@syd/api'
 import { useAuthStore } from '../store/auth'
 import { usePrinterStore } from '../store/printer'
-import { blePrinter } from '../lib/ble-printer'
-import type { ScannedDevice } from '../store/printer'
+import { btPrinter } from '../lib/bt-printer'
+import type { PairedDevice } from '../store/printer'
 
 type Props = {
   visible: boolean
@@ -37,12 +37,15 @@ export function SettingsModal({ visible, onClose }: Props) {
   const printerDeviceName  = usePrinterStore((s) => s.deviceName)
   const printerError       = usePrinterStore((s) => s.errorMessage)
   const savedPrinterName   = usePrinterStore((s) => s.savedPrinterName)
+  const savedPrinterId     = usePrinterStore((s) => s.savedPrinterId)
   const paperWidth         = usePrinterStore((s) => s.paperWidth)
   const setPaperWidth      = usePrinterStore((s) => s.setPaperWidth)
-  const scannedDevices     = usePrinterStore((s) => s.scannedDevices)
+  const pairedDevices      = usePrinterStore((s) => s.pairedDevices)
+  const setPairedDevices   = usePrinterStore((s) => s.setPairedDevices)
 
   const [showBranchPicker, setShowBranchPicker] = useState(false)
-  const [isConnecting, setIsConnecting] = useState<string | null>(null) // deviceId being connected
+  const [isConnecting, setIsConnecting]         = useState<string | null>(null)
+  const [isLoadingPaired, setIsLoadingPaired]   = useState(false)
 
   // Effective branch
   const effectiveBranchId   = authUser?.branch_id ?? localBranchId
@@ -50,39 +53,37 @@ export function SettingsModal({ visible, onClose }: Props) {
     ? (branches.find((b) => b.id === authUser.branch_id)?.name ?? `Branch (${authUser.branch_id.slice(0, 8)}…)`)
     : (localBranchName ?? null)
 
-  // ── Printer scanning ──────────────────────────────────────────────────────
+  // ── Printer: load paired devices ──────────────────────────────────────────
 
-  const handleScanPrinters = async () => {
+  const handleLoadPaired = async () => {
+    setIsLoadingPaired(true)
     try {
-      await blePrinter.scanForDevices(
-        () => { /* devices stream into the store automatically */ },
-        () => {
-          // Scan done — warn if nothing found
-          const found = usePrinterStore.getState().scannedDevices.length
-          if (found === 0) {
-            Alert.alert(
-              'No Printers Found',
-              'No BLE devices were detected.\n\n• Make sure the printer is powered on\n• Disconnect the printer from Android System Bluetooth settings first\n• Move the phone closer to the printer\n• Then tap Scan again',
-            )
-          }
-        },
-        12_000,
-      )
+      const devices = await btPrinter.getPairedDevices()
+      setPairedDevices(devices)
+      if (devices.length === 0) {
+        Alert.alert(
+          'No Paired Printers Found',
+          'No Bluetooth devices are paired on this phone.\n\n' +
+          'Steps to fix:\n' +
+          '1. Turn on the thermal printer\n' +
+          '2. Open Android Settings → Bluetooth\n' +
+          '3. Tap "Pair new device" and select your printer\n' +
+          '4. Come back here and tap "Load Paired Printers" again',
+        )
+      }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Could not start scan'
-      Alert.alert('Scan Error', msg)
+      const msg = err instanceof Error ? err.message : 'Could not load devices'
+      Alert.alert('Bluetooth Error', msg)
+    } finally {
+      setIsLoadingPaired(false)
     }
   }
 
-  const handleStopScan = () => {
-    blePrinter.stopScan()
-  }
-
-  const handleConnectDevice = async (device: ScannedDevice) => {
+  const handleConnectDevice = async (device: PairedDevice) => {
     if (isConnecting) return
     setIsConnecting(device.id)
     try {
-      await blePrinter.connectToDevice(device.id, device.name)
+      await btPrinter.connectToDevice(device.id, device.name)
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Could not connect'
       Alert.alert('Connection Error', msg)
@@ -92,10 +93,10 @@ export function SettingsModal({ visible, onClose }: Props) {
   }
 
   const handleDisconnectPrinter = async () => {
-    await blePrinter.disconnect()
+    await btPrinter.disconnect()
   }
 
-  // ── Logout ───────────────────────────────────────────────────────────────
+  // ── Logout ────────────────────────────────────────────────────────────────
 
   const handleLogout = () => {
     Alert.alert('Log Out', 'Are you sure you want to log out?', [
@@ -111,19 +112,19 @@ export function SettingsModal({ visible, onClose }: Props) {
     ])
   }
 
-  // ── Printer status label / color ─────────────────────────────────────────
+  // ── Printer status display ─────────────────────────────────────────────────
 
   const statusColor = {
     idle:       '#6b7280',
-    scanning:   '#f59e0b',
+    loading:    '#f59e0b',
     connecting: '#3b82f6',
     connected:  '#10b981',
     error:      '#ef4444',
   }[printerStatus]
 
   const statusLabel = {
-    idle:       savedPrinterName ? `Saved: ${savedPrinterName}` : 'Not connected',
-    scanning:   'Scanning for printers…',
+    idle:       savedPrinterName ? `Last: ${savedPrinterName}` : 'Not connected',
+    loading:    'Loading paired devices…',
     connecting: `Connecting to ${printerDeviceName ?? printerDeviceId ?? '…'}`,
     connected:  printerDeviceName ?? 'Connected',
     error:      'Error',
@@ -221,16 +222,16 @@ export function SettingsModal({ visible, onClose }: Props) {
                   </Text>
                 </View>
                 <View style={[styles.badge, { backgroundColor: statusColor + '22' }]}>
-                  {printerStatus === 'scanning' || printerStatus === 'connecting' ? (
+                  {printerStatus === 'loading' || printerStatus === 'connecting' ? (
                     <ActivityIndicator size="small" color={statusColor} />
                   ) : (
                     <View style={[styles.dot, { backgroundColor: statusColor }]} />
                   )}
                   <Text style={[styles.badgeText, { color: statusColor }]}>
-                    {printerStatus === 'connected' ? 'Connected'
-                      : printerStatus === 'scanning' ? 'Scanning'
+                    {printerStatus === 'connected'  ? 'Connected'
+                      : printerStatus === 'loading'   ? 'Loading'
                       : printerStatus === 'connecting' ? 'Connecting'
-                      : printerStatus === 'error' ? 'Error'
+                      : printerStatus === 'error'      ? 'Error'
                       : 'Offline'}
                   </Text>
                 </View>
@@ -240,39 +241,41 @@ export function SettingsModal({ visible, onClose }: Props) {
                 <Text style={styles.errorText}>{printerError}</Text>
               )}
 
-              {/* Scan / Stop scan / Disconnect button */}
+              {/* Action buttons */}
               {printerStatus === 'connected' ? (
                 <Pressable style={[styles.actionBtn, styles.actionBtnGray]} onPress={handleDisconnectPrinter}>
                   <Ionicons name="bluetooth-outline" size={16} color="#fff" />
                   <Text style={styles.actionBtnText}>Disconnect Printer</Text>
                 </Pressable>
-              ) : printerStatus === 'scanning' ? (
-                <Pressable style={[styles.actionBtn, styles.actionBtnGray]} onPress={handleStopScan}>
-                  <ActivityIndicator size="small" color="#fff" />
-                  <Text style={styles.actionBtnText}>Stop Scanning</Text>
-                </Pressable>
               ) : (
                 <Pressable
-                  style={[styles.actionBtn, printerStatus === 'connecting' && styles.actionBtnDisabled]}
-                  onPress={handleScanPrinters}
-                  disabled={printerStatus === 'connecting'}
+                  style={[
+                    styles.actionBtn,
+                    (isLoadingPaired || printerStatus === 'connecting') && styles.actionBtnDisabled,
+                  ]}
+                  onPress={handleLoadPaired}
+                  disabled={isLoadingPaired || printerStatus === 'connecting'}
                 >
-                  <Ionicons name="search-outline" size={16} color="#fff" />
-                  <Text style={styles.actionBtnText}>Scan for Printers</Text>
+                  {isLoadingPaired ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Ionicons name="bluetooth-outline" size={16} color="#fff" />
+                  )}
+                  <Text style={styles.actionBtnText}>
+                    {isLoadingPaired ? 'Loading…' : 'Load Paired Printers'}
+                  </Text>
                 </Pressable>
               )}
 
-              {/* Scanned device list */}
-              {scannedDevices.length > 0 && printerStatus !== 'connected' && (
+              {/* Paired device list */}
+              {pairedDevices.length > 0 && printerStatus !== 'connected' && (
                 <View style={styles.deviceList}>
                   <Text style={styles.deviceListLabel}>
-                    {scannedDevices.length} device{scannedDevices.length !== 1 ? 's' : ''} found nearby
+                    {pairedDevices.length} paired device{pairedDevices.length !== 1 ? 's' : ''}
                   </Text>
-                  {scannedDevices.map((dev) => {
-                    const isSaved    = dev.id === usePrinterStore.getState().savedPrinterId
-                    const isBusy     = isConnecting === dev.id
-                    const rssiLabel  = dev.rssi ? `${dev.rssi} dBm` : ''
-                    const signalIcon: 'wifi' | 'wifi-outline' = dev.rssi && dev.rssi > -70 ? 'wifi' : 'wifi-outline'
+                  {pairedDevices.map((dev) => {
+                    const isSaved = dev.id === savedPrinterId
+                    const isBusy  = isConnecting === dev.id
                     return (
                       <View key={dev.id} style={[styles.deviceRow, isSaved && styles.deviceRowSaved]}>
                         <View style={styles.deviceRowLeft}>
@@ -282,15 +285,7 @@ export function SettingsModal({ visible, onClose }: Props) {
                               {dev.name ?? 'Unknown Device'}
                               {isSaved ? '  ★' : ''}
                             </Text>
-                            <View style={styles.deviceMeta}>
-                              <Text style={styles.deviceId} numberOfLines={1}>{dev.id.slice(-8)}</Text>
-                              {rssiLabel ? (
-                                <>
-                                  <Ionicons name={signalIcon} size={10} color="#9ca3af" />
-                                  <Text style={styles.deviceId}>{rssiLabel}</Text>
-                                </>
-                              ) : null}
-                            </View>
+                            <Text style={styles.deviceId}>{dev.id}</Text>
                           </View>
                         </View>
                         <Pressable
@@ -329,7 +324,7 @@ export function SettingsModal({ visible, onClose }: Props) {
               </View>
 
               <Text style={styles.hint}>
-                Tip: If your printer is not found, first unpair/disconnect it from Android System Bluetooth settings, then tap Scan here. Thermal printers must be in advertising mode (not already connected) to appear in the list.
+                Pair your printer once in Android Settings → Bluetooth, then tap "Load Paired Printers" above to connect.
               </Text>
             </View>
           </View>
@@ -601,16 +596,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#111827',
   },
-  deviceMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: 2,
-  },
   deviceId: {
     fontSize: 11,
     color: '#9ca3af',
     fontFamily: 'monospace',
+    marginTop: 2,
   },
   connectDeviceBtn: {
     backgroundColor: '#3b82f6',
