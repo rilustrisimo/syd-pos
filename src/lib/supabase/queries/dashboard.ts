@@ -567,10 +567,24 @@ export interface SalesFeeSummary {
 export async function getSalesFeeSummary(filters: SalesReportFilters = {}): Promise<SalesFeeSummary> {
   const supabase = createClient()
 
-  // Get transaction fees
+  // If category filter is present, we need to filter transactions that have items from that category
+  let validTransactionIdsForCategory: Set<string> | null = null
+  if (filters.category_id) {
+    const { data: categoryLines } = await supabase
+      .from('transaction_lines')
+      .select('transaction_id, product:products!product_id(category_id)')
+    
+    validTransactionIdsForCategory = new Set(
+      (categoryLines || [])
+        .filter((line: any) => line.product?.category_id === filters.category_id)
+        .map((line: any) => line.transaction_id)
+    )
+  }
+
+  // Get transaction fees AND transaction-level discounts
   let txnQuery = supabase
     .from('transactions')
-    .select('delivery_fee, other_fees, transaction_date, branch_id')
+    .select('id, delivery_fee, other_fees, discount_amount, transaction_date, branch_id')
     .eq('transaction_type', 'sale')
     .eq('is_deleted', false)
 
@@ -617,17 +631,25 @@ export async function getSalesFeeSummary(filters: SalesReportFilters = {}): Prom
     items_with_discount: 0,
   }
 
-  // Sum transaction fees
+  // Sum transaction fees and transaction-level discounts
   for (const txn of (txnData as any[]) || []) {
+    // Skip transaction if category filter is active and this transaction has no items from that category
+    if (validTransactionIdsForCategory && !validTransactionIdsForCategory.has(txn.id)) {
+      continue
+    }
+
     const deliveryFee = txn.delivery_fee || 0
     const otherFees = txn.other_fees || 0
+    const transactionDiscount = txn.discount_amount || 0
 
     summary.total_delivery_fees += deliveryFee
     summary.total_other_fees += otherFees
     summary.total_fees += deliveryFee + otherFees
+    summary.total_discounts += transactionDiscount
 
     if (deliveryFee > 0) summary.transactions_with_delivery_fee++
     if (otherFees > 0) summary.transactions_with_other_fees++
+    if (transactionDiscount > 0) summary.items_with_discount++
   }
 
   // Sum discounts from lines
