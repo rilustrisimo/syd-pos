@@ -190,16 +190,19 @@ export async function getTopProducts(days: number = 7, limit: number = 10): Prom
       product:products!product_id(id, code, name),
       transaction:transactions!transaction_id(transaction_type, transaction_date, is_deleted)
     `)
-    .gte('created_at', startDate.toISOString())
 
   if (error) throw error
 
-  // Filter sales only and aggregate by product
+  // Filter sales only, by date range, and aggregate by product
   const productMap = new Map<string, TopProduct>()
 
   for (const line of (data as any[]) || []) {
     if (line.transaction?.transaction_type !== 'sale') continue
     if (line.transaction?.is_deleted) continue
+    
+    // Filter by transaction date
+    const transactionDate = new Date(line.transaction.transaction_date)
+    if (transactionDate < startDate) continue
 
     const productId = line.product?.id
     if (!productId) continue
