@@ -548,6 +548,62 @@ export async function getSalesTrendByDateRange(
   return Array.from(dateMap.values())
 }
 
+// Get fee summary for sales report
+export interface SalesFeeSummary {
+  total_delivery_fees: number
+  total_other_fees: number
+  total_fees: number
+  transactions_with_delivery_fee: number
+  transactions_with_other_fees: number
+}
+
+export async function getSalesFeeSummary(filters: SalesReportFilters = {}): Promise<SalesFeeSummary> {
+  const supabase = createClient()
+
+  let query = supabase
+    .from('transactions')
+    .select('delivery_fee, other_fees, transaction_date, branch_id')
+    .eq('transaction_type', 'sale')
+    .eq('is_deleted', false)
+
+  // Apply filters
+  if (filters.date_from) {
+    query = query.gte('transaction_date', `${filters.date_from}T00:00:00`)
+  }
+  if (filters.date_to) {
+    query = query.lte('transaction_date', `${filters.date_to}T23:59:59`)
+  }
+  if (filters.branch_id) {
+    query = query.eq('branch_id', filters.branch_id)
+  }
+
+  const { data, error } = await query
+
+  if (error) throw error
+
+  const summary: SalesFeeSummary = {
+    total_delivery_fees: 0,
+    total_other_fees: 0,
+    total_fees: 0,
+    transactions_with_delivery_fee: 0,
+    transactions_with_other_fees: 0,
+  }
+
+  for (const txn of (data as any[]) || []) {
+    const deliveryFee = txn.delivery_fee || 0
+    const otherFees = txn.other_fees || 0
+
+    summary.total_delivery_fees += deliveryFee
+    summary.total_other_fees += otherFees
+    summary.total_fees += deliveryFee + otherFees
+
+    if (deliveryFee > 0) summary.transactions_with_delivery_fee++
+    if (otherFees > 0) summary.transactions_with_other_fees++
+  }
+
+  return summary
+}
+
 // ============================================
 // SUPPLIER PURCHASE HISTORY
 // ============================================

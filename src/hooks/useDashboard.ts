@@ -11,6 +11,7 @@ import {
   getSalesByProduct,
   getSalesByCategory,
   getSalesTrendByDateRange,
+  getSalesFeeSummary,
   getSupplierPurchaseHistory,
   getDemandForecast,
   SalesReportFilters,
@@ -115,6 +116,15 @@ export function useSalesTrendByDateRange(dateFrom: string, dateTo: string) {
     queryFn: () => getSalesTrendByDateRange(dateFrom, dateTo),
     staleTime: 300000, // 5 minutes
     enabled: !!dateFrom && !!dateTo,
+  })
+}
+
+// Hook to get sales fee summary
+export function useSalesFeeSummary(filters: SalesReportFilters = {}) {
+  return useQuery({
+    queryKey: [...dashboardKeys.all, 'sales-fee-summary', filters],
+    queryFn: () => getSalesFeeSummary(filters),
+    staleTime: 300000, // 5 minutes
   })
 }
 

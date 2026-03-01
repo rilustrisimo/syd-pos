@@ -735,55 +735,54 @@ export default function POSPage() {
                   onValueChange={setCustomerSearch}
                 />
                 <CommandList>
-                  {isFetchingCustomers ? (
-                    <div className="flex items-center justify-center py-6 text-sm text-muted-foreground">
+                  <CommandEmpty>
+                    No customers found. Try a different search or add a new customer.
+                  </CommandEmpty>
+                  {isFetchingCustomers && (
+                    <div className="flex items-center justify-center py-2 text-sm text-muted-foreground">
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       Searching...
                     </div>
-                  ) : (
-                    <>
-                      <CommandEmpty>
-                        No customers found. Try a different search or add a new customer.
-                      </CommandEmpty>
-                      <CommandGroup heading={customerSearch ? 'Search Results' : 'All Customers'}>
-                        {walkInCustomer && (
-                          <CommandItem
-                            onSelect={() => handleSelectCustomer(walkInCustomer)}
-                            className="cursor-pointer"
-                          >
-                            <User className="mr-2 h-4 w-4" />
-                            <span>{walkInCustomer.name}</span>
-                            <Badge variant="outline" className="ml-auto">
-                              Default
-                            </Badge>
-                          </CommandItem>
-                        )}
-                        {searchedCustomers?.map((cust) => (
-                          <CommandItem
-                            key={cust.id}
-                            onSelect={() => handleSelectCustomer(cust)}
-                            className="cursor-pointer"
-                          >
-                            <User className="mr-2 h-4 w-4" />
-                            <div className="flex-1">
-                              <div>{cust.name}</div>
-                              {cust.phone && (
-                                <div className="text-xs text-muted-foreground">
-                                  {cust.phone}
-                                </div>
-                              )}
-                            </div>
-                            <Badge
-                              variant={
-                                cust.customer_type === 'credit' ? 'secondary' : 'outline'
-                              }
-                            >
-                            {cust.customer_type}
+                  )}
+                  {!isFetchingCustomers && (
+                    <CommandGroup heading={customerSearch ? 'Search Results' : 'All Customers'}>
+                      {walkInCustomer && (
+                        <CommandItem
+                          onSelect={() => handleSelectCustomer(walkInCustomer)}
+                          className="cursor-pointer"
+                        >
+                          <User className="mr-2 h-4 w-4" />
+                          <span>{walkInCustomer.name}</span>
+                          <Badge variant="outline" className="ml-auto">
+                            Default
                           </Badge>
                         </CommandItem>
-                      ))}
-                    </CommandGroup>
-                    </>
+                      )}
+                      {searchedCustomers?.map((cust) => (
+                        <CommandItem
+                          key={cust.id}
+                          onSelect={() => handleSelectCustomer(cust)}
+                          className="cursor-pointer"
+                        >
+                          <User className="mr-2 h-4 w-4" />
+                          <div className="flex-1">
+                            <div>{cust.name}</div>
+                            {cust.phone && (
+                              <div className="text-xs text-muted-foreground">
+                                {cust.phone}
+                              </div>
+                            )}
+                          </div>
+                          <Badge
+                            variant={
+                              cust.customer_type === 'credit' ? 'secondary' : 'outline'
+                            }
+                          >
+                          {cust.customer_type}
+                        </Badge>
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
                   )}
                   <Separator />
                   <CommandGroup>

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { useSalesByProduct, useSalesByCategory, useSalesTrendByDateRange } from '@/hooks/useDashboard'
+import { useSalesByProduct, useSalesByCategory, useSalesTrendByDateRange, useSalesFeeSummary } from '@/hooks/useDashboard'
 import { useCategories } from '@/hooks/useProducts'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -33,6 +33,7 @@ import {
   TrendingUp,
   TrendingDown,
   Calendar,
+  Truck,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils/formatting'
 import {
@@ -262,12 +263,19 @@ export default function SalesReportPage() {
     refetch: refetchTrend,
   } = useSalesTrendByDateRange(dateFrom, dateTo)
 
-  const isLoading = productLoading || categoryLoading || trendLoading
+  const {
+    data: feeSummary,
+    isLoading: feeLoading,
+    refetch: refetchFees,
+  } = useSalesFeeSummary(filters)
+
+  const isLoading = productLoading || categoryLoading || trendLoading || feeLoading
 
   const handleRefresh = () => {
     refetchProducts()
     refetchCategories()
     refetchTrend()
+    refetchFees()
   }
 
   const applyPreset = (preset: string) => {
@@ -459,6 +467,31 @@ export default function SalesReportPage() {
           highlight={overallMargin >= 20 ? 'green' : overallMargin >= 10 ? undefined : 'red'}
         />
       </div>
+
+      {/* ── Fee Summary Cards ── */}
+      {feeSummary && (feeSummary.total_delivery_fees > 0 || feeSummary.total_other_fees > 0) && (
+        <div className="grid gap-4 md:grid-cols-3">
+          <SummaryCard
+            title="Delivery Fees"
+            value={formatCurrency(feeSummary.total_delivery_fees)}
+            sub={`${feeSummary.transactions_with_delivery_fee} transaction${feeSummary.transactions_with_delivery_fee !== 1 ? 's' : ''}`}
+            icon={<Truck className="h-4 w-4 text-muted-foreground" />}
+          />
+          <SummaryCard
+            title="Other Fees"
+            value={formatCurrency(feeSummary.total_other_fees)}
+            sub={`${feeSummary.transactions_with_other_fees} transaction${feeSummary.transactions_with_other_fees !== 1 ? 's' : ''}`}
+            icon={<DollarSign className="h-4 w-4 text-muted-foreground" />}
+          />
+          <SummaryCard
+            title="Total Fees"
+            value={formatCurrency(feeSummary.total_fees)}
+            sub="Included in revenue above"
+            icon={<Package className="h-4 w-4 text-muted-foreground" />}
+            highlight="blue"
+          />
+        </div>
+      )}
 
       {/* ── Report Tabs ── */}
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)}>
