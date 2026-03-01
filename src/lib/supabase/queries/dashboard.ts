@@ -499,6 +499,7 @@ export async function getSalesTrendByDateRange(
         quantity,
         unit_price,
         cogs_per_unit,
+        discount_amount,
         line_total
       )
     `)
@@ -543,9 +544,8 @@ export async function getSalesTrendByDateRange(
       const lineTotal = line.line_total || 0
       const cost = (line.quantity || 0) * (line.cogs_per_unit || 0)
       
-      // Track line-level discount (difference between gross and line_total)
-      const lineGross = (line.quantity || 0) * (line.unit_price || 0)
-      const lineDiscount = lineGross - lineTotal
+      // Add line-level discount to total
+      const lineDiscount = line.discount_amount || 0
       txnTotalDiscount += lineDiscount
       
       // Calculate proportional share of fees and transaction discount

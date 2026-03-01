@@ -316,6 +316,7 @@ export default function SalesReportPage() {
       }),
       Revenue: d.revenue,
       Profit: d.profit,
+      Discounts: d.discounts,
       transactions: d.transactions,
     }))
   }, [trendData])
