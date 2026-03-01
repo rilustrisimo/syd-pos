@@ -113,8 +113,9 @@ export default function POSPage() {
   const [newCustomerName, setNewCustomerName] = useState('')
   const [newCustomerPhone, setNewCustomerPhone] = useState('')
   const [newCustomerType, setNewCustomerType] = useState<'cash' | 'credit'>('cash')
-  const [saleDate, setSaleDate] = useState(new Date().toISOString().split('T')[0])
+  const [saleDate, setSaleDate] = useState('')
   const [discountInput, setDiscountInput] = useState('')
+  const [isMounted, setIsMounted] = useState(false)
   const [isUnitSelectorOpen, setIsUnitSelectorOpen] = useState(false)
   const [selectedProduct, setSelectedProduct] = useState<any>(null)
   const [selectedUnitId, setSelectedUnitId] = useState<string>('')
@@ -206,6 +207,12 @@ export default function POSPage() {
   const { user } = useAuthStore()
   const [isPrintOpen, setIsPrintOpen] = useState(false)
   const [pendingInvoice, setPendingInvoice] = useState<InvoiceData | null>(null)
+
+  // Set mounted state and initialize date (client-side only to avoid hydration errors)
+  useEffect(() => {
+    setIsMounted(true)
+    setSaleDate(new Date().toISOString().split('T')[0])
+  }, [])
 
   // Set default branch and walk-in customer
   useEffect(() => {
@@ -1432,10 +1439,10 @@ export default function POSPage() {
                 type="date"
                 value={saleDate}
                 onChange={(e) => setSaleDate(e.target.value)}
-                max={new Date().toISOString().split('T')[0]}
+                max={isMounted ? new Date().toISOString().split('T')[0] : ''}
                 className="h-11"
               />
-              {saleDate !== new Date().toISOString().split('T')[0] && (
+              {isMounted && saleDate && saleDate !== new Date().toISOString().split('T')[0] && (
                 <p className="text-xs text-amber-600 font-medium">
                   Backdated sale — recording as {new Date(saleDate + 'T00:00:00').toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' })}
                 </p>

@@ -366,9 +366,10 @@ export async function getSalesByProduct(filters: SalesReportFilters = {}): Promi
     if (line.transaction?.transaction_type !== 'sale') continue
     if (line.transaction?.is_deleted) continue
 
-    // Filter by date range
-    if (filters.date_from && line.transaction.transaction_date < filters.date_from) continue
-    if (filters.date_to && line.transaction.transaction_date > filters.date_to + 'T23:59:59') continue
+    // Filter by date range - proper date comparison
+    const txnDate = line.transaction.transaction_date
+    if (filters.date_from && txnDate < `${filters.date_from}T00:00:00`) continue
+    if (filters.date_to && txnDate > `${filters.date_to}T23:59:59`) continue
 
     // Filter by branch
     if (filters.branch_id && line.transaction.branch_id !== filters.branch_id) continue
@@ -587,11 +588,14 @@ export async function getSalesFeeSummary(filters: SalesReportFilters = {}): Prom
   const { data: txnData, error: txnError } = await txnQuery
   if (txnError) throw txnError
 
-  // Get discount amounts from transaction_lines
+  // Get discount amounts from transaction_lines with proper SQL filtering
   let lineQuery = supabase
     .from('transaction_lines')
     .select(`
       discount_amount,
+      product:products!product_id(
+        category_id
+      ),
       transaction:transactions!transaction_id(
         transaction_type,
         transaction_date,
@@ -632,12 +636,16 @@ export async function getSalesFeeSummary(filters: SalesReportFilters = {}): Prom
     if (line.transaction?.transaction_type !== 'sale') continue
     if (line.transaction?.is_deleted) continue
 
-    // Filter by date range
-    if (filters.date_from && line.transaction.transaction_date < filters.date_from) continue
-    if (filters.date_to && line.transaction.transaction_date > filters.date_to + 'T23:59:59') continue
+    // Filter by date range - proper date comparison
+    const txnDate = line.transaction.transaction_date
+    if (filters.date_from && txnDate < `${filters.date_from}T00:00:00`) continue
+    if (filters.date_to && txnDate > `${filters.date_to}T23:59:59`) continue
 
     // Filter by branch
     if (filters.branch_id && line.transaction.branch_id !== filters.branch_id) continue
+
+    // Filter by category
+    if (filters.category_id && line.product?.category_id !== filters.category_id) continue
 
     const discount = line.discount_amount || 0
     summary.total_discounts += discount
