@@ -21,6 +21,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS trigger_update_po_lines_updated_at ON purchase_order_lines;
 CREATE TRIGGER trigger_update_po_lines_updated_at
     BEFORE UPDATE ON purchase_order_lines
     FOR EACH ROW
