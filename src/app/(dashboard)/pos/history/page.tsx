@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { useTransactions, useSoftDeleteTransaction } from '@/hooks/useTransactions'
+import { useTransactions, useSoftDeleteTransaction, useUpdateTransactionDeliveryType } from '@/hooks/useTransactions'
 import { getTransaction } from '@/lib/supabase/queries/transactions'
 import { printUSBReceipt } from '@/lib/utils/usb-thermal-print'
 import { usePrinterStore } from '@/lib/stores/printer'
@@ -17,6 +17,8 @@ import {
   Loader2,
   Trash2,
   Eye,
+  Edit,
+  Truck,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -104,6 +106,12 @@ export default function TransactionHistoryPage() {
   const [detailsTransactionId, setDetailsTransactionId] = useState<string | null>(null)
   const [detailsTransaction, setDetailsTransaction] = useState<any | null>(null)
   const [loadingDetails, setLoadingDetails] = useState(false)
+  
+  // Edit delivery type state
+  const [isEditingDelivery, setIsEditingDelivery] = useState(false)
+  const [editDeliveryType, setEditDeliveryType] = useState<'pickup' | 'delivery'>('pickup')
+  const [editDeliveryAddress, setEditDeliveryAddress] = useState('')
+  const [editDeliveryPhone, setEditDeliveryPhone] = useState('')
 
   const { user } = useAuthStore()
   const { cupsQueueName } = usePrinterStore()
@@ -118,6 +126,7 @@ export default function TransactionHistoryPage() {
   })
 
   const softDeleteTransaction = useSoftDeleteTransaction()
+  const updateDeliveryType = useUpdateTransactionDeliveryType()
 
   const transactions = transactionsData?.transactions || []
   const totalPages = transactionsData?.totalPages || 1
@@ -126,13 +135,56 @@ export default function TransactionHistoryPage() {
   const handleViewDetails = async (txnId: string) => {
     setDetailsTransactionId(txnId)
     setLoadingDetails(true)
+    setIsEditingDelivery(false)
     try {
       const txn = await getTransaction(txnId)
       setDetailsTransaction(txn)
+      setEditDeliveryType(txn.delivery_type)
+      setEditDeliveryAddress(txn.delivery_address || '')
+      setEditDeliveryPhone(txn.delivery_phone || '')
     } catch (err: any) {
       toast.error('Failed to load transaction details')
     } finally {
       setLoadingDetails(false)
+    }
+  }
+
+  // Start editing delivery type
+  const handleStartEditDelivery = () => {
+    setIsEditingDelivery(true)
+  }
+
+  // Cancel editing
+  const handleCancelEditDelivery = () => {
+    setIsEditingDelivery(false)
+    if (detailsTransaction) {
+      setEditDeliveryType(detailsTransaction.delivery_type)
+      setEditDeliveryAddress(detailsTransaction.delivery_address || '')
+      setEditDeliveryPhone(detailsTransaction.delivery_phone || '')
+    }
+  }
+
+  // Save delivery type changes
+  const handleSaveDeliveryType = async () => {
+    if (!detailsTransaction) return
+
+    const toastId = toast.loading('Updating delivery type...')
+    try {
+      await updateDeliveryType.mutateAsync({
+        transactionId: detailsTransaction.id,
+        deliveryType: editDeliveryType,
+        deliveryAddress: editDeliveryType === 'delivery' ? editDeliveryAddress : null,
+        deliveryPhone: editDeliveryType === 'delivery' ? editDeliveryPhone : null,
+      })
+
+      toast.success('Delivery type updated successfully', { id: toastId })
+      setIsEditingDelivery(false)
+      
+      // Refresh transaction details
+      const updatedTxn = await getTransaction(detailsTransaction.id)
+      setDetailsTransaction(updatedTxn)
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to update delivery type', { id: toastId })
     }
   }
 
@@ -486,25 +538,96 @@ export default function TransactionHistoryPage() {
                   <p className="font-semibold">{(detailsTransaction.branch as any)?.name || 'Main Branch'}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Type</p>
-                  <p className="font-semibold capitalize">{detailsTransaction.delivery_type}</p>
+                  <p className="text-sm text-muted-foreground flex items-center justify-between">
+                    <span>Delivery Type</span>
+                    {!isEditingDelivery && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-2"
+                        onClick={handleStartEditDelivery}
+                      >
+                        <Edit className="h-3 w-3 mr-1" />
+                        Edit
+                      </Button>
+                    )}
+                  </p>
+                  {isEditingDelivery ? (
+                    <Select value={editDeliveryType} onValueChange={(v: 'pickup' | 'delivery') => setEditDeliveryType(v)}>
+                      <SelectTrigger className="h-8 mt-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="pickup">Pickup</SelectItem>
+                        <SelectItem value="delivery">Delivery</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <p className="font-semibold flex items-center gap-2">
+                      {detailsTransaction.delivery_type === 'delivery' && <Truck className="h-4 w-4" />}
+                      <span className="capitalize">{detailsTransaction.delivery_type}</span>
+                    </p>
+                  )}
                 </div>
               </div>
 
               <Separator />
 
-              {/* Delivery Address (if applicable) */}
-              {detailsTransaction.delivery_type === 'delivery' && (
+              {/* Delivery Address (if applicable or being edited) */}
+              {(detailsTransaction.delivery_type === 'delivery' || (isEditingDelivery && editDeliveryType === 'delivery')) && (
                 <>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <p className="text-sm font-semibold mb-2">Delivery Address</p>
-                      <p className="text-sm">{detailsTransaction.delivery_address || 'Not provided'}</p>
+                      {isEditingDelivery ? (
+                        <Input
+                          value={editDeliveryAddress}
+                          onChange={(e) => setEditDeliveryAddress(e.target.value)}
+                          placeholder="Enter delivery address"
+                          className="h-8"
+                        />
+                      ) : (
+                        <p className="text-sm">{detailsTransaction.delivery_address || 'Not provided'}</p>
+                      )}
                     </div>
                     <div>
                       <p className="text-sm font-semibold mb-2">Delivery Phone</p>
-                      <p className="text-sm">{detailsTransaction.delivery_phone || 'Not provided'}</p>
+                      {isEditingDelivery ? (
+                        <Input
+                          value={editDeliveryPhone}
+                          onChange={(e) => setEditDeliveryPhone(e.target.value)}
+                          placeholder="Enter delivery phone"
+                          className="h-8"
+                        />
+                      ) : (
+                        <p className="text-sm">{detailsTransaction.delivery_phone || 'Not provided'}</p>
+                      )}
                     </div>
+                  </div>
+                  {isEditingDelivery && (
+                    <div className="flex gap-2">
+                      <Button size="sm" onClick={handleSaveDeliveryType}>
+                        Save Changes
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={handleCancelEditDelivery}>
+                        Cancel
+                      </Button>
+                    </div>
+                  )}
+                  <Separator />
+                </>
+              )}
+
+              {/* If editing and pickup is selected, show save button */}
+              {isEditingDelivery && editDeliveryType === 'pickup' && (
+                <>
+                  <div className="flex gap-2">
+                    <Button size="sm" onClick={handleSaveDeliveryType}>
+                      Save Changes
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={handleCancelEditDelivery}>
+                      Cancel
+                    </Button>
                   </div>
                   <Separator />
                 </>

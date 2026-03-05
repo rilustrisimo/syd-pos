@@ -79,7 +79,10 @@ export function useAdjustInventory() {
     mutationFn: (params: {
       branchId: string
       productId: string
+      variantId?: string | null
       quantityChange: number
+      uomId: string
+      reason: string
       notes: string
       userId: string
     }) => adjustInventory(params),

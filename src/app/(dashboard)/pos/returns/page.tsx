@@ -107,8 +107,8 @@ interface ReturnLine {
   unitPrice: number
   cogsPerUnit: number
   selected: boolean
-  restock: boolean
-  reasonCode: 'defective' | 'wrong_item' | 'customer_changed_mind' | 'damaged' | 'other'
+  should_restock: boolean
+  return_reason: 'customer_request' | 'wrong_item' | 'defective' | 'damaged' | 'expired' | 'quality_issue' | 'other'
 }
 
 export default function ReturnsPage() {
@@ -188,8 +188,8 @@ export default function ReturnsPage() {
         unitPrice: line.unit_price,
         cogsPerUnit: line.cogs_per_unit,
         selected: false,
-        restock: true,
-        reasonCode: 'customer_changed_mind' as const,
+        should_restock: true,
+        return_reason: 'customer_request' as const,
       }))
       setReturnLines(lines)
     }
@@ -234,21 +234,21 @@ export default function ReturnsPage() {
   const toggleLineRestock = (lineId: string) => {
     setReturnLines(prev => prev.map(line => {
       if (line.lineId === lineId) {
-        return { ...line, restock: !line.restock }
+        return { ...line, should_restock: !line.should_restock }
       }
       return line
     }))
   }
 
   // Update line reason code
-  const updateLineReasonCode = (lineId: string, reasonCode: ReturnLine['reasonCode']) => {
+  const updateLineReasonCode = (lineId: string, return_reason: ReturnLine['return_reason']) => {
     setReturnLines(prev => prev.map(line => {
       if (line.lineId === lineId) {
-        // If defective, don't restock by default
+        // Auto-set should_restock based on reason (damaged/expired/defective/quality_issue = don't restock)
         return {
           ...line,
-          reasonCode,
-          restock: reasonCode === 'defective' ? false : line.restock,
+          return_reason,
+          should_restock: ['damaged', 'expired', 'defective', 'quality_issue'].includes(return_reason) ? false : line.should_restock,
         }
       }
       return line
@@ -288,8 +288,8 @@ export default function ReturnsPage() {
           uom_id: line.uomId,
           unit_price: line.unitPrice,
           cogs_per_unit: line.cogsPerUnit,
-          restock: line.restock,
-          reason_code: line.reasonCode,
+          should_restock: line.should_restock,
+          return_reason: line.return_reason,
         })),
         refund: {
           refund_method: refundMethod,
@@ -624,8 +624,8 @@ export default function ReturnsPage() {
                               <div>
                                 <Label className="text-xs">Reason</Label>
                                 <Select
-                                  value={line.reasonCode}
-                                  onValueChange={(v) => updateLineReasonCode(line.lineId, v as ReturnLine['reasonCode'])}
+                                  value={line.return_reason}
+                                  onValueChange={(v) => updateLineReasonCode(line.lineId, v as ReturnLine['return_reason'])}
                                 >
                                   <SelectTrigger className="h-7 mt-1 text-xs">
                                     <SelectValue />
@@ -644,7 +644,7 @@ export default function ReturnsPage() {
                                 <div className="flex items-center gap-2">
                                   <Checkbox
                                     id={`restock-${line.lineId}`}
-                                    checked={line.restock}
+                                    checked={line.should_restock}
                                     onCheckedChange={() => toggleLineRestock(line.lineId)}
                                   />
                                   <Label htmlFor={`restock-${line.lineId}`} className="text-xs cursor-pointer flex items-center gap-1">

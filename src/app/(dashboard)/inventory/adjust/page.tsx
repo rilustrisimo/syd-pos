@@ -37,10 +37,21 @@ export default function AdjustStockPage() {
   const [selectedBranch, setSelectedBranch] = useState('')
   const [selectedProduct, setSelectedProduct] = useState('')
   const [adjustmentType, setAdjustmentType] = useState<'add' | 'subtract'>('add')
+  const [adjustmentReason, setAdjustmentReason] = useState('')
   const [quantity, setQuantity] = useState('')
   const [notes, setNotes] = useState('')
   const [productSearch, setProductSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
+
+  // Adjustment reason options
+  const reasonOptions = [
+    { value: 'stocktake', label: 'Physical Stocktake' },
+    { value: 'damage', label: 'Damaged Items' },
+    { value: 'theft', label: 'Theft/Loss' },
+    { value: 'correction', label: 'Data Entry Correction' },
+    { value: 'expired', label: 'Expired Products' },
+    { value: 'other', label: 'Other Reason' },
+  ]
 
   // Debounce search to prevent UI freezing
   useEffect(() => {
@@ -67,8 +78,8 @@ export default function AdjustStockPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!selectedBranch || !selectedProduct || !quantity || !notes.trim()) {
-      toast.error('Please fill in all required fields')
+    if (!selectedBranch || !selectedProduct || !quantity || !adjustmentReason || !notes.trim()) {
+      toast.error('Please fill in all required fields including reason')
       return
     }
 
@@ -83,13 +94,21 @@ export default function AdjustStockPage() {
       return
     }
 
+    if (!selectedProductData?.base_uom_id) {
+      toast.error('Product base unit not found')
+      return
+    }
+
     const quantityChange = adjustmentType === 'add' ? quantityNum : -quantityNum
 
     try {
       await adjustMutation.mutateAsync({
         branchId: selectedBranch,
         productId: selectedProduct,
+        variantId: null, // Add variant support later if needed
         quantityChange,
+        uomId: selectedProductData.base_uom_id, // Use base unit for now
+        reason: adjustmentReason,
         notes: notes.trim(),
         userId: user.id,
       })
@@ -101,6 +120,7 @@ export default function AdjustStockPage() {
       // Reset form
       setSelectedProduct('')
       setQuantity('')
+      setAdjustmentReason('')
       setNotes('')
       setProductSearch('')
       
@@ -277,21 +297,46 @@ export default function AdjustStockPage() {
               </p>
             </div>
 
-            {/* Notes/Reason */}
+            {/* Reason */}
+            <div className="space-y-2">
+              <Label htmlFor="reason">
+                Reason <span className="text-destructive">*</span>
+              </Label>
+              <Select
+                value={adjustmentReason}
+                onValueChange={setAdjustmentReason}
+              >
+                <SelectTrigger id="reason">
+                  <SelectValue placeholder="Select a reason..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {reasonOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Select the reason for this inventory adjustment
+              </p>
+            </div>
+
+            {/* Notes */}
             <div className="space-y-2">
               <Label htmlFor="notes">
-                Reason / Notes <span className="text-destructive">*</span>
+                Additional Notes <span className="text-destructive">*</span>
               </Label>
               <Textarea
                 id="notes"
-                placeholder="Explain why this adjustment is needed..."
+                placeholder="Provide details about this adjustment..."
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 rows={4}
               />
               <p className="text-xs text-muted-foreground">
-                Examples: "Received damaged goods", "Physical count correction", "Expired
-                stock removal"
+                Provide specific details. Examples: "Found 5 damaged boxes during inspection", 
+                "Physical count showed 120 instead of system 100"
               </p>
             </div>
 

@@ -4,14 +4,16 @@
 -- This script recalculates inventory from scratch by:
 -- 1. Summing all purchases (converted to base units)
 -- 2. Summing all sales (converted to base units, excluding deleted)
--- 3. Summing all returns (converted to base units, excluding deleted)
--- 4. Setting inventory = purchases - sales + returns
+-- 3. Summing all returns (converted to base units, excluding deleted, respecting should_restock flag)
+-- 4. Summing all manual adjustments (from inventory_movements)
+-- 5. Setting inventory = purchases - sales + returns + adjustments
 --
 -- The bug: When buying/selling in non-base units (e.g., PC instead of BOX),
 -- the system was adding/deducting the quantity as-is instead of converting.
 -- Example: Buying 4 PC was adding 4 BOX (should be 4÷44 = 0.09 BOX)
 --
--- APPROACH: Recalculate inventory from source transactions, ignore old movements
+-- APPROACH: Recalculate inventory from source transactions and adjustments
+-- NOTE: This migration should be run AFTER migrations 00027-00030 are deployed
 -- ============================================================================
 
 -- STEP 1: Create a temporary table to hold recalculated inventories
@@ -27,7 +29,7 @@ WITH all_purchases AS (
                 -- Already in base unit
                 WHEN pol.uom_id = p.base_uom_id THEN pol.quantity_received
                 -- Check multi-unit conversion
-                WHEN psu.conversion_factor IS NOT NULL AND psu.conversion_factor > 1 
+                WHEN psu.conversion_factor IS NOT NULL AND psu.conversion_factor > 0
                     THEN pol.quantity_received / psu.conversion_factor
                 -- Fallback to product conversion
                 WHEN pol.uom_id = p.selling_uom_id AND p.conversion_factor > 0
@@ -43,6 +45,7 @@ WITH all_purchases AS (
         AND psu.uom_id = pol.uom_id 
         AND psu.is_active = true
     WHERE pol.quantity_received > 0
+      AND po.is_deleted = false
     GROUP BY po.branch_id, pol.product_id, pol.variant_id
 ),
 all_sales AS (
@@ -56,7 +59,7 @@ all_sales AS (
                 -- Already in base unit
                 WHEN tl.uom_id = p.base_uom_id THEN tl.quantity
                 -- Check multi-unit conversion
-                WHEN psu.conversion_factor IS NOT NULL AND psu.conversion_factor > 1 
+                WHEN psu.conversion_factor IS NOT NULL AND psu.conversion_factor > 0
                     THEN tl.quantity / psu.conversion_factor
                 -- Fallback to product conversion
                 WHEN tl.uom_id = p.selling_uom_id AND p.conversion_factor > 0
@@ -77,6 +80,8 @@ all_sales AS (
 ),
 all_returns AS (
     -- Sum all returns in base units per product/branch (excluding deleted)
+    -- NOTE: Only count returns where should_restock is true (Migration 00029)
+    -- Damaged/expired items have should_restock = false and should NOT be counted
     SELECT 
         t.branch_id,
         tl.product_id,
@@ -86,7 +91,7 @@ all_returns AS (
                 -- Already in base unit
                 WHEN tl.uom_id = p.base_uom_id THEN tl.quantity
                 -- Check multi-unit conversion
-                WHEN psu.conversion_factor IS NOT NULL AND psu.conversion_factor > 1 
+                WHEN psu.conversion_factor IS NOT NULL AND psu.conversion_factor > 0
                     THEN tl.quantity / psu.conversion_factor
                 -- Fallback to product conversion
                 WHEN tl.uom_id = p.selling_uom_id AND p.conversion_factor > 0
@@ -103,7 +108,22 @@ all_returns AS (
         AND psu.is_active = true
     WHERE t.is_deleted = false
       AND t.transaction_type = 'return'
+      AND COALESCE(tl.should_restock, true) = true  -- Only count items that were restocked
     GROUP BY t.branch_id, tl.product_id, tl.variant_id
+),
+all_adjustments AS (
+    -- Sum all manual adjustments from inventory_movements
+    -- These are created by adjust_inventory_atomic() RPC (Migration 00028)
+    -- Exclude correction movements from previous runs of this script
+    SELECT 
+        branch_id,
+        product_id,
+        variant_id,
+        SUM(quantity_change) as total_adjustments
+    FROM inventory_movements
+    WHERE movement_type = 'adjustment'
+      AND reference_type != 'inventory_correction'  -- Exclude previous corrections
+    GROUP BY branch_id, product_id, variant_id
 ),
 combined AS (
     -- Combine all sources
@@ -112,6 +132,8 @@ combined AS (
     SELECT branch_id, product_id, variant_id, -total_sold as qty FROM all_sales
     UNION ALL
     SELECT branch_id, product_id, variant_id, total_returned as qty FROM all_returns
+    UNION ALL
+    SELECT branch_id, product_id, variant_id, total_adjustments as qty FROM all_adjustments
 )
 SELECT 
     branch_id,
@@ -208,7 +230,7 @@ BEGIN
             correct_qty,
             'inventory_correction',
             system_user_id,
-            'Recalculated inventory from all purchases/sales/returns for ' || correction_rec.name || 
+            'Recalculated inventory from purchases/sales/returns/adjustments for ' || correction_rec.name || 
             ' at ' || correction_rec.branch_name || 
             '. Adjusted from ' || ROUND(current_qty, 4) || ' to ' || ROUND(correct_qty, 4)
         );

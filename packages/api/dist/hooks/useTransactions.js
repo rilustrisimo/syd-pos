@@ -11,7 +11,7 @@ export const useTransactions = (page = 1, limit = 20, options) => {
                 .select(`
           *,
           customer:customers(*),
-          lines:transaction_lines(*),
+          lines:transaction_lines(*, product:products(id, code, name), uom:units_of_measure(id, name, code)),
           payments:transaction_payments(*)
         `, { count: 'exact' })
                 .order('created_at', { ascending: false })
@@ -45,7 +45,7 @@ export const useSearchTransactions = (query, options) => {
                 .select(`
           *,
           customer:customers(*),
-          lines:transaction_lines(*),
+          lines:transaction_lines(*, product:products(id, code, name), uom:units_of_measure(id, name, code)),
           payments:transaction_payments(*)
         `)
                 .or(`transaction_number.ilike.${searchTerm},customer.name.ilike.${searchTerm}`)
@@ -73,7 +73,7 @@ export const useTransaction = (id) => {
                 .select(`
           *,
           customer:customers(*),
-          lines:transaction_lines(*),
+          lines:transaction_lines(*, product:products(id, code, name), uom:units_of_measure(id, name, code)),
           payments:transaction_payments(*)
         `)
                 .eq('id', id)
@@ -94,68 +94,43 @@ export const useCreateTransaction = () => {
     return useMutation({
         mutationFn: async (payload) => {
             const input = payload.input;
-            const { data: transaction, error: txError } = await supabase
-                .from('transactions')
-                .insert([
-                {
-                    transaction_number: `TXN-${Date.now()}`,
-                    customer_id: input.customer_id,
-                    branch_id: input.branch_id,
-                    transaction_type: input.transaction_type,
-                    delivery_type: input.delivery_type,
-                    delivery_address: input.delivery_address || null,
-                    delivery_phone: input.delivery_phone || null,
-                    notes: input.notes || null,
-                    subtotal: input.subtotal,
-                    discount_amount: input.discount_amount,
-                    total_amount: input.total_amount,
-                    amount_paid: input.amount_paid,
-                    payment_status: input.payment_status,
-                    created_by: payload.userId,
-                },
-            ])
-                .select()
-                .single();
-            if (txError) {
-                throw new Error(`Failed to create transaction: ${txError.message}`);
-            }
-            if (payload.lines && payload.lines.length > 0) {
-                const linesData = payload.lines.map((line, index) => ({
-                    transaction_id: transaction.id,
-                    line_number: index + 1,
+            const { data, error } = await supabase.rpc('create_transaction_atomic', {
+                p_branch_id: input.branch_id,
+                p_customer_id: input.customer_id,
+                p_transaction_type: input.transaction_type,
+                p_delivery_type: input.delivery_type,
+                p_delivery_address: input.delivery_address ?? null,
+                p_delivery_phone: input.delivery_phone ?? null,
+                p_notes: input.notes ?? null,
+                p_subtotal: input.subtotal,
+                p_discount_amount: input.discount_amount,
+                p_delivery_fee: input.delivery_fee ?? 0,
+                p_other_fees: input.other_fees ?? 0,
+                p_other_fees_notes: input.other_fees_notes ?? null,
+                p_transaction_date: input.transaction_date ?? new Date().toISOString(),
+                p_total_amount: input.total_amount,
+                p_amount_paid: input.amount_paid,
+                p_payment_status: input.payment_status,
+                p_created_by: payload.userId,
+                p_lines: payload.lines.map((line) => ({
                     product_id: line.product_id,
-                    variant_id: line.variant_id || null,
+                    variant_id: line.variant_id ?? null,
                     quantity: line.quantity,
                     uom_id: line.uom_id,
                     unit_price: line.unit_price,
                     cogs_per_unit: line.cogs_per_unit,
-                    discount_amount: line.discount_amount || 0,
-                    notes: null,
-                }));
-                const { error: linesError } = await supabase
-                    .from('transaction_lines')
-                    .insert(linesData);
-                if (linesError) {
-                    throw new Error(`Failed to create transaction lines: ${linesError.message}`);
-                }
-            }
-            if (payload.payments && payload.payments.length > 0) {
-                const paymentsData = payload.payments.map((payment) => ({
-                    transaction_id: transaction.id,
+                    discount_amount: line.discount_amount ?? 0,
+                })),
+                p_payments: payload.payments.map((payment) => ({
                     payment_method: payment.payment_method,
                     amount: payment.amount,
-                    reference_number: payment.reference_number || null,
-                    status: 'completed',
-                    created_by: payload.userId,
-                }));
-                const { error: paymentsError } = await supabase
-                    .from('transaction_payments')
-                    .insert(paymentsData);
-                if (paymentsError) {
-                    throw new Error(`Failed to create payments: ${paymentsError.message}`);
-                }
+                    reference_number: payment.reference_number ?? null,
+                })),
+            });
+            if (error) {
+                throw new Error(`Failed to create transaction: ${error.message}`);
             }
-            return transaction;
+            return data;
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: TRANSACTIONS_QUERY_KEY });
@@ -191,7 +166,7 @@ export const useCustomerTransactions = (customerId) => {
                 .select(`
           *,
           customer:customers(*),
-          lines:transaction_lines(*),
+          lines:transaction_lines(*, product:products(id, code, name), uom:units_of_measure(id, name, code)),
           payments:transaction_payments(*)
         `)
                 .eq('customer_id', customerId)

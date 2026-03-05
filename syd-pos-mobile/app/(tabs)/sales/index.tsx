@@ -295,6 +295,12 @@ export default function SalesScreen() {
     { id: '1', method: 'cash', amount: '', reference: '' },
   ])
 
+  // Checkout fee + date state (declared before cart derived values that reference them)
+  const [deliveryFee, setDeliveryFee] = useState('0')
+  const [otherFees, setOtherFees] = useState('0')
+  const [otherFeesNotes, setOtherFeesNotes] = useState('')
+  const [saleDate, setSaleDate] = useState(new Date())
+
   // New customer form
   const [newCustomerName, setNewCustomerName] = useState('')
   const [newCustomerPhone, setNewCustomerPhone] = useState('')
@@ -359,12 +365,15 @@ export default function SalesScreen() {
     }
   }, [discountType, discountInput, subtotal, cart])
   const total = Math.max(0, subtotal - orderDiscount)
+  const deliveryFeeNum = parseFloat(deliveryFee) || 0
+  const otherFeesNum = parseFloat(otherFees) || 0
+  const grandTotal = total + deliveryFeeNum + otherFeesNum
   const totalPaid = useMemo(
     () => payments.reduce((s, p) => s + (parseFloat(p.amount) || 0), 0),
     [payments]
   )
-  const balanceDue = Math.max(0, total - totalPaid)
-  const changeAmount = totalPaid > total ? totalPaid - total : 0
+  const balanceDue = Math.max(0, grandTotal - totalPaid)
+  const changeAmount = totalPaid > grandTotal ? totalPaid - grandTotal : 0
 
   // quick lookup for cart quantity per product
   const cartQtyMap = useMemo(() => {
@@ -376,6 +385,7 @@ export default function SalesScreen() {
   // ── Checkout state ────────────────────────────────────────────────────────
   const [deliveryType, setDeliveryType] = useState<'pickup' | 'delivery'>('pickup')
   const [deliveryAddress, setDeliveryAddress] = useState('')
+  const [deliveryPhone, setDeliveryPhone] = useState('')
   const [isPrinting, setIsPrinting] = useState(false)
 
   // Printer store (for paper width)
@@ -445,6 +455,7 @@ export default function SalesScreen() {
         price: product.current_selling_price,
         cogs_per_unit: product.latest_cogs ?? 0,
         discount: 0,
+        uom_name: product.uom?.name ?? 'pc',
       })
     }
   }
@@ -474,26 +485,44 @@ export default function SalesScreen() {
       Alert.alert('Empty Cart', 'Please add at least one product.')
       return
     }
-    setDiscountType('none')
-    setDiscountInput('')
-    setOrderNotes('')
-    setPayments([{ id: '1', method: 'cash', amount: total.toFixed(2), reference: '' }])
-    setDeliveryType('pickup')
-    setDeliveryAddress('')
     setShowCartModal(false)
     setShowCheckout(true)
+  }
+
+  function handleClearEntries() {
+    Alert.alert(
+      'Clear Entries?',
+      'This will reset all checkout fields (discount, fees, notes, delivery details, date, payments).',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear',
+          style: 'destructive',
+          onPress: () => {
+            setDiscountType('none')
+            setDiscountInput('')
+            setOrderNotes('')
+            setDeliveryFee('0')
+            setOtherFees('0')
+            setOtherFeesNotes('')
+            setSaleDate(new Date())
+            setPayments([{ id: '1', method: 'cash', amount: grandTotal.toFixed(2), reference: '' }])
+            setDeliveryType('pickup')
+            setDeliveryAddress('')
+            setDeliveryPhone('')
+          },
+        },
+      ]
+    )
   }
 
   async function handleCompleteCheckout() {
     if (!effectiveBranchId || !customer || !authUser) return
 
-    // Delivery requires both a phone number and address
+    // Delivery requires a phone number and address
     if (deliveryType === 'delivery') {
-      if (!customer.phone) {
-        Alert.alert(
-          'Phone Required',
-          'A customer phone number is required for delivery orders.\n\nPlease select a customer with a phone number, or add one via the customer modal.',
-        )
+      if (!deliveryPhone.trim()) {
+        Alert.alert('Phone Required', 'Please enter a contact phone number for this delivery.')
         return
       }
       if (!deliveryAddress.trim()) {
@@ -507,7 +536,7 @@ export default function SalesScreen() {
       Alert.alert('Invalid Payment', 'All payment entries must have a valid amount greater than zero.')
       return
     }
-    // For non-credit customers, require full payment
+    // For non-credit customers, require full payment (compared against grandTotal)
     if (customer.customer_type !== 'credit' && balanceDue > 0.01) {
       Alert.alert('Insufficient Payment', `Balance due: ₱${balanceDue.toLocaleString('en-PH', { minimumFractionDigits: 2 })}`)
       return
@@ -540,7 +569,7 @@ export default function SalesScreen() {
       })
 
       const paymentStatus =
-        totalPaid >= total ? 'paid' : totalPaid > 0 ? 'partial' : 'unpaid'
+        totalPaid >= grandTotal ? 'paid' : totalPaid > 0 ? 'partial' : 'unpaid'
 
       const tx = await createTransaction.mutateAsync({
         input: {
@@ -549,10 +578,15 @@ export default function SalesScreen() {
           transaction_type: 'sale',
           delivery_type: deliveryType,
           delivery_address: deliveryType === 'delivery' ? deliveryAddress.trim() : null,
+          delivery_phone: deliveryType === 'delivery' ? deliveryPhone.trim() : null,
           notes: orderNotes.trim() || null,
           subtotal,
           discount_amount: orderDiscount,
-          total_amount: total,
+          delivery_fee: deliveryFeeNum,
+          other_fees: otherFeesNum,
+          other_fees_notes: otherFeesNotes.trim() || null,
+          transaction_date: saleDate.toISOString(),
+          total_amount: grandTotal,
           amount_paid: totalPaid,
           payment_status: paymentStatus,
         },
@@ -569,27 +603,31 @@ export default function SalesScreen() {
       if (btPrinter.isConnected()) {
         setIsPrinting(true)
         const now = new Date()
+        const saleDateFormatted = saleDate.toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })
         const receiptData: ReceiptData = {
           transaction_number: tx?.transaction_number ?? '—',
-          date: now.toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' }),
+          date: saleDateFormatted,
           time: now.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' }),
           cashier: authUser.email ?? 'Cashier',
           branch: authUser.branch_id ?? localBranchId ?? 'Main Branch',
-          customer: { name: customer.name, phone: customer.phone ?? null },
+          customer: { name: customer.name, phone: (deliveryType === 'delivery' ? deliveryPhone.trim() : null) || customer.phone || null },
           delivery_type: deliveryType,
           delivery_address: deliveryType === 'delivery' ? deliveryAddress.trim() : null,
           items: cart.map((item: CartItem) => ({
             name: item.name,
             quantity: item.quantity,
             unit_price: item.price,
-            uom: 'pc',
+            uom: item.uom_name ?? 'pc',
             discount: 0,
             total: item.price * item.quantity,
           })),
           subtotal,
           discount: orderDiscount,
+          delivery_fee: deliveryFeeNum,
+          other_fees: otherFeesNum,
+          other_fees_notes: otherFeesNotes.trim() || null,
           tax: 0,
-          total,
+          total: grandTotal,
           payments: payments.map((p) => ({
             method: p.method,
             amount: parseFloat(p.amount) || 0,
@@ -943,7 +981,12 @@ export default function SalesScreen() {
           </Pressable>
 
           {/* Cart items */}
-          <ScrollView style={styles.cartScrollArea} showsVerticalScrollIndicator={false}>
+          <ScrollView
+            style={styles.cartScrollArea}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+          >
             {cart.map((item: CartItem, idx: number) => (
               <View key={`${item.productId}-${idx}`} style={styles.cartItem}>
                 <View style={styles.cartItemInfo}>
@@ -1037,15 +1080,21 @@ export default function SalesScreen() {
         <SafeAreaView style={styles.modalContainer}>
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>Checkout</Text>
-            <Pressable
-              style={styles.modalClose}
-              onPress={() => setShowCheckout(false)}
-            >
-              <Ionicons name="close" size={22} color="#64748b" />
-            </Pressable>
+            <View style={styles.modalHeaderRight}>
+              <Pressable style={styles.clearEntriesBtn} onPress={handleClearEntries}>
+                <Ionicons name="trash-outline" size={16} color="#ef4444" />
+                <Text style={styles.clearEntriesBtnText}>Clear</Text>
+              </Pressable>
+              <Pressable
+                style={styles.modalClose}
+                onPress={() => setShowCheckout(false)}
+              >
+                <Ionicons name="close" size={22} color="#64748b" />
+              </Pressable>
+            </View>
           </View>
 
-          <ScrollView style={styles.formScroll} keyboardShouldPersistTaps="handled">
+          <ScrollView style={styles.formScroll} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
             {/* ── Order Summary ─────────────────────────────────────────────── */}
             <View style={styles.checkoutSection}>
               <Text style={styles.sectionLabel}>Order Summary</Text>
@@ -1073,10 +1122,26 @@ export default function SalesScreen() {
                   </Text>
                 </View>
               )}
+              {deliveryFeeNum > 0 && (
+                <View style={styles.summaryLine}>
+                  <Text style={[styles.summaryLineName, { color: '#64748b' }]}>Delivery Fee</Text>
+                  <Text style={[styles.summaryLineTotal, { color: '#64748b' }]}>
+                    +₱{deliveryFeeNum.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                  </Text>
+                </View>
+              )}
+              {otherFeesNum > 0 && (
+                <View style={styles.summaryLine}>
+                  <Text style={[styles.summaryLineName, { color: '#64748b' }]}>Other Fees</Text>
+                  <Text style={[styles.summaryLineTotal, { color: '#64748b' }]}>
+                    +₱{otherFeesNum.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                  </Text>
+                </View>
+              )}
               <View style={styles.summaryLine}>
                 <Text style={[styles.summaryLineName, { fontWeight: '700' }]}>Total</Text>
                 <Text style={[styles.summaryLineTotal, { fontWeight: '800', color: '#3b82f6', fontSize: 16 }]}>
-                  ₱{total.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                  ₱{grandTotal.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
                 </Text>
               </View>
             </View>
@@ -1142,6 +1207,86 @@ export default function SalesScreen() {
               />
             </View>
 
+            {/* ── Additional Fees ───────────────────────────────────────────── */}
+            <View style={styles.checkoutSection}>
+              <Text style={styles.sectionLabel}>Additional Fees</Text>
+              <Text style={styles.fieldLabel}>Delivery Fee</Text>
+              <View style={styles.discountInputRow}>
+                <Text style={styles.discountInputPrefix}>₱</Text>
+                <TextInput
+                  style={styles.discountInputField}
+                  keyboardType="decimal-pad"
+                  placeholder="0.00"
+                  value={deliveryFee}
+                  onChangeText={setDeliveryFee}
+                />
+              </View>
+              <Text style={styles.fieldLabel}>Other Fees</Text>
+              <View style={styles.discountInputRow}>
+                <Text style={styles.discountInputPrefix}>₱</Text>
+                <TextInput
+                  style={styles.discountInputField}
+                  keyboardType="decimal-pad"
+                  placeholder="0.00"
+                  value={otherFees}
+                  onChangeText={setOtherFees}
+                />
+              </View>
+              {otherFeesNum > 0 && (
+                <>
+                  <Text style={styles.fieldLabel}>Other Fees Notes (optional)</Text>
+                  <TextInput
+                    style={styles.notesInput}
+                    placeholder="e.g. Handling fee, packing…"
+                    value={otherFeesNotes}
+                    onChangeText={setOtherFeesNotes}
+                    multiline
+                    numberOfLines={2}
+                  />
+                </>
+              )}
+            </View>
+
+            {/* ── Sale Date ─────────────────────────────────────────────────── */}
+            <View style={styles.checkoutSection}>
+              <Text style={styles.sectionLabel}>Sale Date</Text>
+              <View style={styles.datePickerRow}>
+                <Pressable
+                  style={styles.dateNavBtn}
+                  onPress={() => setSaleDate((d) => new Date(d.getTime() - 86400000))}
+                >
+                  <Ionicons name="chevron-back" size={20} color="#64748b" />
+                </Pressable>
+                <View style={styles.dateDisplay}>
+                  <Text style={styles.dateDisplayText}>
+                    {saleDate.toLocaleDateString('en-PH', { weekday: 'short', month: 'long', day: 'numeric', year: 'numeric' })}
+                  </Text>
+                  {saleDate.toDateString() !== new Date().toDateString() && (
+                    <Text style={styles.datePastLabel}>Backdated</Text>
+                  )}
+                </View>
+                <Pressable
+                  style={[styles.dateNavBtn, saleDate.toDateString() === new Date().toDateString() && styles.dateNavBtnDisabled]}
+                  onPress={() => {
+                    const next = new Date(saleDate.getTime() + 86400000)
+                    if (next <= new Date()) setSaleDate(next)
+                  }}
+                  disabled={saleDate.toDateString() === new Date().toDateString()}
+                >
+                  <Ionicons
+                    name="chevron-forward"
+                    size={20}
+                    color={saleDate.toDateString() === new Date().toDateString() ? '#cbd5e1' : '#64748b'}
+                  />
+                </Pressable>
+              </View>
+              {saleDate.toDateString() !== new Date().toDateString() && (
+                <Pressable style={styles.resetDateBtn} onPress={() => setSaleDate(new Date())}>
+                  <Text style={styles.resetDateBtnText}>Reset to Today</Text>
+                </Pressable>
+              )}
+            </View>
+
             {/* ── Order Type ────────────────────────────────────────────────── */}
             <View style={styles.checkoutSection}>
               <Text style={styles.sectionLabel}>Order Type</Text>
@@ -1150,7 +1295,12 @@ export default function SalesScreen() {
                   <Pressable
                     key={type}
                     style={[styles.deliveryToggleBtn, deliveryType === type && styles.deliveryToggleBtnActive]}
-                    onPress={() => setDeliveryType(type)}
+                    onPress={() => {
+                      setDeliveryType(type)
+                      if (type === 'delivery' && !deliveryPhone && customer?.phone) {
+                        setDeliveryPhone(customer.phone)
+                      }
+                    }}
                   >
                     <Ionicons
                       name={type === 'pickup' ? 'storefront-outline' : 'bicycle-outline'}
@@ -1165,6 +1315,14 @@ export default function SalesScreen() {
               </View>
               {deliveryType === 'delivery' && (
                 <View style={{ gap: 6 }}>
+                  <Text style={styles.fieldLabel}>Contact Phone *</Text>
+                  <TextInput
+                    style={styles.fieldInput}
+                    placeholder="e.g. 09XX XXX XXXX"
+                    value={deliveryPhone}
+                    onChangeText={setDeliveryPhone}
+                    keyboardType="phone-pad"
+                  />
                   <Text style={styles.fieldLabel}>Delivery Address *</Text>
                   <TextInput
                     style={[styles.fieldInput, { minHeight: 72, textAlignVertical: 'top' }]}
@@ -1244,13 +1402,13 @@ export default function SalesScreen() {
                   {/* Quick pay buttons for first payment */}
                   {idx === 0 && (
                     <View style={styles.quickPayRow}>
-                      <Pressable style={styles.quickPayBtn} onPress={() => setFirstPaymentAmount(total.toFixed(2))}>
+                      <Pressable style={styles.quickPayBtn} onPress={() => setFirstPaymentAmount(grandTotal.toFixed(2))}>
                         <Text style={styles.quickPayBtnText}>Exact</Text>
                       </Pressable>
-                      <Pressable style={styles.quickPayBtn} onPress={() => setFirstPaymentAmount((Math.ceil(total / 100) * 100).toFixed(2))}>
-                        <Text style={styles.quickPayBtnText}>↑₱{Math.ceil(total / 100) * 100}</Text>
+                      <Pressable style={styles.quickPayBtn} onPress={() => setFirstPaymentAmount((Math.ceil(grandTotal / 100) * 100).toFixed(2))}>
+                        <Text style={styles.quickPayBtnText}>↑₱{Math.ceil(grandTotal / 100) * 100}</Text>
                       </Pressable>
-                      <Pressable style={styles.quickPayBtn} onPress={() => setFirstPaymentAmount((total + 500).toFixed(2))}>
+                      <Pressable style={styles.quickPayBtn} onPress={() => setFirstPaymentAmount((grandTotal + 500).toFixed(2))}>
                         <Text style={styles.quickPayBtnText}>+₱500</Text>
                       </Pressable>
                     </View>
@@ -1277,7 +1435,7 @@ export default function SalesScreen() {
                 <View style={styles.paymentSummaryRow}>
                   <Text style={styles.paymentSummaryLabel}>Order Total</Text>
                   <Text style={styles.paymentSummaryValue}>
-                    ₱{total.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                    ₱{grandTotal.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
                   </Text>
                 </View>
                 <View style={styles.paymentSummaryRow}>
@@ -2373,6 +2531,61 @@ const styles = StyleSheet.create({
     color: '#16a34a',
   },
 
+  // Date picker
+  datePickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  dateNavBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: '#f1f5f9',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  dateNavBtnDisabled: {
+    opacity: 0.4,
+  },
+  dateDisplay: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 2,
+  },
+  dateDisplayText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#0f172a',
+    textAlign: 'center',
+  },
+  datePastLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#f59e0b',
+    backgroundColor: '#fef3c7',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+    overflow: 'hidden',
+  },
+  resetDateBtn: {
+    alignSelf: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    marginTop: 4,
+  },
+  resetDateBtnText: {
+    fontSize: 13,
+    color: '#64748b',
+    fontWeight: '600',
+  },
+
   // Credit info
   creditInfoBox: {
     backgroundColor: '#fffbeb',
@@ -2397,5 +2610,26 @@ const styles = StyleSheet.create({
   },
   creditInfoExceeded: {
     color: '#dc2626',
+  },
+  modalHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  clearEntriesBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#fecaca',
+    backgroundColor: '#fff1f2',
+  },
+  clearEntriesBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#ef4444',
   },
 })

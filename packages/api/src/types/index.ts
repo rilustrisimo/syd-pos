@@ -195,6 +195,9 @@ export interface Transaction {
   discount_amount: number
   discount_percentage: number
   tax_amount: number
+  delivery_fee: number
+  other_fees: number
+  other_fees_notes: string | null
   total_amount: number
   payment_status: PaymentStatus
   amount_paid: number
@@ -224,6 +227,10 @@ export interface CreateTransactionInput {
   // Financial totals — must be provided by the caller
   subtotal: number
   discount_amount: number
+  delivery_fee?: number
+  other_fees?: number
+  other_fees_notes?: string | null
+  transaction_date?: string
   total_amount: number
   amount_paid: number
   payment_status: PaymentStatus

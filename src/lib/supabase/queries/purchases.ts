@@ -279,7 +279,10 @@ export async function deletePurchaseOrderLine(lineId: string, poId: string) {
   await updatePOTotal(poId)
 }
 
-// Receive items for a PO line
+/**
+ * Receive items for a PO line using atomic RPC
+ * This prevents race conditions and ensures consistency
+ */
 export async function receivePOLineItems(
   lineId: string,
   quantityReceived: number,
@@ -287,44 +290,43 @@ export async function receivePOLineItems(
 ) {
   const supabase = getClient()
 
-  // Get the line details first
+  // Validate quantity
+  if (quantityReceived <= 0) {
+    throw new Error('Quantity received must be greater than zero')
+  }
+
+  // Get the line details first to get PO ID
   const { data: line, error: lineError } = await supabase
     .from('purchase_order_lines')
-    .select(`
-      *,
-      product:products(id, code, name),
-      purchase_order:purchase_orders(id, branch_id, status)
-    `)
+    .select('po_id, quantity_ordered, quantity_received')
     .eq('id', lineId)
     .single()
 
   if (lineError) throw lineError
 
   const lineData = line as any
-  const newQuantityReceived = Number(lineData.quantity_received) + quantityReceived
 
-  // Validate we're not receiving more than ordered
-  if (newQuantityReceived > Number(lineData.quantity_ordered)) {
-    throw new Error('Cannot receive more than ordered quantity')
+  // Call atomic RPC
+  const { data, error } = await supabase.rpc('receive_purchase_order_atomic', {
+    p_po_id: lineData.po_id,
+    p_received_lines: [
+      {
+        po_line_id: lineId,
+        quantity_received: quantityReceived
+      }
+    ],
+    p_user_id: userId
+  })
+
+  if (error) {
+    // Check for specific error types
+    if (error.message.includes('Cannot receive more than ordered')) {
+      throw new Error(error.message)
+    }
+    throw error
   }
 
-  // Update the line's quantity_received
-  // This will trigger the database function to update product pricing
-  const { error: updateError } = await supabase
-    .from('purchase_order_lines')
-    .update({ quantity_received: newQuantityReceived } as any)
-    .eq('id', lineId)
-
-  if (updateError) throw updateError
-
-  // Update branch inventory
-  const po = lineData.purchase_order as any
-  await updateBranchInventory(po.branch_id, lineData.product_id, quantityReceived, userId, lineData.po_id)
-
-  // Check if all lines are fully received and update PO status
-  await checkAndUpdatePOStatus(lineData.po_id)
-
-  return { success: true }
+  return data
 }
 
 // Helper to update PO total amount (merchandise subtotal + delivery charge)
@@ -351,138 +353,58 @@ async function updatePOTotal(poId: string) {
     .eq('id', poId)
 }
 
-// Helper to update branch inventory after receiving
-async function updateBranchInventory(
-  branchId: string,
-  productId: string,
-  quantity: number,
-  userId: string,
-  poId: string
-) {
-  const supabase = getClient()
-
-  // Check if inventory record exists
-  const { data: existing } = await supabase
-    .from('branch_inventory')
-    .select('*')
-    .eq('branch_id', branchId)
-    .eq('product_id', productId)
-    .maybeSingle()
-
-  const existingData = existing as any
-  const currentQuantity = existingData ? Number(existingData.quantity_on_hand) : 0
-  const newQuantity = currentQuantity + quantity
-
-  if (existingData) {
-    // Update existing
-    await supabase
-      .from('branch_inventory')
-      .update({
-        quantity_on_hand: newQuantity,
-        last_movement_at: new Date().toISOString(),
-      } as any)
-      .eq('id', existingData.id)
-  } else {
-    // Create new
-    await supabase
-      .from('branch_inventory')
-      .insert({
-        branch_id: branchId,
-        product_id: productId,
-        quantity_on_hand: newQuantity,
-        quantity_reserved: 0,
-        last_movement_at: new Date().toISOString(),
-      } as any)
-  }
-
-  // Record movement
-  await supabase
-    .from('inventory_movements')
-    .insert({
-      branch_id: branchId,
-      product_id: productId,
-      movement_type: 'purchase',
-      quantity_change: quantity,
-      quantity_before: currentQuantity,
-      quantity_after: newQuantity,
-      reference_id: poId,
-      reference_type: 'purchase_order',
-      created_by: userId,
-    } as any)
-}
-
-// Helper to check and update PO status based on received quantities
-async function checkAndUpdatePOStatus(poId: string) {
-  const supabase = getClient()
-
-  const { data: lines, error } = await supabase
-    .from('purchase_order_lines')
-    .select('quantity_ordered, quantity_received')
-    .eq('po_id', poId)
-
-  if (error) throw error
-
-  const linesData = lines as any[] || []
-  if (linesData.length === 0) return
-
-  const allFullyReceived = linesData.every(
-    (line: any) => Number(line.quantity_received) >= Number(line.quantity_ordered)
-  )
-  const someReceived = linesData.some((line: any) => Number(line.quantity_received) > 0)
-
-  let newStatus: POStatus
-  if (allFullyReceived) {
-    newStatus = 'received'
-  } else if (someReceived) {
-    newStatus = 'partially_received'
-  } else {
-    return // No status change needed
-  }
-
-  await updatePOStatus(poId, newStatus)
-}
-
-// Receive all remaining items for a PO
+// Receive all remaining items for a PO using atomic RPC
 export async function receiveAllPOLines(poId: string, userId: string, receiveDate?: string) {
   const supabase = getClient()
 
   // Get all lines with remaining quantities
   const { data: lines, error: linesError } = await supabase
     .from('purchase_order_lines')
-    .select(`
-      *,
-      product:products(id, code, name),
-      purchase_order:purchase_orders(id, branch_id, status)
-    `)
+    .select('id, quantity_ordered, quantity_received')
     .eq('po_id', poId)
 
   if (linesError) throw linesError
 
   const linesData = (lines as any[]) || []
 
-  for (const line of linesData) {
-    const ordered = Number(line.quantity_ordered)
-    const received = Number(line.quantity_received)
-    const remaining = ordered - received
+  // Build array of lines to receive
+  const linesToReceive = linesData
+    .map(line => {
+      const ordered = Number(line.quantity_ordered)
+      const received = Number(line.quantity_received || 0)
+      const remaining = ordered - received
 
-    if (remaining <= 0) continue
+      if (remaining <= 0) return null
 
-    // Update line quantity_received (DB trigger handles inventory update automatically)
-    const { error: updateError } = await supabase
-      .from('purchase_order_lines')
-      .update({ quantity_received: ordered } as any)
-      .eq('id', line.id)
+      return {
+        po_line_id: line.id,
+        quantity_received: remaining
+      }
+    })
+    .filter(line => line !== null)
 
-    if (updateError) throw updateError
-
-    // Note: Inventory is automatically updated by the database trigger 'update_inventory_on_receive'
-    // No manual inventory update needed here to avoid double-counting
+  if (linesToReceive.length === 0) {
+    throw new Error('No items remaining to receive')
   }
 
-  // Set PO status to received with custom date
-  await updatePOStatus(poId, 'received', receiveDate)
+  // Call atomic RPC to receive all lines
+  const { data, error } = await supabase.rpc('receive_purchase_order_atomic', {
+    p_po_id: poId,
+    p_received_lines: linesToReceive,
+    p_user_id: userId
+  })
 
-  return { success: true }
+  if (error) throw error
+
+  // If custom receive date provided, update it
+  if (receiveDate) {
+    await supabase
+      .from('purchase_orders')
+      .update({ updated_at: receiveDate } as any)
+      .eq('id', poId)
+  }
+
+  return data
 }
 
 // Cancel a purchase order

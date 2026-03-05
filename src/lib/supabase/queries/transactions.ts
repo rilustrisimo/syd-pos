@@ -200,9 +200,9 @@ export async function getTransactions(filters: TransactionFilters = {}) {
     query = query.or(`transaction_number.ilike.%${rest.search}%`)
   }
 
-  // Pagination
+  // Pagination - sort by transaction date (sale date) instead of creation date
   query = query
-    .order('created_at', { ascending: false })
+    .order('transaction_date', { ascending: false })
     .range(offset, offset + limit - 1)
 
   const { data, error, count } = await query
@@ -266,6 +266,10 @@ export async function getTransaction(id: string) {
 }
 
 // Create a new transaction with lines
+/**
+ * Creates a transaction using atomic RPC with stock validation and row-level locking
+ * This prevents race conditions and overselling
+ */
 export async function createTransaction(
   input: TransactionInput,
   lines: TransactionLineInput[],
@@ -295,80 +299,56 @@ export async function createTransaction(
     paymentStatus = 'partial'
   }
 
-  // Generate transaction number
-  const transactionNumber = await generateTransactionNumber()
+  // Format lines for RPC
+  const rpcLines = lines.map(line => ({
+    product_id: line.product_id,
+    variant_id: line.variant_id || null,
+    quantity: line.quantity,
+    uom_id: line.uom_id,
+    unit_price: line.unit_price,
+    cogs_per_unit: line.cogs_per_unit,
+    discount_amount: line.discount_amount || 0
+  }))
 
-  // Create transaction
-  const { data: transaction, error: txnError } = await supabase
-    .from('transactions')
-    .insert({
-      transaction_number: transactionNumber,
-      branch_id: input.branch_id,
-      customer_id: input.customer_id,
-      transaction_type: input.transaction_type || 'sale',
-      delivery_type: input.delivery_type,
-      delivery_address: input.delivery_address || null,
-      delivery_phone: input.delivery_phone || null,
-      delivery_fee: deliveryFee,
-      other_fees: otherFees,
-      other_fees_notes: input.other_fees_notes || null,
-      subtotal: subtotal,
-      discount_amount: discountAmount,
-      discount_percentage: input.discount_percentage || 0,
-      tax_amount: taxAmount,
-      total_amount: totalAmount,
-      payment_status: paymentStatus,
-      amount_paid: amountPaid,
-      notes: input.notes || null,
-      created_by: userId,
-      ...(input.transaction_date ? { transaction_date: input.transaction_date } : {}),
-    } as any)
-    .select()
-    .single()
+  // Format payments for RPC
+  const rpcPayments = payments.map(payment => ({
+    payment_method: payment.payment_method,
+    amount: payment.amount,
+    reference_number: payment.reference_number || null
+  }))
 
-  if (txnError) throw txnError
+  // Call atomic RPC function
+  // This handles: transaction, lines, payments, inventory updates, and movements
+  // All in a single database transaction with row-level locking and stock validation
+  const { data, error } = await supabase.rpc('create_transaction_atomic', {
+    p_branch_id: input.branch_id,
+    p_customer_id: input.customer_id,
+    p_transaction_type: input.transaction_type || 'sale',
+    p_delivery_type: input.delivery_type || null,
+    p_delivery_address: input.delivery_address || null,
+    p_delivery_phone: input.delivery_phone || null,
+    p_notes: input.notes || null,
+    p_subtotal: subtotal,
+    p_discount_amount: discountAmount,
+    p_delivery_fee: deliveryFee,
+    p_other_fees: otherFees,
+    p_other_fees_notes: input.other_fees_notes || null,
+    p_transaction_date: input.transaction_date || null,
+    p_total_amount: totalAmount,
+    p_amount_paid: amountPaid,
+    p_payment_status: paymentStatus,
+    p_created_by: userId,
+    p_lines: rpcLines,
+    p_payments: rpcPayments
+  })
 
-  const txn = transaction as any
-
-  // Create transaction lines
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]
-    const { error: lineError } = await supabase
-      .from('transaction_lines')
-      .insert({
-        transaction_id: txn.id,
-        line_number: i + 1,
-        product_id: line.product_id,
-        variant_id: line.variant_id || null,
-        quantity: line.quantity,
-        uom_id: line.uom_id,
-        unit_price: line.unit_price,
-        cogs_per_unit: line.cogs_per_unit,
-        discount_amount: line.discount_amount || 0,
-        notes: line.notes || null
-      } as any)
-
-    if (lineError) throw lineError
+  if (error) {
+    // Check if it's an insufficient stock error
+    if (error.code === 'P0001' && error.message.includes('Insufficient stock')) {
+      throw new Error(error.message)
+    }
+    throw error
   }
-
-  // Create payments
-  for (const payment of payments) {
-    const { error: paymentError } = await supabase
-      .from('transaction_payments')
-      .insert({
-        transaction_id: txn.id,
-        payment_method: payment.payment_method,
-        amount: payment.amount,
-        reference_number: payment.reference_number || null,
-        notes: payment.notes || null,
-        created_by: userId
-      } as any)
-
-    if (paymentError) throw paymentError
-  }
-
-  // Inventory is now handled by database trigger (process_transaction_inventory)
-  // No need to update manually - trigger uses correct multi-unit conversion logic
 
   // Update customer balance if credit payment
   const creditPayment = payments.find(p => p.payment_method === 'credit')
@@ -376,7 +356,8 @@ export async function createTransaction(
     await updateCustomerBalance(input.customer_id, creditPayment.amount)
   }
 
-  return getTransaction(txn.id)
+  // Return the created transaction
+  return getTransaction(data.id)
 }
 
 // Add payment to existing transaction
@@ -712,8 +693,8 @@ export interface ReturnLineInput {
   uom_id: string
   unit_price: number
   cogs_per_unit: number
-  restock: boolean  // Whether to add back to inventory
-  reason_code: 'defective' | 'wrong_item' | 'customer_changed_mind' | 'damaged' | 'other'
+  should_restock?: boolean  // Whether to add back to inventory (defaults to true unless damaged)
+  return_reason: 'customer_request' | 'wrong_item' | 'defective' | 'damaged' | 'expired' | 'quality_issue' | 'other'
 }
 
 export interface RefundInput {
@@ -724,10 +705,12 @@ export interface RefundInput {
 }
 
 export const RETURN_REASON_CODES = {
-  defective: 'Defective Product',
+  customer_request: 'Customer Request',
   wrong_item: 'Wrong Item Delivered',
-  customer_changed_mind: 'Customer Changed Mind',
+  defective: 'Defective Product',
   damaged: 'Product Damaged',
+  expired: 'Product Expired',
+  quality_issue: 'Quality Issue',
   other: 'Other'
 } as const
 
@@ -803,14 +786,16 @@ export async function createReturnTransaction(
         unit_price: line.unit_price,
         cogs_per_unit: line.cogs_per_unit,
         discount_amount: 0,
-        notes: `Reason: ${RETURN_REASON_CODES[line.reason_code]}`
+        should_restock: line.should_restock ?? null, // Will trigger auto-flag if null and reason is damaged/expired/defective
+        return_reason: line.return_reason,
+        notes: `Reason: ${RETURN_REASON_CODES[line.return_reason]}`
       } as any)
 
     if (lineError) throw lineError
 
     // Inventory restocking is now handled by database trigger (process_transaction_inventory)
-    // TODO: If conditional restocking is needed, add a 'restock' column to transaction_lines
-    // and update the trigger to check it before updating inventory
+    // The trigger checks the should_restock flag (auto-set by set_restock_flag_from_reason trigger)
+    // Damaged, expired, defective, and quality_issue items are automatically flagged as non-restockable
   }
 
   // Record refund
@@ -1262,4 +1247,89 @@ export async function recordARPayment(input: ARPaymentInput, userId: string) {
     .eq('id', input.customer_id)
 
   return { success: true, newPaymentStatus: paymentStatus }
+}
+
+// Get product sales history
+export async function getProductSalesHistory(productId: string) {
+  const supabase = createClient()
+
+  const { data, error } = await supabase
+    .from('transaction_lines')
+    .select(`
+      id, quantity, unit_price, line_total, cogs_per_unit,
+      uom:units_of_measure(id, code, name),
+      transaction:transactions!transaction_lines_transaction_id_fkey(
+        id, transaction_number, transaction_date, transaction_type, total_amount, is_deleted,
+        customer:customers(id, code, name),
+        branch:branches(id, code, name)
+      )
+    `)
+    .eq('product_id', productId)
+
+  if (error) throw error
+
+  // Filter out deleted transactions and sort by transaction date descending
+  return (data || [])
+    .filter((line: any) => !line.transaction?.is_deleted)
+    .sort((a: any, b: any) => {
+      const dateA = a.transaction?.transaction_date ?? ''
+      const dateB = b.transaction?.transaction_date ?? ''
+      return dateB.localeCompare(dateA)
+    })
+}
+
+// Get product inventory adjustment history
+export async function getProductAdjustmentHistory(productId: string) {
+  const supabase = createClient()
+
+  const { data, error } = await supabase
+    .from('inventory_movements')
+    .select(`
+      id, quantity_change, quantity_before, quantity_after, 
+      movement_type, reference_type, notes, created_at,
+      branch:branches(id, code, name),
+      created_by_user:users!created_by(id, full_name)
+    `)
+    .eq('product_id', productId)
+    .eq('movement_type', 'adjustment')
+    .order('created_at', { ascending: false })
+
+  if (error) throw error
+
+  return data || []
+}
+
+// Update transaction delivery type
+export async function updateTransactionDeliveryType(
+  transactionId: string,
+  deliveryType: 'pickup' | 'delivery',
+  deliveryAddress?: string | null,
+  deliveryPhone?: string | null
+) {
+  const supabase = createClient()
+
+  const updateData: any = {
+    delivery_type: deliveryType,
+    updated_at: new Date().toISOString()
+  }
+
+  if (deliveryType === 'delivery') {
+    updateData.delivery_address = deliveryAddress || null
+    updateData.delivery_phone = deliveryPhone || null
+  } else {
+    // Clear delivery info if switching to pickup
+    updateData.delivery_address = null
+    updateData.delivery_phone = null
+  }
+
+  const { data, error } = await supabase
+    .from('transactions')
+    .update(updateData)
+    .eq('id', transactionId)
+    .select()
+    .single()
+
+  if (error) throw error
+
+  return data
 }

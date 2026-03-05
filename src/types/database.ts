@@ -15,8 +15,9 @@ export type DeliveryType = 'pickup' | 'delivery'
 export type PaymentMethod = 'cash' | 'gcash' | 'maya' | 'bank_transfer' | 'credit'
 export type PaymentStatus = 'unpaid' | 'partial' | 'paid'
 export type POStatus = 'draft' | 'sent' | 'confirmed' | 'partially_received' | 'received' | 'cancelled'
-export type MovementType = 'purchase' | 'sale' | 'adjustment' | 'return' | 'transfer'
+export type MovementType = 'purchase' | 'sale' | 'adjustment' | 'return' | 'transfer' | 'damaged_return'
 export type TransactionType = 'sale' | 'return'
+export type ReturnReason = 'customer_request' | 'wrong_item' | 'defective' | 'damaged' | 'expired' | 'quality_issue' | 'other'
 
 // Row types (what you get from the database)
 export interface BranchRow {
@@ -239,6 +240,8 @@ export interface TransactionLineRow {
   discount_amount: number
   line_total: number
   notes: string | null
+  should_restock: boolean | null
+  return_reason: ReturnReason | null
 }
 
 export interface TransactionPaymentRow {
@@ -385,6 +388,7 @@ export interface Database {
       po_status: POStatus
       movement_type: MovementType
       transaction_type: TransactionType
+      return_reason: ReturnReason
     }
   }
 }

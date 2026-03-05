@@ -278,84 +278,49 @@ export async function getLowStockAlerts(branchId?: string) {
   return lowStockItems
 }
 
-// Adjust inventory (manual adjustment)
+/**
+ * Adjust inventory using atomic RPC with unit conversion, validation, and locking
+ * This prevents race conditions and negative inventory (unless explicitly allowed)
+ */
 export async function adjustInventory(params: {
   branchId: string
   productId: string
+  variantId?: string | null
   quantityChange: number
+  uomId: string
+  reason: string
   notes: string
   userId: string
 }) {
   const supabase = createClient()
-  const { branchId, productId, quantityChange, notes, userId } = params
+  const { branchId, productId, variantId, quantityChange, uomId, reason, notes, userId } = params
 
-  // Get current inventory
-  const { data: currentInventory, error: fetchError } = await supabase
-    .from('branch_inventory')
-    .select('*')
-    .eq('branch_id', branchId)
-    .eq('product_id', productId)
-    .maybeSingle() as { data: any; error: any }
+  // Call atomic RPC function
+  // This handles: conversion to base units, locking, validation, update, and movement recording
+  // All in a single database transaction
+  const { data, error } = await supabase.rpc('adjust_inventory_atomic', {
+    p_branch_id: branchId,
+    p_product_id: productId,
+    p_variant_id: variantId || null,
+    p_quantity_change: quantityChange,
+    p_uom_id: uomId,
+    p_reason: reason,
+    p_notes: notes,
+    p_user_id: userId
+  })
 
-  if (fetchError) throw fetchError
-
-  const currentQuantity = Number(currentInventory?.quantity_on_hand || 0)
-  const newQuantity = currentQuantity + quantityChange
-
-  if (newQuantity < 0) {
-    throw new Error('Adjustment would result in negative inventory')
-  }
-
-  // Update or insert inventory record
-  if (currentInventory) {
-    const updateData = {
-      quantity_on_hand: newQuantity,
-      last_movement_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+  if (error) {
+    // Check if it's a validation error
+    if (error.code === 'P0001' && error.message.includes('negative inventory')) {
+      throw new Error(error.message)
     }
-    const { error: updateError } = await supabase
-      .from('branch_inventory')
-      // @ts-ignore - Supabase type inference issue
-      .update(updateData)
-      .eq('id', currentInventory.id)
-
-    if (updateError) throw updateError
-  } else {
-    const insertData = {
-      branch_id: branchId,
-      product_id: productId,
-      quantity_on_hand: newQuantity,
-      quantity_reserved: 0,
-      last_movement_at: new Date().toISOString(),
+    if (error.code === 'P0001' && error.message.includes('Invalid UOM')) {
+      throw new Error(error.message)
     }
-    const { error: insertError } = await supabase
-      .from('branch_inventory')
-      // @ts-ignore - Supabase type inference issue
-      .insert(insertData)
-
-    if (insertError) throw insertError
+    throw error
   }
 
-  // Record movement
-  const movementData = {
-    branch_id: branchId,
-    product_id: productId,
-    movement_type: 'adjustment' as const,
-    quantity_change: quantityChange,
-    quantity_before: currentQuantity,
-    quantity_after: newQuantity,
-    reference_type: 'manual_adjustment',
-    notes,
-    created_by: userId,
-  }
-  const { error: movementError } = await supabase
-    .from('inventory_movements')
-    // @ts-ignore - Supabase type inference issue
-    .insert(movementData)
-
-  if (movementError) throw movementError
-
-  return { success: true }
+  return data
 }
 
 // Get inventory summary (total value, items count, etc.)

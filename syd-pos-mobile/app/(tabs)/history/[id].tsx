@@ -57,39 +57,44 @@ export default function TransactionDetailScreen() {
   const amountPaid = useMemo(() => payments.reduce((s, p) => s + Number(p.amount), 0), [payments])
   const change     = Math.max(0, amountPaid - Number(tx?.total_amount ?? 0))
 
+  const paperWidth = usePrinterStore((s) => s.paperWidth)
+
   const handleReprint = async () => {
     if (!tx || isPrinting) return
 
     if (printerStatus !== 'connected') {
-      Alert.alert('Printer Not Connected', 'Please connect the BLE printer in Settings first.')
+      Alert.alert('Printer Not Connected', 'Please connect the Bluetooth printer in Settings first.')
       return
     }
 
     const customer = tx.customer as { name?: string; display_name?: string; phone?: string } | undefined
-    const txDate   = new Date(tx.created_at)
+    const txDate   = new Date(tx.transaction_date ?? tx.created_at)
 
     const receiptData: ReceiptData = {
       transaction_number: tx.transaction_number,
       date: txDate.toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' }),
-      time: txDate.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' }),
+      time: new Date(tx.created_at).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' }),
       cashier: authUser?.email ?? 'Cashier',
-      branch:  'Main Branch',
+      branch:  tx.branch?.name ?? 'Main Branch',
       customer: {
         name:  customer?.name ?? customer?.display_name ?? 'Walk-in Customer',
         phone: customer?.phone ?? null,
       },
       delivery_type:    tx.delivery_type ?? 'pickup',
-      delivery_address: (tx as any).delivery_address ?? null,
+      delivery_address: tx.delivery_address ?? null,
       items: lines.map((line) => ({
-        name:       line.product?.name ?? line.product_id,
+        name:       line.product?.name ?? line.product?.code ?? line.product_id,
         quantity:   Number(line.quantity),
         unit_price: Number(line.unit_price),
-        uom:        (line as any).uom?.name ?? 'pc',
+        uom:        line.uom?.name ?? 'pc',
         discount:   Number(line.discount_amount ?? 0),
         total:      Number(line.quantity) * Number(line.unit_price) - Number(line.discount_amount ?? 0),
       })),
-      subtotal:    lineSubtotal,
-      discount:    0,
+      subtotal:         lineSubtotal,
+      discount:         Number(tx.discount_amount ?? 0),
+      delivery_fee:     Number(tx.delivery_fee ?? 0),
+      other_fees:       Number(tx.other_fees ?? 0),
+      other_fees_notes: tx.other_fees_notes ?? null,
       tax:         0,
       total:       Number(tx.total_amount ?? 0),
       payments:    payments.map((p) => ({
@@ -104,8 +109,11 @@ export default function TransactionDetailScreen() {
 
     try {
       setIsPrinting(true)
-      await btPrinter.printReceipt(receiptData, '80mm')
-      Alert.alert('Printed', 'Receipt sent to printer.')
+      await btPrinter.printReceipt(receiptData, paperWidth)
+      if (tx.delivery_type === 'delivery') {
+        await btPrinter.printDeliverySlip(receiptData, paperWidth)
+      }
+      Alert.alert('Printed', tx.delivery_type === 'delivery' ? 'Receipt & delivery slip sent to printer.' : 'Receipt sent to printer.')
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Print failed'
       Alert.alert('Print Error', msg)
@@ -186,10 +194,10 @@ export default function TransactionDetailScreen() {
                   <View style={styles.lineItem}>
                     <View style={styles.lineItemLeft}>
                       <Text style={styles.lineItemName} numberOfLines={2}>
-                        {line.product?.name ?? line.product_id}
+                        {line.product?.name ?? line.product?.code ?? line.product_id}
                       </Text>
                       <Text style={styles.lineItemMeta}>
-                        {line.quantity} × ₱{fmt(Number(line.unit_price))}
+                        {line.quantity} {line.uom?.name ?? 'pc'} × ₱{fmt(Number(line.unit_price))}
                         {Number(line.discount_amount ?? 0) > 0
                           ? `  −₱${fmt(Number(line.discount_amount))}`
                           : ''}
@@ -208,7 +216,23 @@ export default function TransactionDetailScreen() {
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Summary</Text>
           <View style={styles.rowGroup}>
+            <Row label="Sale Date" value={new Date(tx.transaction_date ?? tx.created_at).toLocaleDateString('en-PH', { weekday: 'short', month: 'long', day: 'numeric', year: 'numeric' })} />
+            <View style={styles.divider} />
             <Row label="Subtotal" value={`₱${fmt(lineSubtotal)}`} />
+            {Number(tx.discount_amount ?? 0) > 0 && (
+              <Row label="Discount" value={`−₱${fmt(Number(tx.discount_amount))}`} />
+            )}
+            {Number(tx.delivery_fee ?? 0) > 0 && (
+              <Row label="Delivery Fee" value={`₱${fmt(Number(tx.delivery_fee))}`} />
+            )}
+            {Number(tx.other_fees ?? 0) > 0 && (
+              <>
+                <Row label="Other Fees" value={`₱${fmt(Number(tx.other_fees))}`} />
+                {tx.other_fees_notes ? (
+                  <Text style={styles.feesNotes}>{tx.other_fees_notes}</Text>
+                ) : null}
+              </>
+            )}
             <View style={styles.divider} />
             <View style={styles.totalRow}>
               <Text style={styles.totalLabel}>Total</Text>
@@ -264,7 +288,7 @@ export default function TransactionDetailScreen() {
         </Pressable>
 
         {printerStatus !== 'connected' && (
-          <Text style={styles.printerHint}>Connect a printer in Settings to enable reprinting.</Text>
+          <Text style={styles.printerHint}>Connect a Bluetooth printer in Settings to enable reprinting.</Text>
         )}
 
         <View style={styles.bottomPad} />
@@ -458,6 +482,13 @@ const styles = StyleSheet.create({
     color: '#9ca3af',
     textAlign: 'center',
     paddingVertical: 12,
+  },
+  feesNotes: {
+    fontSize: 12,
+    color: '#6b7280',
+    fontStyle: 'italic',
+    marginTop: -4,
+    textAlign: 'right',
   },
   printBtn: {
     flexDirection: 'row',

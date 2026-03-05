@@ -6,6 +6,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { useProduct, useDeleteProduct } from '@/hooks/useProducts'
 import { useProductPurchaseHistory } from '@/hooks/usePurchases'
+import { useProductSalesHistory, useProductAdjustmentHistory } from '@/hooks/useTransactions'
 import { formatCurrency } from '@/lib/utils/formatting'
 import { toast } from 'sonner'
 import {
@@ -22,6 +23,9 @@ import {
   Image as ImageIcon,
   ShoppingCart,
   ExternalLink,
+  Receipt,
+  TrendingUp,
+  Settings,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -47,6 +51,8 @@ export default function ProductDetailPage({ params }: ProductDetailPageProps) {
   const { id } = use(params)
   const router = useRouter()
   
+  const { data: salesHistory = [], isLoading: salesLoading } = useProductSalesHistory(id)
+  const { data: adjustmentHistory = [], isLoading: adjustmentsLoading } = useProductAdjustmentHistory(id)
   const { data: product, isLoading, error } = useProduct(id)
   const deleteProduct = useDeleteProduct()
   const { data: purchaseHistory = [], isLoading: historyLoading } = useProductPurchaseHistory(id)
@@ -506,6 +512,164 @@ export default function ProductDetailPage({ params }: ProductDetailPageProps) {
                       </TableRow>
                     )
                   })}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Sales History */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Receipt className="h-5 w-5" />
+            Sales History
+          </CardTitle>
+          <CardDescription>
+            All sales transactions that included this product
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {salesLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : salesHistory.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground text-sm">
+              No sales found for this product.
+            </div>
+          ) : (
+            <div className="border rounded-lg">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Receipt #</TableHead>
+                    <TableHead>Customer</TableHead>
+                    <TableHead>Branch</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead className="text-right">Quantity</TableHead>
+                    <TableHead className="text-right">Unit Price</TableHead>
+                    <TableHead className="text-right">Line Total</TableHead>
+                    <TableHead className="w-[40px]"></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(salesHistory as any[]).map((line) => {
+                    const txn = line.transaction
+                    if (!txn) return null
+                    return (
+                      <TableRow key={line.id}>
+                        <TableCell className="whitespace-nowrap">
+                          {new Date(txn.transaction_date).toLocaleDateString('en-PH', {
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric',
+                          })}
+                        </TableCell>
+                        <TableCell className="font-mono text-sm">{txn.transaction_number}</TableCell>
+                        <TableCell>{txn.customer?.name ?? '—'}</TableCell>
+                        <TableCell>{txn.branch?.name ?? '—'}</TableCell>
+                        <TableCell>
+                          <Badge variant={txn.transaction_type === 'sale' ? 'default' : 'secondary'} className="capitalize text-xs">
+                            {txn.transaction_type}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right font-mono">
+                          {Number(line.quantity).toLocaleString()} {line.uom?.code}
+                        </TableCell>
+                        <TableCell className="text-right font-mono">
+                          {formatCurrency(line.unit_price)}
+                        </TableCell>
+                        <TableCell className="text-right font-mono font-medium">
+                          {formatCurrency(line.line_total)}
+                        </TableCell>
+                        <TableCell>
+                          <Link href={`/pos/history?txn=${txn.id}`}>
+                            <Button variant="ghost" size="icon" className="h-7 w-7">
+                              <ExternalLink className="h-3.5 w-3.5" />
+                            </Button>
+                          </Link>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Inventory Adjustment History */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Settings className="h-5 w-5" />
+            Inventory Adjustments
+          </CardTitle>
+          <CardDescription>
+            Manual inventory adjustments for this product
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {adjustmentsLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : adjustmentHistory.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground text-sm">
+              No inventory adjustments found for this product.
+            </div>
+          ) : (
+            <div className="border rounded-lg">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Branch</TableHead>
+                    <TableHead className="text-right">Qty Before</TableHead>
+                    <TableHead className="text-right">Change</TableHead>
+                    <TableHead className="text-right">Qty After</TableHead>
+                    <TableHead>Adjusted By</TableHead>
+                    <TableHead>Reason</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(adjustmentHistory as any[]).map((movement) => (
+                    <TableRow key={movement.id}>
+                      <TableCell className="whitespace-nowrap">
+                        {new Date(movement.created_at).toLocaleDateString('en-PH', {
+                          year: 'numeric',
+                          month: 'short',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </TableCell>
+                      <TableCell>{movement.branch?.name ?? '—'}</TableCell>
+                      <TableCell className="text-right font-mono">
+                        {Number(movement.quantity_before).toLocaleString()}
+                      </TableCell>
+                      <TableCell className={cn(
+                        "text-right font-mono font-medium",
+                        Number(movement.quantity_change) > 0 ? "text-green-600" : "text-red-600"
+                      )}>
+                        {Number(movement.quantity_change) > 0 ? '+' : ''}
+                        {Number(movement.quantity_change).toLocaleString()}
+                      </TableCell>
+                      <TableCell className="text-right font-mono font-medium">
+                        {Number(movement.quantity_after).toLocaleString()}
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        {movement.created_by_user?.full_name ?? '—'}
+                      </TableCell>
+                      <TableCell className="text-sm max-w-xs truncate">
+                        {movement.notes || movement.reference_type || '—'}
+                      </TableCell>
+                    </TableRow>
+                  ))}
                 </TableBody>
               </Table>
             </div>

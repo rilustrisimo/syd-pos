@@ -90,6 +90,9 @@ export type ReceiptData = {
   items: ReceiptItem[]
   subtotal: number
   discount: number
+  delivery_fee?: number
+  other_fees?: number
+  other_fees_notes?: string | null
   tax: number
   total: number
   payments: ReceiptPayment[]
@@ -178,6 +181,15 @@ export function buildReceiptBytes(data: ReceiptData, width = 48): Uint8Array {
   line(lr('Subtotal:', fmt(data.subtotal), width))
   if (data.discount > 0) {
     line(lr('Discount:', '-' + fmt(data.discount), width))
+  }
+  if ((data.delivery_fee ?? 0) > 0) {
+    line(lr('Delivery Fee:', fmt(data.delivery_fee!), width))
+  }
+  if ((data.other_fees ?? 0) > 0) {
+    line(lr('Other Fees:', fmt(data.other_fees!), width))
+    if (data.other_fees_notes) {
+      line('  ' + data.other_fees_notes.substring(0, width - 2))
+    }
   }
   if (data.tax > 0) {
     line(lr('Tax:', fmt(data.tax), width))
@@ -304,7 +316,16 @@ export function buildDeliverySlipBytes(data: ReceiptData, width = 48): Uint8Arra
   }
   line(thinDivider)
 
-  // ── Total ─────────────────────────────────────────────────────────────────
+  // ── Totals ────────────────────────────────────────────────────────────────
+  if ((data.delivery_fee ?? 0) > 0) {
+    line(lr('Delivery Fee:', 'PHP ' + fmt(data.delivery_fee!), width))
+  }
+  if ((data.other_fees ?? 0) > 0) {
+    line(lr('Other Fees:', 'PHP ' + fmt(data.other_fees!), width))
+    if (data.other_fees_notes) {
+      line('  ' + data.other_fees_notes.substring(0, width - 2))
+    }
+  }
   cmd(CMD.BOLD_ON)
   line(lr('TOTAL AMOUNT:', 'PHP ' + fmt(data.total), width))
   cmd(CMD.BOLD_OFF)

@@ -14,6 +14,9 @@ import {
   getARAgingByCustomer,
   getARTransactionsForCustomer,
   softDeleteTransaction,
+  getProductSalesHistory,
+  getProductAdjustmentHistory,
+  updateTransactionDeliveryType,
   TransactionFilters,
   TransactionInput,
   TransactionLineInput,
@@ -254,6 +257,57 @@ export function useSoftDeleteTransaction() {
       queryClient.invalidateQueries({ queryKey: transactionKeys.todaysSummary() })
       queryClient.refetchQueries({ queryKey: transactionKeys.lists(), type: 'active' })
       queryClient.refetchQueries({ queryKey: transactionKeys.todaysSummary(), type: 'active' })
+    },
+  })
+}
+
+// ============================================
+// PRODUCT HISTORY
+// ============================================
+
+// Hook to get product sales history
+export function useProductSalesHistory(productId: string) {
+  return useQuery({
+    queryKey: [...transactionKeys.all, 'product-sales', productId],
+    queryFn: () => getProductSalesHistory(productId),
+    enabled: !!productId,
+  })
+}
+
+// Hook to get product adjustment history
+export function useProductAdjustmentHistory(productId: string) {
+  return useQuery({
+    queryKey: [...transactionKeys.all, 'product-adjustments', productId],
+    queryFn: () => getProductAdjustmentHistory(productId),
+    enabled: !!productId,
+  })
+}
+
+// ============================================
+// UPDATE TRANSACTION
+// ============================================
+
+// Hook to update transaction delivery type
+export function useUpdateTransactionDeliveryType() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({
+      transactionId,
+      deliveryType,
+      deliveryAddress,
+      deliveryPhone,
+    }: {
+      transactionId: string
+      deliveryType: 'pickup' | 'delivery'
+      deliveryAddress?: string | null
+      deliveryPhone?: string | null
+    }) => updateTransactionDeliveryType(transactionId, deliveryType, deliveryAddress, deliveryPhone),
+    onSuccess: (data) => {
+      // Invalidate and refetch queries
+      queryClient.invalidateQueries({ queryKey: transactionKeys.lists() })
+      queryClient.invalidateQueries({ queryKey: transactionKeys.detail(data.id) })
+      queryClient.refetchQueries({ queryKey: transactionKeys.detail(data.id), type: 'active' })
     },
   })
 }
