@@ -97,7 +97,7 @@ BEGIN
         p_branch_id,
         p_customer_id,
         p_transaction_type::transaction_type,
-        p_delivery_type,
+        p_delivery_type::delivery_type,
         p_delivery_address,
         p_delivery_phone,
         p_notes,

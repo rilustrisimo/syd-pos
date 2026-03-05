@@ -6,7 +6,8 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { useProduct, useDeleteProduct } from '@/hooks/useProducts'
 import { useProductPurchaseHistory } from '@/hooks/usePurchases'
-import { useProductSalesHistory, useProductAdjustmentHistory } from '@/hooks/useTransactions'
+import { useProductSalesHistory } from '@/hooks/useTransactions'
+import { useProductInventory, useInventoryMovements } from '@/hooks/useInventory'
 import { formatCurrency } from '@/lib/utils/formatting'
 import { toast } from 'sonner'
 import {
@@ -26,6 +27,10 @@ import {
   Receipt,
   TrendingUp,
   Settings,
+  Warehouse,
+  Activity,
+  AlertCircle,
+  TrendingDown,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -52,10 +57,12 @@ export default function ProductDetailPage({ params }: ProductDetailPageProps) {
   const router = useRouter()
   
   const { data: salesHistory = [], isLoading: salesLoading } = useProductSalesHistory(id)
-  const { data: adjustmentHistory = [], isLoading: adjustmentsLoading } = useProductAdjustmentHistory(id)
   const { data: product, isLoading, error } = useProduct(id)
   const deleteProduct = useDeleteProduct()
   const { data: purchaseHistory = [], isLoading: historyLoading } = useProductPurchaseHistory(id)
+  const { data: branchInventory = [], isLoading: inventoryLoading } = useProductInventory(id)
+  const { data: movementsResult, isLoading: movementsLoading } = useInventoryMovements({ productId: id, limit: 200 })
+  const allMovements: any[] = movementsResult?.data ?? []
 
   const handleDelete = async () => {
     if (!product) return
@@ -423,6 +430,103 @@ export default function ProductDetailPage({ params }: ProductDetailPageProps) {
         </Card>
       </div>
 
+      {/* Current Stock by Branch */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Warehouse className="h-5 w-5" />
+            Current Stock by Branch
+          </CardTitle>
+          <CardDescription>
+            Live inventory levels. "Movement Total" is the sum of all recorded stock changes — if it
+            doesn't match "On Hand", some movements were not recorded (e.g. sales before the atomic
+            RPC was deployed).
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {inventoryLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : branchInventory.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground text-sm">
+              No stock records found for this product.
+            </div>
+          ) : (
+            <div className="border rounded-lg">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Branch</TableHead>
+                    <TableHead className="text-right">On Hand</TableHead>
+                    <TableHead className="text-right">Movement Total</TableHead>
+                    <TableHead>Audit Status</TableHead>
+                    <TableHead>Last Movement</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(branchInventory as any[]).map((inv) => {
+                    const branchMovements = allMovements.filter((m: any) => m.branch_id === inv.branch_id)
+                    const movementTotal = branchMovements.reduce((sum: number, m: any) => sum + Number(m.quantity_change), 0)
+                    const discrepancy = Number(inv.quantity_on_hand) - movementTotal
+                    const hasDiscrepancy = Math.abs(discrepancy) > 0.01
+                    const isLowStock = Number(inv.quantity_on_hand) <= Number(product.reorder_point)
+                    const isOutOfStock = Number(inv.quantity_on_hand) === 0
+                    return (
+                      <TableRow key={inv.id}>
+                        <TableCell className="font-medium">{inv.branch?.name ?? '—'}</TableCell>
+                        <TableCell className="text-right">
+                          <span className={cn(
+                            "font-mono font-semibold",
+                            isOutOfStock ? "text-red-600" : isLowStock ? "text-amber-600" : "text-green-600"
+                          )}>
+                            {Number(inv.quantity_on_hand).toLocaleString(undefined, { maximumFractionDigits: 4 })}
+                          </span>
+                          {' '}<span className="text-xs text-muted-foreground">{product.base_uom?.code}</span>
+                          {isLowStock && !isOutOfStock && (
+                            <Badge variant="outline" className="ml-2 text-xs border-amber-400 text-amber-600">Low Stock</Badge>
+                          )}
+                          {isOutOfStock && (
+                            <Badge variant="destructive" className="ml-2 text-xs">Out of Stock</Badge>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-sm text-muted-foreground">
+                          {movementsLoading ? '…' : movementTotal.toLocaleString(undefined, { maximumFractionDigits: 4 })}
+                        </TableCell>
+                        <TableCell>
+                          {movementsLoading ? (
+                            <span className="text-muted-foreground text-sm">Loading…</span>
+                          ) : hasDiscrepancy ? (
+                            <div className="flex items-center gap-1.5 text-amber-600">
+                              <AlertCircle className="h-4 w-4 shrink-0" />
+                              <span className="text-sm">
+                                {discrepancy > 0 ? '+' : ''}{discrepancy.toLocaleString(undefined, { maximumFractionDigits: 4 })} unrecorded
+                              </span>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1.5 text-green-600">
+                              <CheckCircle2 className="h-4 w-4 shrink-0" />
+                              <span className="text-sm">Balanced</span>
+                            </div>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                          {inv.last_movement_at
+                            ? new Date(inv.last_movement_at).toLocaleDateString('en-PH', {
+                                year: 'numeric', month: 'short', day: 'numeric',
+                              })
+                            : '—'}
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Purchase History */}
       <Card>
         <CardHeader>
@@ -602,76 +706,111 @@ export default function ProductDetailPage({ params }: ProductDetailPageProps) {
         </CardContent>
       </Card>
 
-      {/* Inventory Adjustment History */}
+      {/* All Inventory Movements */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Settings className="h-5 w-5" />
-            Inventory Adjustments
+            <Activity className="h-5 w-5" />
+            Inventory Movement History
           </CardTitle>
           <CardDescription>
-            Manual inventory adjustments for this product
+            Complete audit trail: purchases, sales, returns, and manual adjustments (most recent 200)
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {adjustmentsLoading ? (
+          {movementsLoading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
-          ) : adjustmentHistory.length === 0 ? (
+          ) : allMovements.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground text-sm">
-              No inventory adjustments found for this product.
+              No inventory movements recorded for this product.
             </div>
           ) : (
-            <div className="border rounded-lg">
+            <div className="border rounded-lg overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Date</TableHead>
                     <TableHead>Branch</TableHead>
-                    <TableHead className="text-right">Qty Before</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Source</TableHead>
                     <TableHead className="text-right">Change</TableHead>
-                    <TableHead className="text-right">Qty After</TableHead>
-                    <TableHead>Adjusted By</TableHead>
-                    <TableHead>Reason</TableHead>
+                    <TableHead className="text-right">Before</TableHead>
+                    <TableHead className="text-right">After</TableHead>
+                    <TableHead>By</TableHead>
+                    <TableHead>Notes</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {(adjustmentHistory as any[]).map((movement) => (
-                    <TableRow key={movement.id}>
-                      <TableCell className="whitespace-nowrap">
-                        {new Date(movement.created_at).toLocaleDateString('en-PH', {
-                          year: 'numeric',
-                          month: 'short',
-                          day: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
-                      </TableCell>
-                      <TableCell>{movement.branch?.name ?? '—'}</TableCell>
-                      <TableCell className="text-right font-mono">
-                        {Number(movement.quantity_before).toLocaleString()}
-                      </TableCell>
-                      <TableCell className={cn(
-                        "text-right font-mono font-medium",
-                        Number(movement.quantity_change) > 0 ? "text-green-600" : "text-red-600"
-                      )}>
-                        {Number(movement.quantity_change) > 0 ? '+' : ''}
-                        {Number(movement.quantity_change).toLocaleString()}
-                      </TableCell>
-                      <TableCell className="text-right font-mono font-medium">
-                        {Number(movement.quantity_after).toLocaleString()}
-                      </TableCell>
-                      <TableCell className="text-sm">
-                        {movement.created_by_user?.full_name ?? '—'}
-                      </TableCell>
-                      <TableCell className="text-sm max-w-xs truncate">
-                        {movement.notes || movement.reference_type || '—'}
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {allMovements.map((movement: any) => {
+                    const isIncrease = Number(movement.quantity_change) > 0
+                    const movementTypeColors: Record<string, string> = {
+                      purchase: 'bg-green-100 text-green-800 border-green-200',
+                      sale: 'bg-red-100 text-red-800 border-red-200',
+                      return: 'bg-blue-100 text-blue-800 border-blue-200',
+                      adjustment: 'bg-amber-100 text-amber-800 border-amber-200',
+                      transfer: 'bg-purple-100 text-purple-800 border-purple-200',
+                      damaged_return: 'bg-orange-100 text-orange-800 border-orange-200',
+                    }
+                    const referenceLabels: Record<string, string> = {
+                      transaction: 'POS',
+                      transaction_reversal: 'Deleted Txn',
+                      inventory_correction: 'Bulk Correction',
+                      manual_adjustment: 'Manual Count',
+                      system_reconciliation: 'System Fix',
+                      purchase_order: 'Purchase Order',
+                    }
+                    return (
+                      <TableRow key={movement.id}>
+                        <TableCell className="whitespace-nowrap text-sm">
+                          {new Date(movement.created_at).toLocaleDateString('en-PH', {
+                            year: 'numeric', month: 'short', day: 'numeric',
+                            hour: '2-digit', minute: '2-digit',
+                          })}
+                        </TableCell>
+                        <TableCell className="text-sm">{movement.branch?.name ?? '—'}</TableCell>
+                        <TableCell>
+                          <span className={cn(
+                            'inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium capitalize',
+                            movementTypeColors[movement.movement_type] ?? 'bg-gray-100 text-gray-800 border-gray-200'
+                          )}>
+                            {movement.movement_type}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {referenceLabels[movement.reference_type ?? ''] ?? movement.reference_type ?? '—'}
+                        </TableCell>
+                        <TableCell className={cn(
+                          "text-right font-mono font-semibold",
+                          isIncrease ? "text-green-600" : "text-red-600"
+                        )}>
+                          {isIncrease ? '+' : ''}
+                          {Number(movement.quantity_change).toLocaleString(undefined, { maximumFractionDigits: 4 })}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-sm text-muted-foreground">
+                          {Number(movement.quantity_before).toLocaleString(undefined, { maximumFractionDigits: 4 })}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-sm">
+                          {Number(movement.quantity_after).toLocaleString(undefined, { maximumFractionDigits: 4 })}
+                        </TableCell>
+                        <TableCell className="text-sm">{movement.created_by_user?.name ?? '—'}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground max-w-xs">
+                          <span className="line-clamp-2">{movement.notes ?? '—'}</span>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
                 </TableBody>
               </Table>
+              {(movementsResult as any)?.totalPages > 1 && (
+                <p className="text-xs text-muted-foreground text-center py-2 border-t">
+                  Showing most recent 200 movements.{' '}
+                  <a href={`/inventory/movements?productId=${id}`} className="underline hover:no-underline">
+                    View all in Inventory Movements
+                  </a>
+                </p>
+              )}
             </div>
           )}
         </CardContent>

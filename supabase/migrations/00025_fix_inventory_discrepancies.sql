@@ -28,13 +28,13 @@ WITH all_purchases AS (
             CASE 
                 -- Already in base unit
                 WHEN pol.uom_id = p.base_uom_id THEN pol.quantity_received
-                -- Check multi-unit conversion
-                WHEN psu.conversion_factor IS NOT NULL AND psu.conversion_factor > 0
-                    THEN pol.quantity_received / psu.conversion_factor
-                -- Fallback to product conversion
+                -- In product's main selling unit (CHECK THIS BEFORE product_selling_units!)
                 WHEN pol.uom_id = p.selling_uom_id AND p.conversion_factor > 0
                     THEN pol.quantity_received / p.conversion_factor
-                -- Default 1:1
+                -- Check additional selling units from product_selling_units table
+                WHEN psu.conversion_factor IS NOT NULL AND psu.conversion_factor > 0
+                    THEN pol.quantity_received / psu.conversion_factor
+                -- Default 1:1 (should rarely happen)
                 ELSE pol.quantity_received
             END
         ) as total_purchased
@@ -58,13 +58,13 @@ all_sales AS (
             CASE 
                 -- Already in base unit
                 WHEN tl.uom_id = p.base_uom_id THEN tl.quantity
-                -- Check multi-unit conversion
-                WHEN psu.conversion_factor IS NOT NULL AND psu.conversion_factor > 0
-                    THEN tl.quantity / psu.conversion_factor
-                -- Fallback to product conversion
+                -- In product's main selling unit (CHECK THIS BEFORE product_selling_units!)
                 WHEN tl.uom_id = p.selling_uom_id AND p.conversion_factor > 0
                     THEN tl.quantity / p.conversion_factor
-                -- Default 1:1
+                -- Check additional selling units from product_selling_units table
+                WHEN psu.conversion_factor IS NOT NULL AND psu.conversion_factor > 0
+                    THEN tl.quantity / psu.conversion_factor
+                -- Default 1:1 (should rarely happen)
                 ELSE tl.quantity
             END
         ) as total_sold
@@ -90,13 +90,13 @@ all_returns AS (
             CASE 
                 -- Already in base unit
                 WHEN tl.uom_id = p.base_uom_id THEN tl.quantity
-                -- Check multi-unit conversion
-                WHEN psu.conversion_factor IS NOT NULL AND psu.conversion_factor > 0
-                    THEN tl.quantity / psu.conversion_factor
-                -- Fallback to product conversion
+                -- In product's main selling unit (CHECK THIS BEFORE product_selling_units!)
                 WHEN tl.uom_id = p.selling_uom_id AND p.conversion_factor > 0
                     THEN tl.quantity / p.conversion_factor
-                -- Default 1:1
+                -- Check additional selling units from product_selling_units table
+                WHEN psu.conversion_factor IS NOT NULL AND psu.conversion_factor > 0
+                    THEN tl.quantity / psu.conversion_factor
+                -- Default 1:1 (should rarely happen)
                 ELSE tl.quantity
             END
         ) as total_returned
@@ -112,17 +112,23 @@ all_returns AS (
     GROUP BY t.branch_id, tl.product_id, tl.variant_id
 ),
 all_adjustments AS (
-    -- Sum all manual adjustments from inventory_movements
+    -- Sum ONLY real physical manual adjustments from inventory_movements
     -- These are created by adjust_inventory_atomic() RPC (Migration 00028)
-    -- Exclude correction movements from previous runs of this script
-    SELECT 
+    --
+    -- IMPORTANT: Only include reference_type = 'manual_adjustment'
+    --   - 'system_reconciliation': corrections for PO double-counting — EXCLUDE because
+    --     all_purchases already recalculates from PO source lines (not from movements)
+    --   - 'transaction_reversal': reverses deductions for deleted sales — EXCLUDE because
+    --     all_sales already filters out is_deleted=true transactions
+    --   - 'inventory_correction': previous runs of this script — EXCLUDE to prevent loop
+    --   - 'manual_adjustment': real physical count corrections — INCLUDE
+    SELECT
         branch_id,
         product_id,
         variant_id,
         SUM(quantity_change) as total_adjustments
     FROM inventory_movements
-    WHERE movement_type = 'adjustment'
-      AND reference_type != 'inventory_correction'  -- Exclude previous corrections
+    WHERE reference_type = 'manual_adjustment'
     GROUP BY branch_id, product_id, variant_id
 ),
 combined AS (
@@ -206,15 +212,23 @@ BEGIN
         WHERE ABS(COALESCE(tri.should_be_quantity, 0) - bi.quantity_on_hand) > 0.01
     LOOP
         current_qty := correction_rec.current_quantity;
-        correct_qty := correction_rec.should_be_quantity;
+        -- Floor negative values to 0: physically impossible to have negative stock.
+        -- Negative correct_qty means sold more than received — likely a missing PO.
+        -- Set to 0 for now; investigate missing POs separately.
+        correct_qty := GREATEST(0, correction_rec.should_be_quantity);
         inv_id := correction_rec.inventory_id;
-        
+
+        -- Skip if flooring to 0 makes the adjustment negligible
+        IF ABS(correct_qty - current_qty) <= 0.01 THEN
+            CONTINUE;
+        END IF;
+
         -- Update inventory to correct value
         UPDATE branch_inventory
         SET quantity_on_hand = correct_qty,
             last_movement_at = NOW()
         WHERE id = inv_id;
-        
+
         -- Record the correction movement
         INSERT INTO inventory_movements (
             branch_id, product_id, variant_id, movement_type,
@@ -230,9 +244,12 @@ BEGIN
             correct_qty,
             'inventory_correction',
             system_user_id,
-            'Recalculated inventory from purchases/sales/returns/adjustments for ' || correction_rec.name || 
-            ' at ' || correction_rec.branch_name || 
-            '. Adjusted from ' || ROUND(current_qty, 4) || ' to ' || ROUND(correct_qty, 4)
+            'Recalculated inventory from purchases/sales/returns/adjustments for ' || correction_rec.name ||
+            ' at ' || correction_rec.branch_name ||
+            '. Adjusted from ' || ROUND(current_qty, 4) || ' to ' || ROUND(correct_qty, 4) ||
+            CASE WHEN correction_rec.should_be_quantity < 0
+                 THEN ' (floored from ' || ROUND(correction_rec.should_be_quantity, 4) || ' — investigate missing POs)'
+                 ELSE '' END
         );
         
         correction_count := correction_count + 1;
