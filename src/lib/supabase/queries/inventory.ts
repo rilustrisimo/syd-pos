@@ -218,7 +218,7 @@ export async function getInventoryMovements(params?: {
       *,
       product:products(id, code, name),
       branch:branches(id, code, name),
-      created_by_user:users(id, name, email)
+      created_by_user:users(id, full_name, email)
     `, { count: 'exact' })
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1)

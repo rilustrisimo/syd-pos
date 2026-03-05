@@ -794,7 +794,7 @@ export default function ProductDetailPage({ params }: ProductDetailPageProps) {
                         <TableCell className="text-right font-mono text-sm">
                           {Number(movement.quantity_after).toLocaleString(undefined, { maximumFractionDigits: 4 })}
                         </TableCell>
-                        <TableCell className="text-sm">{movement.created_by_user?.name ?? '—'}</TableCell>
+                        <TableCell className="text-sm">{movement.created_by_user?.full_name ?? '—'}</TableCell>
                         <TableCell className="text-xs text-muted-foreground max-w-xs">
                           <span className="line-clamp-2">{movement.notes ?? '—'}</span>
                         </TableCell>

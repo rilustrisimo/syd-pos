@@ -1260,7 +1260,7 @@ export async function getProductSalesHistory(productId: string) {
       uom:units_of_measure(id, code, name),
       transaction:transactions!transaction_lines_transaction_id_fkey(
         id, transaction_number, transaction_date, transaction_type, total_amount, is_deleted,
-        customer:customers(id, code, name),
+        customer:customers(id, name),
         branch:branches(id, code, name)
       )
     `)
