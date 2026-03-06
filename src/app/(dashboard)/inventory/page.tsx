@@ -80,7 +80,7 @@ export default function InventoryPage() {
     const quantity = Number(item.quantity_on_hand)
     const reorderPoint = Number(item.product?.reorder_point || 0)
 
-    if (quantity === 0) return { label: 'Out of Stock', variant: 'destructive' as const }
+    if (quantity <= 0) return { label: 'Out of Stock', variant: 'destructive' as const }
     if (quantity <= reorderPoint) return { label: 'Low Stock', variant: 'secondary' as const }
     return { label: 'In Stock', variant: 'default' as const }
   }

@@ -280,7 +280,16 @@ export default function POSPage() {
             available_stock: product.available_stock,
           })
         } else {
-          // Use the single active unit
+          // Use the single active unit.
+          // Guard against stale product_selling_units entries: if the only active
+          // unit references the base UOM but the product's selling_uom_id differs,
+          // the entry is stale (e.g. from migration 00019 before selling UOM was
+          // changed). Fall back to the product-level selling UOM in that case.
+          const unitIsStaleBaseEntry =
+            unit.uom_id === product.uom_id &&
+            product.selling_uom_id &&
+            product.selling_uom_id !== product.uom_id
+
           addItem({
             product_id: product.id,
             product_code: product.code,
@@ -288,11 +297,13 @@ export default function POSPage() {
             variant_id: null,
             variant_name: null,
             quantity: 1,
-            uom_id: unit.uom_id,
-            uom_name: unit.uom?.code || unit.uom?.name || '',
-            unit_price: unit.selling_price,
-            cogs_per_unit: product.cogs / unit.conversion_factor,
-            markup_percentage: unit.markup_percentage,
+            uom_id: unitIsStaleBaseEntry ? product.selling_uom_id : unit.uom_id,
+            uom_name: unitIsStaleBaseEntry
+              ? (product.selling_uom_abbreviation || product.selling_uom_name || product.uom_abbreviation || '')
+              : (unit.uom?.code || unit.uom?.name || product.selling_uom_abbreviation || product.uom_abbreviation || ''),
+            unit_price: unitIsStaleBaseEntry ? product.unit_price : unit.selling_price,
+            cogs_per_unit: unitIsStaleBaseEntry ? product.cogs : product.cogs / unit.conversion_factor,
+            markup_percentage: unitIsStaleBaseEntry ? (product.markup_percentage ?? 0) : unit.markup_percentage,
             discount_amount: 0,
             available_stock: product.available_stock,
           })

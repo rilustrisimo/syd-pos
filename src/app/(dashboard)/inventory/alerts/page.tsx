@@ -48,7 +48,7 @@ export default function LowStockAlertsPage() {
       0
     ) || 0
 
-  const outOfStockCount = lowStockItems?.filter((item: any) => Number(item.quantity_on_hand) === 0).length || 0
+  const outOfStockCount = lowStockItems?.filter((item: any) => Number(item.quantity_on_hand) <= 0).length || 0
 
   return (
     <div className="space-y-6">
@@ -187,7 +187,7 @@ export default function LowStockAlertsPage() {
                     const reorderQty = Number(item.product?.reorder_quantity || 0)
                     const unitCost = Number(item.product?.latest_cogs || 0)
                     const orderCost = reorderQty * unitCost
-                    const isOutOfStock = currentStock === 0
+                    const isOutOfStock = currentStock <= 0
 
                     return (
                       <TableRow key={item.id}>

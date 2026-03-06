@@ -270,8 +270,8 @@ export async function getLowStockAlerts(branchId?: string) {
 
   if (error) throw error
 
-  // Filter for items where quantity_on_hand <= reorder_point
-  const lowStockItems = (data || []).filter((item: any) => 
+  // Filter: qty <= reorder_point (includes out-of-stock — they need restocking too)
+  const lowStockItems = (data || []).filter((item: any) =>
     Number(item.quantity_on_hand) <= Number(item.product?.reorder_point || 0)
   )
 
@@ -347,15 +347,20 @@ export async function getInventorySummary(branchId?: string) {
   if (error) throw error
 
   const summary = {
-    totalItems: data?.length || 0,
+    // Count distinct products (a product in 2 branches should count as 1)
+    totalItems: new Set(data?.map((item: any) => item.product_id) || []).size,
     totalQuantity: data?.reduce((sum: number, item: any) => sum + Number(item.quantity_on_hand), 0) || 0,
-    totalValue: data?.reduce((sum: number, item: any) => 
+    totalValue: data?.reduce((sum: number, item: any) =>
       sum + (Number(item.quantity_on_hand) * Number(item.product?.latest_cogs || 0)), 0
     ) || 0,
-    lowStockItems: data?.filter((item: any) => 
-      Number(item.quantity_on_hand) <= Number(item.product?.reorder_point || 0)
-    ).length || 0,
-    outOfStockItems: data?.filter((item: any) => Number(item.quantity_on_hand) === 0).length || 0,
+    // Low stock: above zero but at or below reorder point (excludes out-of-stock)
+    lowStockItems: data?.filter((item: any) => {
+      const qty = Number(item.quantity_on_hand)
+      const reorder = Number(item.product?.reorder_point || 0)
+      return qty > 0 && qty <= reorder
+    }).length || 0,
+    // Out of stock: zero or negative (negative = oversold / data error)
+    outOfStockItems: data?.filter((item: any) => Number(item.quantity_on_hand) <= 0).length || 0,
   }
 
   return summary
