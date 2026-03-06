@@ -60,22 +60,22 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   const today = new Date().toISOString().split('T')[0]
   const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]
 
-  // Get today's transactions
+  // Get today's transactions (sales + returns for net revenue)
   const { data: todayTxns, error: todayError } = await supabase
     .from('transactions')
-    .select('total_amount, payment_status')
-    .eq('transaction_type', 'sale')
+    .select('total_amount, payment_status, transaction_type')
+    .in('transaction_type', ['sale', 'return'])
     .eq('is_deleted', false)
     .gte('transaction_date', `${today}T00:00:00`)
     .lte('transaction_date', `${today}T23:59:59`)
 
   if (todayError) throw todayError
 
-  // Get this month's transactions
+  // Get this month's transactions (sales + returns for net revenue)
   const { data: monthTxns, error: monthError } = await supabase
     .from('transactions')
-    .select('total_amount')
-    .eq('transaction_type', 'sale')
+    .select('total_amount, transaction_type')
+    .in('transaction_type', ['sale', 'return'])
     .eq('is_deleted', false)
     .gte('transaction_date', `${monthStart}T00:00:00`)
 
@@ -119,12 +119,15 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   const todayTransactions = todayTxns as any[] || []
   const monthTransactions = monthTxns as any[] || []
 
+  const netAmount = (txns: any[]) =>
+    txns.reduce((sum, t) => sum + (t.transaction_type === 'return' ? -t.total_amount : t.total_amount), 0)
+
   return {
-    todaySales: todayTransactions.reduce((sum, t) => sum + t.total_amount, 0),
-    todayTransactions: todayTransactions.length,
-    monthSales: monthTransactions.reduce((sum, t) => sum + t.total_amount, 0),
-    monthTransactions: monthTransactions.length,
-    unpaidTransactions: todayTransactions.filter(t => t.payment_status !== 'paid').length,
+    todaySales: netAmount(todayTransactions),
+    todayTransactions: todayTransactions.filter(t => t.transaction_type === 'sale').length,
+    monthSales: netAmount(monthTransactions),
+    monthTransactions: monthTransactions.filter(t => t.transaction_type === 'sale').length,
+    unpaidTransactions: todayTransactions.filter(t => t.transaction_type === 'sale' && t.payment_status !== 'paid').length,
     lowStockCount,
     totalProducts: productCount || 0,
     totalCustomers: customerCount || 0,
@@ -363,8 +366,9 @@ export async function getSalesByProduct(filters: SalesReportFilters = {}): Promi
   const productMap = new Map<string, SalesByProduct>()
 
   for (const line of (data as any[]) || []) {
-    // Filter by transaction type
-    if (line.transaction?.transaction_type !== 'sale') continue
+    // Include both sales and returns; returns are deducted (sign = -1)
+    const txnType = line.transaction?.transaction_type
+    if (txnType !== 'sale' && txnType !== 'return') continue
     if (line.transaction?.is_deleted) continue
 
     // Filter by date range - proper date comparison
@@ -381,25 +385,25 @@ export async function getSalesByProduct(filters: SalesReportFilters = {}): Promi
     const productId = line.product?.id
     if (!productId) continue
 
-    // Use line_total which already includes line-level discounts
-    // Add proportional share of fees and subtract proportional share of transaction discount
+    // Returns are subtracted: sign = -1 for returns, +1 for sales
+    const sign = txnType === 'return' ? -1 : 1
+
     const subtotal = line.transaction?.subtotal || 0
     const deliveryFee = line.transaction?.delivery_fee || 0
     const otherFees = line.transaction?.other_fees || 0
     const transactionDiscount = line.transaction?.discount_amount || 0
-    
-    // Calculate proportional share based on line_total vs subtotal
+
     const lineRatio = subtotal > 0 ? (line.line_total || 0) / subtotal : 0
     const proportionalDeliveryFee = deliveryFee * lineRatio
     const proportionalOtherFees = otherFees * lineRatio
     const proportionalTransactionDiscount = transactionDiscount * lineRatio
-    
-    const revenue = (line.line_total || 0) + proportionalDeliveryFee + proportionalOtherFees - proportionalTransactionDiscount
-    const cost = line.quantity * line.cogs_per_unit
+
+    const revenue = sign * ((line.line_total || 0) + proportionalDeliveryFee + proportionalOtherFees - proportionalTransactionDiscount)
+    const cost = sign * (line.quantity * line.cogs_per_unit)
 
     const existing = productMap.get(productId)
     if (existing) {
-      existing.quantity_sold += line.quantity
+      existing.quantity_sold += sign * line.quantity
       existing.total_revenue += revenue
       existing.total_cost += cost
       existing.gross_profit += revenue - cost
@@ -409,7 +413,7 @@ export async function getSalesByProduct(filters: SalesReportFilters = {}): Promi
         product_code: line.product.code,
         product_name: line.product.name,
         category_name: line.product.category?.name || 'Uncategorized',
-        quantity_sold: line.quantity,
+        quantity_sold: sign * line.quantity,
         total_revenue: revenue,
         total_cost: cost,
         gross_profit: revenue - cost,
@@ -503,7 +507,7 @@ export async function getSalesTrendByDateRange(
         line_total
       )
     `)
-    .eq('transaction_type', 'sale')
+    .in('transaction_type', ['sale', 'return'])
     .eq('is_deleted', false)
     .gte('transaction_date', `${dateFrom}T00:00:00`)
     .lte('transaction_date', `${dateTo}T23:59:59`)
@@ -519,51 +523,50 @@ export async function getSalesTrendByDateRange(
     dateMap.set(key, { date: key, revenue: 0, cost: 0, profit: 0, discounts: 0, transactions: 0 })
   }
 
-  // Process each transaction
+  // Process each transaction (sales add, returns subtract)
   for (const txn of (data as any[]) || []) {
     const dateStr: string = txn.transaction_date?.split('T')[0]
     if (!dateStr || !dateMap.has(dateStr)) continue
 
     const point = dateMap.get(dateStr)!
-    point.transactions += 1
+    const isReturn = txn.transaction_type === 'return'
+    const sign = isReturn ? -1 : 1
+
+    // Only count sale transactions in the transaction tally
+    if (!isReturn) point.transactions += 1
 
     const deliveryFee = txn.delivery_fee || 0
     const otherFees = txn.other_fees || 0
     const transactionDiscount = txn.discount_amount || 0
     const subtotal = txn.subtotal || 0
 
-    // Track total transaction-level discount
     let txnTotalDiscount = transactionDiscount
-
-    // Sum all lines for this transaction
     let txnRevenue = 0
     let txnCost = 0
-    
+
     for (const line of txn.lines || []) {
-      // Use line_total which includes line-level discounts
       const lineTotal = line.line_total || 0
       const cost = (line.quantity || 0) * (line.cogs_per_unit || 0)
-      
-      // Add line-level discount to total
+
       const lineDiscount = line.discount_amount || 0
       txnTotalDiscount += lineDiscount
-      
-      // Calculate proportional share of fees and transaction discount
+
       const lineRatio = subtotal > 0 ? lineTotal / subtotal : 0
       const proportionalDeliveryFee = deliveryFee * lineRatio
       const proportionalOtherFees = otherFees * lineRatio
       const proportionalTransactionDiscount = transactionDiscount * lineRatio
-      
+
       const revenue = lineTotal + proportionalDeliveryFee + proportionalOtherFees - proportionalTransactionDiscount
-      
+
       txnRevenue += revenue
       txnCost += cost
     }
-    
-    point.revenue += txnRevenue
-    point.cost += txnCost
-    point.profit += txnRevenue - txnCost
-    point.discounts += txnTotalDiscount
+
+    // Apply sign: returns subtract from revenue, cost, profit
+    point.revenue += sign * txnRevenue
+    point.cost += sign * txnCost
+    point.profit += sign * (txnRevenue - txnCost)
+    if (!isReturn) point.discounts += txnTotalDiscount
   }
 
   return Array.from(dateMap.values())
