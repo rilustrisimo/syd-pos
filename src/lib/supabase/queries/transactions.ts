@@ -740,200 +740,41 @@ export async function createReturnTransaction(
 ) {
   const supabase = createClient()
 
-  // Get original transaction
-  const { data: originalTxn, error: origError } = await supabase
-    .from('transactions')
-    .select('id, transaction_number, customer_id')
-    .eq('id', input.original_transaction_id)
-    .eq('is_deleted', false)
-    .single()
+  // Calculate subtotal
+  const subtotal = lines.reduce((sum, line) => sum + line.quantity * line.unit_price, 0)
 
-  if (origError) throw origError
+  // Build per-line JSONB array for the atomic RPC
+  const rpcLines = lines.map((line) => ({
+    product_id: line.product_id,
+    variant_id: line.variant_id || null,
+    quantity: line.quantity,
+    uom_id: line.uom_id,
+    unit_price: line.unit_price,
+    cogs_per_unit: line.cogs_per_unit ?? 0,
+    should_restock: line.should_restock ?? null,
+    return_reason: line.return_reason,
+  }))
 
-  // Calculate totals
-  const subtotal = lines.reduce((sum, line) => {
-    return sum + (line.quantity * line.unit_price)
-  }, 0)
+  const { data, error } = await supabase.rpc('create_return_transaction_atomic', {
+    p_branch_id: input.branch_id,
+    p_customer_id: input.customer_id || null,
+    p_original_transaction_id: input.original_transaction_id,
+    p_reason: input.reason || null,
+    p_notes: input.notes || null,
+    p_subtotal: subtotal,
+    p_refund_amount: refund.amount,
+    p_refund_method: refund.refund_method,
+    p_refund_reference: refund.reference_number || null,
+    p_created_by: userId,
+    p_lines: rpcLines,
+  })
 
-  const totalAmount = subtotal
+  if (error) throw error
 
-  // Generate return transaction number
-  const today = new Date().toISOString().slice(0, 10).replace(/-/g, '')
-  const returnNumber = `RTN-${today}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`
+  const returnId = (data as any)?.id
+  if (!returnId) throw new Error('create_return_transaction_atomic returned no id')
 
-  // Create return transaction
-  const { data: returnTxn, error: txnError } = await supabase
-    .from('transactions')
-    .insert({
-      transaction_number: returnNumber,
-      branch_id: input.branch_id,
-      customer_id: input.customer_id,
-      transaction_type: 'return',
-      delivery_type: 'pickup',
-      subtotal: subtotal,
-      discount_amount: 0,
-      discount_percentage: 0,
-      tax_amount: 0,
-      total_amount: totalAmount,
-      payment_status: 'paid',
-      amount_paid: refund.amount,
-      notes: `Return for ${(originalTxn as any).transaction_number}. Reason: ${input.reason}${input.notes ? `. ${input.notes}` : ''}`,
-      created_by: userId
-    } as any)
-    .select()
-    .single()
-
-  if (txnError) throw txnError
-
-  const returnTransaction = returnTxn as any
-
-  // Create return lines
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]
-
-    const { error: lineError } = await supabase
-      .from('transaction_lines')
-      .insert({
-        transaction_id: returnTransaction.id,
-        line_number: i + 1,
-        product_id: line.product_id,
-        variant_id: line.variant_id || null,
-        quantity: line.quantity,
-        uom_id: line.uom_id,
-        unit_price: line.unit_price,
-        cogs_per_unit: line.cogs_per_unit,
-        discount_amount: 0,
-        should_restock: line.should_restock ?? null, // Will trigger auto-flag if null and reason is damaged/expired/defective
-        return_reason: line.return_reason,
-        notes: `Reason: ${RETURN_REASON_CODES[line.return_reason]}`
-      } as any)
-
-    if (lineError) throw lineError
-
-    // Inventory restocking is now handled by database trigger (process_transaction_inventory)
-    // The trigger checks the should_restock flag (auto-set by set_restock_flag_from_reason trigger)
-    // Damaged, expired, defective, and quality_issue items are automatically flagged as non-restockable
-  }
-
-  // Record refund
-  const { error: refundError } = await supabase
-    .from('transaction_payments')
-    .insert({
-      transaction_id: returnTransaction.id,
-      payment_method: refund.refund_method === 'store_credit' ? 'credit' : refund.refund_method,
-      amount: -refund.amount, // Negative to indicate refund
-      reference_number: refund.reference_number || null,
-      notes: refund.notes || 'Refund',
-      created_by: userId
-    } as any)
-
-  if (refundError) throw refundError
-
-  // If original sale was on credit, reduce customer's outstanding balance
-  const { data: originalPayments } = await supabase
-    .from('transaction_payments')
-    .select('payment_method, amount')
-    .eq('transaction_id', input.original_transaction_id)
-
-  const hadCreditPayment = (originalPayments as any[])?.some(p => p.payment_method === 'credit')
-
-  if (hadCreditPayment) {
-    // Reduce customer balance by refund amount
-    await reduceCustomerBalance(input.customer_id, refund.amount)
-  }
-
-  return getTransaction(returnTransaction.id)
-}
-
-// Helper: Update inventory after return (restock)
-async function updateInventoryForReturn(
-  branchId: string,
-  productId: string,
-  variantId: string | null,
-  quantity: number,
-  transactionId: string,
-  userId: string
-) {
-  const supabase = createClient()
-
-  // Get current inventory
-  let invQuery = supabase
-    .from('branch_inventory')
-    .select('id, quantity_on_hand')
-    .eq('branch_id', branchId)
-    .eq('product_id', productId)
-
-  if (variantId) {
-    invQuery = invQuery.eq('variant_id', variantId)
-  } else {
-    invQuery = invQuery.is('variant_id', null)
-  }
-
-  const { data: inventory, error: invError } = await invQuery.single()
-
-  if (invError && invError.code !== 'PGRST116') throw invError
-
-  const currentQty = (inventory as any)?.quantity_on_hand || 0
-  const newQty = currentQty + quantity // Add back to inventory
-
-  if (inventory) {
-    // Update existing inventory
-    await supabase
-      .from('branch_inventory')
-      .update({
-        quantity_on_hand: newQty,
-        last_movement_at: new Date().toISOString()
-      } as any)
-      .eq('id', (inventory as any).id)
-  } else {
-    // Create inventory record
-    await supabase
-      .from('branch_inventory')
-      .insert({
-        branch_id: branchId,
-        product_id: productId,
-        variant_id: variantId,
-        quantity_on_hand: quantity,
-        last_movement_at: new Date().toISOString()
-      } as any)
-  }
-
-  // Record movement
-  await supabase
-    .from('inventory_movements')
-    .insert({
-      branch_id: branchId,
-      product_id: productId,
-      variant_id: variantId,
-      movement_type: 'return',
-      quantity_change: quantity, // Positive for return
-      quantity_before: currentQty,
-      quantity_after: newQty,
-      reference_id: transactionId,
-      reference_type: 'transaction',
-      created_by: userId
-    } as any)
-}
-
-// Helper: Reduce customer balance (for credit refunds)
-async function reduceCustomerBalance(customerId: string, amount: number) {
-  const supabase = createClient()
-
-  const { data: customer, error: custError } = await supabase
-    .from('customers')
-    .select('outstanding_balance')
-    .eq('id', customerId)
-    .single()
-
-  if (custError) throw custError
-
-  const currentBalance = (customer as any).outstanding_balance || 0
-  const newBalance = Math.max(0, currentBalance - amount) // Don't go negative
-
-  await supabase
-    .from('customers')
-    .update({ outstanding_balance: newBalance } as any)
-    .eq('id', customerId)
+  return getTransaction(returnId)
 }
 
 // Get returns for a specific transaction
