@@ -353,6 +353,13 @@ export async function getInventorySummary(branchId?: string) {
     totalValue: data?.reduce((sum: number, item: any) =>
       sum + (Number(item.quantity_on_hand) * Number(item.product?.latest_cogs || 0)), 0
     ) || 0,
+    potentialProfit: data?.reduce((sum: number, item: any) => {
+      const qty = Number(item.quantity_on_hand)
+      if (qty <= 0) return sum
+      const price = Number(item.product?.current_selling_price || 0)
+      const cost = Number(item.product?.latest_cogs || 0)
+      return sum + (qty * (price - cost))
+    }, 0) || 0,
     // Low stock: above zero but at or below reorder point (excludes out-of-stock)
     lowStockItems: data?.filter((item: any) => {
       const qty = Number(item.quantity_on_hand)

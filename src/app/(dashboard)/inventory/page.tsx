@@ -23,6 +23,7 @@ import {
   FileText,
   Loader2,
   PackageX,
+  TrendingUp,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -144,7 +145,7 @@ export default function InventoryPage() {
 
       {/* Summary Cards */}
       {!summaryLoading && summary && (
-        <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-5">
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-6">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Total Items</CardTitle>
@@ -177,6 +178,19 @@ export default function InventoryPage() {
             <CardContent>
               <div className="text-2xl font-bold">{formatCurrency(summary.totalValue)}</div>
               <p className="text-xs text-muted-foreground">At cost price</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Potential Profit</CardTitle>
+              <TrendingUp className="h-4 w-4 text-emerald-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-emerald-600">
+                {formatCurrency(summary.potentialProfit)}
+              </div>
+              <p className="text-xs text-muted-foreground">If all stock is sold</p>
             </CardContent>
           </Card>
 
