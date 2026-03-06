@@ -262,7 +262,8 @@ export default function POSPage() {
         const unit = activeUnits[0]
         
         if (!unit) {
-          // No selling units configured, use product's default
+          // No selling units configured — use the product's selling UOM if it
+          // differs from the base UOM (e.g. base=ROLL, selling=M, price per M)
           addItem({
             product_id: product.id,
             product_code: product.code,
@@ -270,8 +271,8 @@ export default function POSPage() {
             variant_id: null,
             variant_name: null,
             quantity: 1,
-            uom_id: product.uom_id,
-            uom_name: product.uom_abbreviation || product.uom_name,
+            uom_id: product.selling_uom_id || product.uom_id,
+            uom_name: product.selling_uom_abbreviation || product.uom_abbreviation || product.uom_name,
             unit_price: product.unit_price,
             cogs_per_unit: product.cogs,
             markup_percentage: product.markup_percentage ?? 0,
@@ -306,7 +307,7 @@ export default function POSPage() {
       }
     } catch (error) {
       console.error('Error fetching selling units:', error)
-      // Fallback to default unit on error
+      // Fallback — still prefer selling UOM over base UOM
       addItem({
         product_id: product.id,
         product_code: product.code,
@@ -314,8 +315,8 @@ export default function POSPage() {
         variant_id: null,
         variant_name: null,
         quantity: 1,
-        uom_id: product.uom_id,
-        uom_name: product.uom_abbreviation || product.uom_name,
+        uom_id: product.selling_uom_id || product.uom_id,
+        uom_name: product.selling_uom_abbreviation || product.uom_abbreviation || product.uom_name,
         unit_price: product.unit_price,
         cogs_per_unit: product.cogs,
         markup_percentage: product.markup_percentage ?? 0,

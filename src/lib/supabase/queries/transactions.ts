@@ -607,6 +607,8 @@ export async function searchProductsForPOS(query: string, branchId: string, limi
       latest_cogs,
       markup_percentage,
       base_uom_id,
+      selling_uom_id,
+      conversion_factor,
       images:product_images(url, is_primary, sort_order)
     `)
     .eq('is_active', true)
@@ -615,13 +617,16 @@ export async function searchProductsForPOS(query: string, branchId: string, limi
     .limit(limit)
 
   if (productsError) throw productsError
-  
+
   const uniqueProducts = products || []
 
   if (!uniqueProducts || uniqueProducts.length === 0) return []
 
-  // Get UOM details for the products
-  const uomIds = [...new Set(uniqueProducts.map(p => p.base_uom_id))]
+  // Get UOM details for both base and selling UOMs
+  const uomIds = [...new Set([
+    ...uniqueProducts.map(p => p.base_uom_id),
+    ...uniqueProducts.map(p => (p as any).selling_uom_id).filter(Boolean),
+  ])]
   const { data: uoms, error: uomsError } = await supabase
     .from('units_of_measure')
     .select('id, name, code')
@@ -649,11 +654,17 @@ export async function searchProductsForPOS(query: string, branchId: string, limi
   )
 
   return uniqueProducts.map(product => {
-    const uom = uomMap.get(product.base_uom_id)
+    const p = product as any
+    const baseUom = uomMap.get(product.base_uom_id)
+    // Use selling UOM for display when it differs from base UOM
+    const sellingUomId = p.selling_uom_id && p.selling_uom_id !== product.base_uom_id
+      ? p.selling_uom_id
+      : product.base_uom_id
+    const sellingUom = uomMap.get(sellingUomId) || baseUom
     // Get primary image or first image
-    const images = (product as any).images || []
+    const images = p.images || []
     const primaryImage = images.find((img: any) => img.is_primary)?.url || images[0]?.url || null
-    
+
     return {
       id: product.id,
       code: product.code,
@@ -664,9 +675,15 @@ export async function searchProductsForPOS(query: string, branchId: string, limi
         (product.latest_cogs > 0
           ? ((product.current_selling_price / product.latest_cogs - 1) * 100)
           : 0),
+      // Base UOM — used for inventory stock display
       uom_id: product.base_uom_id,
-      uom_name: uom?.name || '',
-      uom_abbreviation: uom?.code || '', // Using 'code' from DB but naming as 'abbreviation' for backward compatibility
+      uom_name: baseUom?.name || '',
+      uom_abbreviation: baseUom?.code || '',
+      // Selling UOM — used for cart/price display (may differ from base)
+      selling_uom_id: sellingUomId,
+      selling_uom_name: sellingUom?.name || '',
+      selling_uom_abbreviation: sellingUom?.code || '',
+      conversion_factor: p.conversion_factor || 1,
       available_stock: inventoryMap.get(`${product.id}-null`) || 0,
       image_url: primaryImage
     }
