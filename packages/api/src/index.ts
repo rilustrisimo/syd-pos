@@ -39,6 +39,13 @@ export {
   useProcessReturn,
   useDeleteReturn,
 } from './hooks/useReturns'
+export {
+  useCanvases,
+  useCanvas,
+  useCreateCanvas,
+  useUpdateCanvas,
+  useDeleteCanvas,
+} from './hooks/useCanvases'
 
 // Export formatting utilities
 export {

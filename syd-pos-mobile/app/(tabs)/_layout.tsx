@@ -57,6 +57,15 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="canvas/index"
+        options={{
+          title: 'Canvas',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="clipboard-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="returns/index"
         options={{
           title: 'Returns',

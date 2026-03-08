@@ -260,6 +260,86 @@ export interface CreateTransactionPayload {
 }
 
 // ============================================================================
+// Canvas / Quotation Types
+// ============================================================================
+
+export interface CanvasLine {
+  id: string
+  canvas_id: string
+  line_number: number
+  product_id: string
+  quantity: number
+  uom_id: string
+  unit_price: number
+  cogs_per_unit: number
+  discount_amount: number
+  line_total: number
+  notes: string | null
+  created_at: string
+  updated_at: string
+  // Joined data
+  product?: Product
+  uom?: UnitOfMeasure
+}
+
+export interface Canvas {
+  id: string
+  canvas_number: string
+  branch_id: string
+  customer_id: string | null
+  title: string | null
+  notes: string | null
+  subtotal: number
+  discount_amount: number
+  discount_percentage: number
+  delivery_fee: number
+  other_fees: number
+  other_fees_notes: string | null
+  total_amount: number
+  canvas_date: string
+  is_deleted: boolean
+  deleted_at: string | null
+  created_by: string
+  created_at: string
+  updated_at: string
+  // Joined data
+  customer?: Customer
+  branch?: Branch
+  lines?: CanvasLine[]
+}
+
+export interface CreateCanvasInput {
+  branch_id: string
+  customer_id?: string | null
+  title?: string | null
+  notes?: string | null
+  subtotal: number
+  discount_amount: number
+  discount_percentage: number
+  delivery_fee: number
+  other_fees: number
+  other_fees_notes?: string | null
+  total_amount: number
+  canvas_date?: string
+}
+
+export interface CanvasLineInput {
+  product_id: string
+  quantity: number
+  uom_id: string
+  unit_price: number
+  cogs_per_unit: number
+  discount_amount?: number
+  notes?: string | null
+}
+
+export interface CreateCanvasPayload {
+  input: CreateCanvasInput
+  lines: CanvasLineInput[]
+  userId: string
+}
+
+// ============================================================================
 // Return/Refund Types
 // ============================================================================
 

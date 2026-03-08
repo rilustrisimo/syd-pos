@@ -38,6 +38,7 @@ const navigation = [
     icon: ShoppingCart,
     children: [
       { name: 'New Sale', href: '/pos', icon: ShoppingCart },
+      { name: 'Canvas', href: '/pos/canvas', icon: ClipboardList },
       { name: 'History', href: '/pos/history', icon: History },
       { name: 'Returns', href: '/pos/returns', icon: RotateCcw },
     ],

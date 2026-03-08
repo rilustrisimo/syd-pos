@@ -21,7 +21,7 @@ import RNBluetoothClassic, {
   BluetoothDevice,
 } from 'react-native-bluetooth-classic'
 import { PermissionsAndroid, Platform } from 'react-native'
-import { buildReceiptBytes, buildDeliverySlipBytes, ReceiptData } from './escpos-mobile'
+import { buildReceiptBytes, buildDeliverySlipBytes, buildCanvasBytes, ReceiptData, CanvasData } from './escpos-mobile'
 import { usePrinterStore, PairedDevice } from '../store/printer'
 
 // Classic Bluetooth SPP can handle larger packets than BLE (no 20-byte MTU limit).
@@ -175,6 +175,16 @@ async function printReceipt(data: ReceiptData, width: '58mm' | '80mm' = '80mm'):
   await writeBytes(buildReceiptBytes(data, charWidth))
 }
 
+// ── Print canvas / price quotation ────────────────────────────────────────
+
+async function printCanvas(data: CanvasData, width: '58mm' | '80mm' = '80mm'): Promise<void> {
+  if (!connectedDevice) {
+    throw new Error('Printer not connected. Connect a printer in Settings first.')
+  }
+  const charWidth = width === '58mm' ? 32 : 48
+  await writeBytes(buildCanvasBytes(data, charWidth))
+}
+
 // ── Print delivery slip ───────────────────────────────────────────────────
 
 async function printDeliverySlip(data: ReceiptData, width: '58mm' | '80mm' = '80mm'): Promise<void> {
@@ -213,6 +223,7 @@ export const btPrinter = {
   disconnect,
   printReceipt,
   printDeliverySlip,
+  printCanvas,
   isConnected,
   getDeviceName,
 }

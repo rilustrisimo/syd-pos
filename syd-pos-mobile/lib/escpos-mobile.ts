@@ -245,6 +245,144 @@ export function buildReceiptBytes(data: ReceiptData, width = 48): Uint8Array {
   return new Uint8Array(bytes)
 }
 
+// ── Canvas / price quotation builder ─────────────────────────────────────────
+
+export type CanvasItem = {
+  name: string
+  quantity: number
+  unit_price: number
+  uom: string
+  discount: number
+  total: number
+}
+
+export type CanvasData = {
+  canvas_number: string
+  date: string
+  cashier: string
+  branch: string
+  customer: string          // name or 'Walk-in Customer'
+  title?: string | null
+  items: CanvasItem[]
+  subtotal: number
+  discount: number
+  delivery_fee?: number
+  other_fees?: number
+  other_fees_notes?: string | null
+  total: number
+  notes?: string | null
+}
+
+/**
+ * Build a canvass sheet (price quotation) as a Uint8Array.
+ * Clearly labelled as NOT a sales receipt.
+ */
+export function buildCanvasBytes(data: CanvasData, width = 48): Uint8Array {
+  const bytes: number[] = []
+  const divider     = '='.repeat(width)
+  const thinDivider = '-'.repeat(width)
+
+  function cmd(...cmds: number[][]): void {
+    for (const c of cmds) bytes.push(...c)
+  }
+  function text(str: string): void { bytes.push(...strBytes(str)) }
+  function line(str: string): void { text(str); bytes.push(LF) }
+
+  cmd(CMD.INIT, CMD.CHARSET_PC437)
+
+  // ── Header ────────────────────────────────────────────────────────────────
+  cmd(CMD.CENTER, CMD.BOLD_ON, CMD.DOUBLE_SIZE)
+  line('SYD CONSTRUCTION')
+  line('SUPPLIES TRADING')
+  cmd(CMD.NORMAL_SIZE, CMD.BOLD_OFF)
+  line(data.branch)
+  line('Construction Materials & Hardware')
+
+  cmd(CMD.LEFT)
+  line(divider)
+
+  // ── Title banner ──────────────────────────────────────────────────────────
+  cmd(CMD.CENTER, CMD.BOLD_ON)
+  line('CANVASS SHEET / PRICE QUOTATION')
+  cmd(CMD.BOLD_OFF, CMD.LEFT)
+
+  line(thinDivider)
+
+  // ── Canvas info ───────────────────────────────────────────────────────────
+  line(lr('CAN#:',     data.canvas_number,           width))
+  line(lr('Date:',     data.date,                    width))
+  line(lr('Prepared:', data.cashier,                 width))
+  line(lr('Customer:', data.customer,                width))
+  if (data.title) {
+    line(lr('Title:',  data.title.substring(0, width - 8), width))
+  }
+
+  line(thinDivider)
+
+  // ── Items header ──────────────────────────────────────────────────────────
+  cmd(CMD.BOLD_ON)
+  line(lr('ITEM', 'AMOUNT', width))
+  cmd(CMD.BOLD_OFF)
+
+  // ── Items ─────────────────────────────────────────────────────────────────
+  for (const item of data.items) {
+    const name = item.name.length > width ? item.name.substring(0, width) : item.name
+    line(name)
+    const qty = `  ${item.quantity} ${item.uom} x ${fmt(item.unit_price)}`
+    line(lr(qty, fmt(item.total), width))
+    if (item.discount > 0) {
+      line(lr('  Discount', '-' + fmt(item.discount), width))
+    }
+  }
+
+  line(thinDivider)
+
+  // ── Totals ────────────────────────────────────────────────────────────────
+  line(lr('Subtotal:', fmt(data.subtotal), width))
+  if (data.discount > 0) {
+    line(lr('Discount:', '-' + fmt(data.discount), width))
+  }
+  if ((data.delivery_fee ?? 0) > 0) {
+    line(lr('Delivery Fee:', fmt(data.delivery_fee!), width))
+  }
+  if ((data.other_fees ?? 0) > 0) {
+    line(lr('Other Fees:', fmt(data.other_fees!), width))
+    if (data.other_fees_notes) {
+      line('  ' + data.other_fees_notes.substring(0, width - 2))
+    }
+  }
+  cmd(CMD.BOLD_ON)
+  line(lr('TOTAL:', 'PHP ' + fmt(data.total), width))
+  cmd(CMD.BOLD_OFF)
+
+  // ── Notes ──────────────────────────────────────────────────────────────────
+  if (data.notes) {
+    line(thinDivider)
+    cmd(CMD.BOLD_ON)
+    line('Notes:')
+    cmd(CMD.BOLD_OFF)
+    line('  ' + data.notes)
+  }
+
+  line(divider)
+
+  // ── Disclaimer ────────────────────────────────────────────────────────────
+  cmd(CMD.CENTER, CMD.BOLD_ON)
+  line('** PRICE QUOTATION ONLY **')
+  line('** NOT A SALES RECEIPT  **')
+  cmd(CMD.BOLD_OFF)
+  line('Prices subject to change.')
+  line('Valid as of date above.')
+  bytes.push(LF)
+  line('--- END OF CANVASS SHEET ---')
+
+  cmd(CMD.FEED(4))
+  cmd(CMD.CUT)
+
+  return new Uint8Array(bytes)
+}
+
+
 // ── Delivery slip builder ─────────────────────────────────────────────────────
 
 /**

@@ -10,6 +10,7 @@ import { useDiscountRules } from '@/hooks/useDiscountRules'
 import { useProductSellingUnits } from '@/hooks/useProductSellingUnits'
 import { getProductSellingUnits } from '@/lib/supabase/queries/product-selling-units'
 import { getStandardDiscountForMarkup } from '@/lib/supabase/queries/discount-rules'
+import { getTodayPH, createTimestampPH, isTodayPH } from '@/lib/utils/datetime'
 import { toast } from 'sonner'
 import {
   Search,
@@ -211,7 +212,8 @@ export default function POSPage() {
   // Set mounted state and initialize date (client-side only to avoid hydration errors)
   useEffect(() => {
     setIsMounted(true)
-    setSaleDate(new Date().toISOString().split('T')[0])
+    // Initialize sale date to today in Philippine timezone
+    setSaleDate(getTodayPH())
   }, [])
 
   // Set default branch and walk-in customer
@@ -585,7 +587,7 @@ export default function POSPage() {
           other_fees_notes: otherFeesNotes || null,
           discount_amount: getTotalDiscount(),
           notes: notes || null,
-          transaction_date: saleDate ? `${saleDate}T00:00:00` : null,
+          transaction_date: createTimestampPH(saleDate),
         },
         lines: items.map((item) => ({
           product_id: item.product_id,
@@ -609,7 +611,7 @@ export default function POSPage() {
 
       // Reset POS immediately so the next transaction can start
       resetAll()
-      setSaleDate(new Date().toISOString().split('T')[0])
+      setSaleDate(getTodayPH())
       setDiscountInput('')
       setCustomer(WALK_IN_CUSTOMER)
 
@@ -1451,10 +1453,10 @@ export default function POSPage() {
                 type="date"
                 value={saleDate}
                 onChange={(e) => setSaleDate(e.target.value)}
-                max={isMounted ? new Date().toISOString().split('T')[0] : ''}
+                max={isMounted ? getTodayPH() : ''}
                 className="h-11"
               />
-              {isMounted && saleDate && saleDate !== new Date().toISOString().split('T')[0] && (
+              {isMounted && saleDate && !isTodayPH(saleDate) && (
                 <p className="text-xs text-amber-600 font-medium">
                   Backdated sale — recording as {new Date(saleDate + 'T00:00:00').toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' })}
                 </p>
