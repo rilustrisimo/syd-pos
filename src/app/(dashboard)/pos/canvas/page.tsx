@@ -26,7 +26,6 @@ import {
   ClipboardList,
   Save,
   Tag,
-  Percent,
   UserPlus,
   ChevronRight,
   FileText,
@@ -36,7 +35,6 @@ import { Input } from '@/components/ui/input'
 import {
   Card,
   CardContent,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
@@ -172,6 +170,10 @@ export default function CanvasPage() {
   const [selectedUnitId, setSelectedUnitId] = useState<string>('')
   const [listPage, setListPage] = useState(1)
 
+  // Local string state for fee inputs — allows intermediate typing like "1." or "150.5"
+  const [deliveryFeeStr, setDeliveryFeeStr] = useState('')
+  const [otherFeesStr, setOtherFeesStr] = useState('')
+
   // ── Queries ───────────────────────────────────────────────────────────────
   const { data: branches } = useBranches()
   const { data: discountRules = [] } = useDiscountRules()
@@ -214,6 +216,15 @@ export default function CanvasPage() {
   useEffect(() => {
     if (!customer) setCustomer(WALK_IN_CUSTOMER)
   }, [customer, setCustomer])
+
+  // Sync fee string inputs when the store value changes externally (e.g., after save/reset)
+  useEffect(() => {
+    setDeliveryFeeStr(deliveryFee > 0 ? String(deliveryFee) : '')
+  }, [deliveryFee])
+
+  useEffect(() => {
+    setOtherFeesStr(otherFees > 0 ? String(otherFees) : '')
+  }, [otherFees])
 
   // ── Computed ──────────────────────────────────────────────────────────────
   const subtotal = getSubtotal()
@@ -466,6 +477,8 @@ export default function CanvasPage() {
       setCanvasDate(getTodayPH())
       setCustomer(WALK_IN_CUSTOMER)
       setDiscountInput('')
+      setDeliveryFeeStr('')
+      setOtherFeesStr('')
     } catch (err: any) {
       toast.error(err.message || 'Failed to save canvas')
     }
@@ -474,7 +487,6 @@ export default function CanvasPage() {
   // ── Handlers: convert to sale ─────────────────────────────────────────────
   const handleConvertToSale = useCallback(
     (canvas: any) => {
-      // Reset POS and load canvas items
       posStore.resetAll()
       if (canvas.customer) {
         posStore.setCustomer({
@@ -521,8 +533,11 @@ export default function CanvasPage() {
     [posStore, branchId, router]
   )
 
-  // ── Cart rendering helper ─────────────────────────────────────────────────
-  const CartContent = () => (
+  // ── renderCart — a render function, NOT a component ───────────────────────
+  // Called as {renderCart()} so React reconciles its output as part of the
+  // parent fiber tree. This prevents Select/Popover/Input from losing state
+  // or focus on every re-render (which happened when it was `<CartContent />`).
+  const renderCart = () => (
     <div className="flex flex-col h-full">
       {/* Customer */}
       <div className="p-3 border-b">
@@ -534,16 +549,12 @@ export default function CanvasPage() {
             </Button>
           </PopoverTrigger>
           <PopoverContent className="w-72 p-0" align="start">
-            <Command>
-              <div className="flex items-center border-b px-3">
-                <Search className="h-4 w-4 text-muted-foreground" />
-                <input
-                  className="flex-1 bg-transparent px-2 py-2 text-sm outline-none placeholder:text-muted-foreground"
-                  placeholder="Search customers..."
-                  value={customerSearch}
-                  onChange={(e) => setCustomerSearch(e.target.value)}
-                />
-              </div>
+            <Command shouldFilter={false}>
+              <CommandInput
+                placeholder="Search customers..."
+                value={customerSearch}
+                onValueChange={setCustomerSearch}
+              />
               <CommandList>
                 <CommandEmpty>No customers found</CommandEmpty>
                 <CommandGroup>
@@ -619,7 +630,16 @@ export default function CanvasPage() {
                     >
                       <Minus className="h-3 w-3" />
                     </Button>
-                    <span className="text-sm w-8 text-center">{item.quantity}</span>
+                    <Input
+                      type="number"
+                      value={item.quantity}
+                      onChange={(e) =>
+                        updateItemQuantity(item.id, parseFloat(e.target.value) || 0.01)
+                      }
+                      className="w-16 h-6 text-center text-sm p-1"
+                      min="0.01"
+                      step="any"
+                    />
                     <Button
                       variant="outline"
                       size="icon"
@@ -649,7 +669,7 @@ export default function CanvasPage() {
         )}
       </ScrollArea>
 
-      {/* Discount */}
+      {/* Discount + Fees */}
       {items.length > 0 && (
         <div className="p-3 border-t space-y-2">
           <div className="flex items-center gap-2">
@@ -669,6 +689,7 @@ export default function CanvasPage() {
             {(discountType === 'fixed' || discountType === 'percentage') && (
               <Input
                 type="number"
+                step="0.01"
                 className="h-8 w-24"
                 placeholder={discountType === 'percentage' ? '%' : '₱'}
                 value={discountInput}
@@ -681,20 +702,32 @@ export default function CanvasPage() {
               <Label className="text-xs text-muted-foreground">Delivery Fee</Label>
               <Input
                 type="number"
+                step="0.01"
                 className="h-8"
-                placeholder="0"
-                value={deliveryFee || ''}
-                onChange={(e) => setDeliveryFee(parseFloat(e.target.value) || 0)}
+                placeholder="0.00"
+                value={deliveryFeeStr}
+                onChange={(e) => {
+                  setDeliveryFeeStr(e.target.value)
+                  const num = parseFloat(e.target.value)
+                  if (!isNaN(num) && e.target.value !== '') setDeliveryFee(Math.max(0, num))
+                  else if (e.target.value === '') setDeliveryFee(0)
+                }}
               />
             </div>
             <div>
               <Label className="text-xs text-muted-foreground">Other Fees</Label>
               <Input
                 type="number"
+                step="0.01"
                 className="h-8"
-                placeholder="0"
-                value={otherFees || ''}
-                onChange={(e) => setOtherFees(parseFloat(e.target.value) || 0)}
+                placeholder="0.00"
+                value={otherFeesStr}
+                onChange={(e) => {
+                  setOtherFeesStr(e.target.value)
+                  const num = parseFloat(e.target.value)
+                  if (!isNaN(num) && e.target.value !== '') setOtherFees(Math.max(0, num))
+                  else if (e.target.value === '') setOtherFees(0)
+                }}
               />
             </div>
           </div>
@@ -748,7 +781,18 @@ export default function CanvasPage() {
           variant="outline"
           size="sm"
           className="flex-1"
-          onClick={() => { clearCanvas(); setDiscountInput('') }}
+          onClick={() => {
+            clearCanvas()
+            setDiscountType('none')
+            setDiscountAmount(0)
+            setDiscountPercentage(0)
+            setDeliveryFee(0)
+            setOtherFees(0)
+            setOtherFeesNotes('')
+            setDiscountInput('')
+            setDeliveryFeeStr('')
+            setOtherFeesStr('')
+          }}
           disabled={items.length === 0}
         >
           <Trash2 className="h-4 w-4 mr-1" />
@@ -812,7 +856,7 @@ export default function CanvasPage() {
             </div>
           ) : !searchedProducts || searchedProducts.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
-              <Package className="h-12 w-12 mb-3 opacity-20" />
+              <ProductIcon className="h-12 w-12 mb-3 opacity-20" />
               <p className="text-sm">No products found</p>
             </div>
           ) : (
@@ -976,7 +1020,7 @@ export default function CanvasPage() {
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0 flex-1 overflow-hidden flex flex-col">
-          <CartContent />
+          {renderCart()}
         </CardContent>
       </Card>
 
@@ -990,7 +1034,7 @@ export default function CanvasPage() {
             </SheetTitle>
           </div>
           <div className="flex-1 overflow-hidden flex flex-col">
-            <CartContent />
+            {renderCart()}
           </div>
         </SheetContent>
       </Sheet>
@@ -1192,8 +1236,7 @@ export default function CanvasPage() {
   )
 }
 
-// Fallback icon for out-of-stock indicator
-function Package({ className }: { className?: string }) {
+function ProductIcon({ className }: { className?: string }) {
   return (
     <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <path d="m7.5 4.27 9 5.15M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/>
