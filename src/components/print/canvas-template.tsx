@@ -134,11 +134,11 @@ export const CanvasTemplate = forwardRef<HTMLDivElement, CanvasTemplateProps>(
               <div style={{ fontSize: '13px', fontWeight: '700', color: GRAY700, letterSpacing: '0.8px', marginTop: '1px' }}>
                 SUPPLIES TRADING
               </div>
-              <div style={{ fontSize: '10px', color: GRAY600, lineHeight: 1.7, marginTop: '5px' }}>
-                {data.branch.name && <div>{data.branch.name}</div>}
-                {data.branch.address && <div>{data.branch.address}</div>}
-                {data.branch.phone && <div>Tel: {data.branch.phone}</div>}
-              </div>
+              {data.branch.phone && (
+                <div style={{ fontSize: '10px', color: GRAY600, lineHeight: 1.7, marginTop: '5px' }}>
+                  <div>Contact: {data.branch.phone}</div>
+                </div>
+              )}
             </div>
           </div>
 
