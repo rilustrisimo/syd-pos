@@ -64,24 +64,29 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   const monthStart = `${y}-${String(m).padStart(2, '0')}-01`
 
   // Get today's transactions (sales + returns for net revenue)
-  // Use +08:00 suffix so PH midnight is the boundary, not UTC midnight
+  // Convert Philippine timezone dates to ISO UTC timestamps for proper filtering
+  const todayStart = new Date(`${today}T00:00:00+08:00`).toISOString()
+  const todayEnd = new Date(`${today}T23:59:59.999+08:00`).toISOString()
+  
   const { data: todayTxns, error: todayError } = await supabase
     .from('transactions')
     .select('total_amount, payment_status, transaction_type')
     .in('transaction_type', ['sale', 'return'])
     .eq('is_deleted', false)
-    .gte('transaction_date', `${today}T00:00:00+08:00`)
-    .lte('transaction_date', `${today}T23:59:59+08:00`)
+    .gte('transaction_date', todayStart)
+    .lte('transaction_date', todayEnd)
 
   if (todayError) throw todayError
 
   // Get this month's transactions (sales + returns for net revenue)
+  const monthStartTime = new Date(`${monthStart}T00:00:00+08:00`).toISOString()
+  
   const { data: monthTxns, error: monthError } = await supabase
     .from('transactions')
     .select('total_amount, transaction_type')
     .in('transaction_type', ['sale', 'return'])
     .eq('is_deleted', false)
-    .gte('transaction_date', `${monthStart}T00:00:00+08:00`)
+    .gte('transaction_date', monthStartTime)
 
   if (monthError) throw monthError
 
@@ -166,11 +171,12 @@ export async function getSalesTrend(days: number = 30): Promise<SalesTrend[]> {
     dateMap.set(dateStr, { sales: 0, transactions: 0 })
   }
 
-  // Fill in actual data
+  // Fill in actual data - convert UTC timestamp to Philippine timezone
   for (const txn of (data as any[]) || []) {
-    const dateStr = txn.transaction_date.split('T')[0]
-    const existing = dateMap.get(dateStr) || { sales: 0, transactions: 0 }
-    dateMap.set(dateStr, {
+    const phDate = new Date(txn.transaction_date)
+    const phDateStr = new Date(phDate.getTime() + (8 * 60 * 60 * 1000)).toISOString().split('T')[0]
+    const existing = dateMap.get(phDateStr) || { sales: 0, transactions: 0 }
+    dateMap.set(phDateStr, {
       sales: existing.sales + txn.total_amount,
       transactions: existing.transactions + 1
     })
@@ -238,14 +244,16 @@ export async function getTopProducts(days: number = 7, limit: number = 10): Prom
 export async function getHourlySales(): Promise<HourlySales[]> {
   const supabase = createClient()
   const today = getTodayPH()
+  const todayStart = new Date(`${today}T00:00:00+08:00`).toISOString()
+  const todayEnd = new Date(`${today}T23:59:59.999+08:00`).toISOString()
 
   const { data, error } = await supabase
     .from('transactions')
     .select('created_at, total_amount')
     .eq('transaction_type', 'sale')
     .eq('is_deleted', false)
-    .gte('transaction_date', `${today}T00:00:00+08:00`)
-    .lte('transaction_date', `${today}T23:59:59+08:00`)
+    .gte('transaction_date', todayStart)
+    .lte('transaction_date', todayEnd)
 
   if (error) throw error
 
@@ -367,13 +375,14 @@ export async function getSalesByProduct(filters: SalesReportFilters = {}): Promi
     .in('transaction_type', ['sale', 'return'])
     .eq('is_deleted', false)
 
-  // Apply date filter at DB level using PH timezone (+08:00) so Manila-midnight
-  // transactions are never excluded by UTC day boundaries.
+  // Apply date filter at DB level - convert PH timezone to ISO UTC timestamps
   if (filters.date_from) {
-    query = query.gte('transaction_date', `${filters.date_from}T00:00:00+08:00`)
+    const startTime = new Date(`${filters.date_from}T00:00:00+08:00`).toISOString()
+    query = query.gte('transaction_date', startTime)
   }
   if (filters.date_to) {
-    query = query.lte('transaction_date', `${filters.date_to}T23:59:59+08:00`)
+    const endTime = new Date(`${filters.date_to}T23:59:59.999+08:00`).toISOString()
+    query = query.lte('transaction_date', endTime)
   }
   if (filters.branch_id) {
     query = query.eq('branch_id', filters.branch_id)
@@ -496,6 +505,10 @@ export async function getSalesTrendByDateRange(
 
   // Get all transaction lines with their transaction details
   // Filter by transaction_date on the transactions table
+  // Convert date strings to proper ISO 8601 timestamps with Philippine timezone
+  const startTime = new Date(`${dateFrom}T00:00:00+08:00`).toISOString()
+  const endTime = new Date(`${dateTo}T23:59:59.999+08:00`).toISOString()
+  
   const { data, error } = await supabase
     .from('transactions')
     .select(`
@@ -517,8 +530,8 @@ export async function getSalesTrendByDateRange(
     `)
     .in('transaction_type', ['sale', 'return'])
     .eq('is_deleted', false)
-    .gte('transaction_date', `${dateFrom}T00:00:00+08:00`)
-    .lte('transaction_date', `${dateTo}T23:59:59+08:00`)
+    .gte('transaction_date', startTime)
+    .lte('transaction_date', endTime)
 
   if (error) throw error
 
@@ -533,7 +546,11 @@ export async function getSalesTrendByDateRange(
 
   // Process each transaction (sales add, returns subtract)
   for (const txn of (data as any[]) || []) {
-    const dateStr: string = txn.transaction_date?.split('T')[0]
+    // Convert UTC timestamp to Philippine timezone to get the correct date
+    if (!txn.transaction_date) continue
+    const phDate = new Date(txn.transaction_date)
+    const phDateStr = new Date(phDate.getTime() + (8 * 60 * 60 * 1000)).toISOString().split('T')[0]
+    const dateStr: string = phDateStr
     if (!dateStr || !dateMap.has(dateStr)) continue
 
     const point = dateMap.get(dateStr)!
@@ -615,12 +632,14 @@ export async function getSalesFeeSummary(filters: SalesReportFilters = {}): Prom
     .eq('transaction_type', 'sale')
     .eq('is_deleted', false)
 
-  // Apply date filter with PH timezone (+08:00)
+  // Apply date filter - convert PH timezone to ISO UTC timestamps
   if (filters.date_from) {
-    query = query.gte('transaction_date', `${filters.date_from}T00:00:00+08:00`)
+    const startTime = new Date(`${filters.date_from}T00:00:00+08:00`).toISOString()
+    query = query.gte('transaction_date', startTime)
   }
   if (filters.date_to) {
-    query = query.lte('transaction_date', `${filters.date_to}T23:59:59+08:00`)
+    const endTime = new Date(`${filters.date_to}T23:59:59.999+08:00`).toISOString()
+    query = query.lte('transaction_date', endTime)
   }
   if (filters.branch_id) {
     query = query.eq('branch_id', filters.branch_id)
