@@ -26,7 +26,7 @@ WHERE p.base_uom_id = p.selling_uom_id
 ORDER BY t.transaction_date DESC
 LIMIT 20;
 
--- Execute the fix
+-- Execute the fix (line_profit will auto-recalculate as it's a generated column)
 WITH product_info AS (
   SELECT 
     p.id as product_id,
@@ -39,9 +39,7 @@ WITH product_info AS (
     AND p.conversion_factor != 1
 )
 UPDATE transaction_lines tl
-SET 
-  cogs_per_unit = pi.latest_cogs,
-  line_profit = (tl.unit_price - pi.latest_cogs) * tl.quantity
+SET cogs_per_unit = pi.latest_cogs
 FROM product_info pi
 WHERE tl.product_id = pi.product_id
   AND ABS(tl.cogs_per_unit - (pi.latest_cogs * pi.conversion_factor)) < 0.01;
