@@ -15,6 +15,7 @@ export const canvasKeys = {
 const CANVAS_SELECT = `
   *,
   customer:customers(id, name, phone),
+  branch:branches(id, name, address, phone),
   lines:canvas_lines(
     *,
     product:products(id, code, name),

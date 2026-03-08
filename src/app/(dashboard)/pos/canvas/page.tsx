@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useCanvasStore } from '@/lib/stores/canvasStore'
 import { usePOSStore } from '@/lib/stores/posStore'
@@ -13,6 +13,9 @@ import { useCanvases, useCreateCanvas, useDeleteCanvas } from '@/hooks/useCanvas
 import { getProductSellingUnits } from '@/lib/supabase/queries/product-selling-units'
 import { getStandardDiscountForMarkup } from '@/lib/supabase/queries/discount-rules'
 import { getTodayPH, createTimestampPH } from '@/lib/utils/datetime'
+import { printElement } from '@/lib/utils/print'
+import { CanvasTemplate } from '@/components/print/canvas-template'
+import type { CanvasTemplateData } from '@/components/print/canvas-template'
 import { toast } from 'sonner'
 import {
   Search,
@@ -29,6 +32,8 @@ import {
   UserPlus,
   ChevronRight,
   FileText,
+  Eye,
+  Printer,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -169,10 +174,14 @@ export default function CanvasPage() {
   const [selectedProduct, setSelectedProduct] = useState<any>(null)
   const [selectedUnitId, setSelectedUnitId] = useState<string>('')
   const [listPage, setListPage] = useState(1)
+  const [viewCanvas, setViewCanvas] = useState<any>(null)
 
   // Local string state for fee inputs — allows intermediate typing like "1." or "150.5"
   const [deliveryFeeStr, setDeliveryFeeStr] = useState('')
   const [otherFeesStr, setOtherFeesStr] = useState('')
+
+  // Ref for the print template rendered inside the view dialog
+  const canvasTemplateRef = useRef<HTMLDivElement>(null)
 
   // ── Queries ───────────────────────────────────────────────────────────────
   const { data: branches } = useBranches()
@@ -531,6 +540,57 @@ export default function CanvasPage() {
       router.push('/pos')
     },
     [posStore, branchId, router]
+  )
+
+  // ── Handlers: print canvas ────────────────────────────────────────────────
+  const handlePrintCanvas = useCallback(() => {
+    if (!canvasTemplateRef.current) {
+      toast.error('Nothing to print — open the canvas detail first')
+      return
+    }
+    printElement(canvasTemplateRef.current, {
+      title: `Price Quotation ${viewCanvas?.canvas_number || ''}`,
+      paperSize: 'a4',
+    })
+  }, [viewCanvas])
+
+  // ── Build CanvasTemplateData from a canvas record ─────────────────────────
+  const buildTemplateData = useCallback(
+    (canvas: any): CanvasTemplateData => {
+      const branchInfo = (canvas.branch as any) || currentBranch as any || {}
+      return {
+        canvas_number: canvas.canvas_number,
+        date:          canvas.canvas_date,
+        prepared_by:   user?.fullName || user?.email || 'Staff',
+        branch: {
+          name:    branchInfo?.name    || 'Main Branch',
+          address: branchInfo?.address || null,
+          phone:   branchInfo?.phone   || null,
+        },
+        customer: canvas.customer
+          ? { name: canvas.customer.name, phone: canvas.customer.phone ?? null }
+          : null,
+        title:           canvas.title    || null,
+        notes:           canvas.notes    || null,
+        other_fees_notes: canvas.other_fees_notes || null,
+        items: (canvas.lines || []).map((line: any) => ({
+          line_number: line.line_number,
+          code:        line.product?.code  || '—',
+          name:        line.product?.name  || line.product_id,
+          quantity:    line.quantity,
+          uom:         line.uom?.code || line.uom?.name || 'pc',
+          unit_price:  line.unit_price,
+          discount:    line.discount_amount || 0,
+          line_total:  line.line_total ?? (line.quantity * line.unit_price - (line.discount_amount || 0)),
+        })),
+        subtotal:        canvas.subtotal        || 0,
+        discount_amount: canvas.discount_amount || 0,
+        delivery_fee:    canvas.delivery_fee    || 0,
+        other_fees:      canvas.other_fees      || 0,
+        total_amount:    canvas.total_amount    || 0,
+      }
+    },
+    [user, currentBranch]
   )
 
   // ── renderCart — a render function, NOT a component ───────────────────────
@@ -972,12 +1032,21 @@ export default function CanvasPage() {
                         <div className="flex items-center gap-1">
                           <Button
                             variant="outline"
+                            size="icon"
+                            className="h-7 w-7 text-slate-600 hover:bg-slate-50"
+                            title="View details"
+                            onClick={() => setViewCanvas(canvas)}
+                          >
+                            <Eye className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            variant="outline"
                             size="sm"
                             className="h-7 text-xs px-2 text-blue-600 border-blue-200 hover:bg-blue-50"
                             onClick={() => handleConvertToSale(canvas)}
                           >
                             <ChevronRight className="h-3 w-3 mr-1" />
-                            Convert to Sale
+                            Convert
                           </Button>
                           <Button
                             variant="ghost"
@@ -1230,6 +1299,56 @@ export default function CanvasPage() {
               {createCustomer.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Create'}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── View canvas detail dialog ────────────────────────────────────── */}
+      <Dialog open={!!viewCanvas} onOpenChange={(open) => { if (!open) setViewCanvas(null) }}>
+        <DialogContent className="max-w-5xl max-h-[92vh] flex flex-col p-0 gap-0">
+          {/* Dialog header — outside the printable area */}
+          <div className="flex items-center justify-between px-6 py-3 border-b bg-slate-50 rounded-t-lg shrink-0">
+            <div className="flex items-center gap-3">
+              <FileText className="h-5 w-5 text-amber-500" />
+              <div>
+                <p className="font-semibold text-sm">{viewCanvas?.canvas_number}</p>
+                <p className="text-xs text-muted-foreground">
+                  {viewCanvas ? formatDate(viewCanvas.canvas_date) : ''}
+                  {viewCanvas?.title ? ` · ${viewCanvas.title}` : ''}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                className="gap-2 bg-amber-500 hover:bg-amber-600 text-white"
+                onClick={handlePrintCanvas}
+              >
+                <Printer className="h-4 w-4" />
+                Print A4
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-2 text-blue-600 border-blue-200 hover:bg-blue-50"
+                onClick={() => { if (viewCanvas) { handleConvertToSale(viewCanvas); setViewCanvas(null) } }}
+              >
+                <ChevronRight className="h-4 w-4" />
+                Convert to Sale
+              </Button>
+            </div>
+          </div>
+
+          {/* Scrollable preview area */}
+          <div className="flex-1 overflow-y-auto bg-slate-200 p-6">
+            {viewCanvas && (
+              <div className="mx-auto shadow-xl">
+                <CanvasTemplate
+                  ref={canvasTemplateRef}
+                  data={buildTemplateData(viewCanvas)}
+                />
+              </div>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
     </div>
