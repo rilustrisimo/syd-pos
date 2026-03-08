@@ -12,10 +12,13 @@ export function getNowInPH(): Date {
 
 /**
  * Get today's date in YYYY-MM-DD format (Philippine timezone)
- * @returns Date string in ISO format (date only)
+ * Uses Intl.DateTimeFormat for robust timezone handling regardless of machine timezone.
+ * @returns Date string in YYYY-MM-DD format
  */
 export function getTodayPH(): string {
-  return getNowInPH().toISOString().split('T')[0]
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Manila',
+  }).format(new Date())
 }
 
 /**

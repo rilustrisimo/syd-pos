@@ -1,4 +1,5 @@
 import { createClient } from '../client'
+import { getTodayPH } from '@/lib/utils/datetime'
 
 // ============================================
 // DASHBOARD QUERIES
@@ -57,17 +58,20 @@ export interface RecentTransaction {
 // Get dashboard statistics
 export async function getDashboardStats(): Promise<DashboardStats> {
   const supabase = createClient()
-  const today = new Date().toISOString().split('T')[0]
-  const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]
+  const today = getTodayPH()
+  // Month start: first day of current PH month
+  const [y, m] = today.split('-').map(Number)
+  const monthStart = `${y}-${String(m).padStart(2, '0')}-01`
 
   // Get today's transactions (sales + returns for net revenue)
+  // Use +08:00 suffix so PH midnight is the boundary, not UTC midnight
   const { data: todayTxns, error: todayError } = await supabase
     .from('transactions')
     .select('total_amount, payment_status, transaction_type')
     .in('transaction_type', ['sale', 'return'])
     .eq('is_deleted', false)
-    .gte('transaction_date', `${today}T00:00:00`)
-    .lte('transaction_date', `${today}T23:59:59`)
+    .gte('transaction_date', `${today}T00:00:00+08:00`)
+    .lte('transaction_date', `${today}T23:59:59+08:00`)
 
   if (todayError) throw todayError
 
@@ -77,7 +81,7 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     .select('total_amount, transaction_type')
     .in('transaction_type', ['sale', 'return'])
     .eq('is_deleted', false)
-    .gte('transaction_date', `${monthStart}T00:00:00`)
+    .gte('transaction_date', `${monthStart}T00:00:00+08:00`)
 
   if (monthError) throw monthError
 
@@ -233,15 +237,15 @@ export async function getTopProducts(days: number = 7, limit: number = 10): Prom
 // Get hourly sales breakdown for today
 export async function getHourlySales(): Promise<HourlySales[]> {
   const supabase = createClient()
-  const today = new Date().toISOString().split('T')[0]
+  const today = getTodayPH()
 
   const { data, error } = await supabase
     .from('transactions')
     .select('created_at, total_amount')
     .eq('transaction_type', 'sale')
     .eq('is_deleted', false)
-    .gte('transaction_date', `${today}T00:00:00`)
-    .lte('transaction_date', `${today}T23:59:59`)
+    .gte('transaction_date', `${today}T00:00:00+08:00`)
+    .lte('transaction_date', `${today}T23:59:59+08:00`)
 
   if (error) throw error
 
@@ -331,94 +335,98 @@ export interface SalesReportFilters {
 export async function getSalesByProduct(filters: SalesReportFilters = {}): Promise<SalesByProduct[]> {
   const supabase = createClient()
 
+  // Query from transactions (not transaction_lines) so we can apply DB-level date filtering.
+  // This avoids hitting Supabase's row limit when fetching unbounded transaction_lines.
   let query = supabase
-    .from('transaction_lines')
+    .from('transactions')
     .select(`
-      quantity,
-      unit_price,
-      cogs_per_unit,
-      line_total,
-      line_profit,
+      id,
+      transaction_type,
+      transaction_date,
+      branch_id,
+      is_deleted,
+      delivery_fee,
+      other_fees,
       discount_amount,
-      product:products!product_id(
-        id,
-        code,
-        name,
-        category:product_categories!category_id(id, name)
-      ),
-      transaction:transactions!transaction_id(
-        transaction_type,
-        transaction_date,
-        branch_id,
-        is_deleted,
-        delivery_fee,
-        other_fees,
+      subtotal,
+      lines:transaction_lines(
+        quantity,
+        unit_price,
+        cogs_per_unit,
+        line_total,
+        line_profit,
         discount_amount,
-        subtotal
+        product:products!product_id(
+          id,
+          code,
+          name,
+          category:product_categories!category_id(id, name)
+        )
       )
     `)
+    .in('transaction_type', ['sale', 'return'])
+    .eq('is_deleted', false)
+
+  // Apply date filter at DB level using PH timezone (+08:00) so Manila-midnight
+  // transactions are never excluded by UTC day boundaries.
+  if (filters.date_from) {
+    query = query.gte('transaction_date', `${filters.date_from}T00:00:00+08:00`)
+  }
+  if (filters.date_to) {
+    query = query.lte('transaction_date', `${filters.date_to}T23:59:59+08:00`)
+  }
+  if (filters.branch_id) {
+    query = query.eq('branch_id', filters.branch_id)
+  }
 
   const { data, error } = await query
 
   if (error) throw error
 
-  // Filter and aggregate
+  // Aggregate by product
   const productMap = new Map<string, SalesByProduct>()
 
-  for (const line of (data as any[]) || []) {
-    // Include both sales and returns; returns are deducted (sign = -1)
-    const txnType = line.transaction?.transaction_type
-    if (txnType !== 'sale' && txnType !== 'return') continue
-    if (line.transaction?.is_deleted) continue
+  for (const txn of (data as any[]) || []) {
+    const sign = txn.transaction_type === 'return' ? -1 : 1
+    const subtotal = txn.subtotal || 0
+    const deliveryFee = txn.delivery_fee || 0
+    const otherFees = txn.other_fees || 0
+    const transactionDiscount = txn.discount_amount || 0
 
-    // Filter by date range - proper date comparison
-    const txnDate = line.transaction.transaction_date
-    if (filters.date_from && txnDate < `${filters.date_from}T00:00:00`) continue
-    if (filters.date_to && txnDate > `${filters.date_to}T23:59:59`) continue
+    for (const line of txn.lines || []) {
+      // Filter by category
+      if (filters.category_id && line.product?.category?.id !== filters.category_id) continue
 
-    // Filter by branch
-    if (filters.branch_id && line.transaction.branch_id !== filters.branch_id) continue
+      const productId = line.product?.id
+      if (!productId) continue
 
-    // Filter by category
-    if (filters.category_id && line.product?.category?.id !== filters.category_id) continue
+      const lineRatio = subtotal > 0 ? (line.line_total || 0) / subtotal : 0
+      const proportionalDeliveryFee = deliveryFee * lineRatio
+      const proportionalOtherFees = otherFees * lineRatio
+      const proportionalTransactionDiscount = transactionDiscount * lineRatio
 
-    const productId = line.product?.id
-    if (!productId) continue
+      const revenue = sign * ((line.line_total || 0) + proportionalDeliveryFee + proportionalOtherFees - proportionalTransactionDiscount)
+      const cost = sign * ((line.quantity || 0) * (line.cogs_per_unit || 0))
 
-    // Returns are subtracted: sign = -1 for returns, +1 for sales
-    const sign = txnType === 'return' ? -1 : 1
-
-    const subtotal = line.transaction?.subtotal || 0
-    const deliveryFee = line.transaction?.delivery_fee || 0
-    const otherFees = line.transaction?.other_fees || 0
-    const transactionDiscount = line.transaction?.discount_amount || 0
-
-    const lineRatio = subtotal > 0 ? (line.line_total || 0) / subtotal : 0
-    const proportionalDeliveryFee = deliveryFee * lineRatio
-    const proportionalOtherFees = otherFees * lineRatio
-    const proportionalTransactionDiscount = transactionDiscount * lineRatio
-
-    const revenue = sign * ((line.line_total || 0) + proportionalDeliveryFee + proportionalOtherFees - proportionalTransactionDiscount)
-    const cost = sign * (line.quantity * line.cogs_per_unit)
-
-    const existing = productMap.get(productId)
-    if (existing) {
-      existing.quantity_sold += sign * line.quantity
-      existing.total_revenue += revenue
-      existing.total_cost += cost
-      existing.gross_profit += revenue - cost
-    } else {
-      productMap.set(productId, {
-        product_id: productId,
-        product_code: line.product.code,
-        product_name: line.product.name,
-        category_name: line.product.category?.name || 'Uncategorized',
-        quantity_sold: sign * line.quantity,
-        total_revenue: revenue,
-        total_cost: cost,
-        gross_profit: revenue - cost,
-        profit_margin: 0
-      })
+      const existing = productMap.get(productId)
+      if (existing) {
+        existing.quantity_sold += sign * (line.quantity || 0)
+        existing.total_revenue += revenue
+        existing.total_cost += cost
+        existing.gross_profit += revenue - cost
+      } else {
+        productMap.set(productId, {
+          product_id: productId,
+          product_code: line.product.code,
+          product_name: line.product.name,
+          category_name: line.product.category?.name || 'Uncategorized',
+          quantity_sold: sign * (line.quantity || 0),
+          total_revenue: revenue,
+          total_cost: cost,
+          gross_profit: revenue - cost,
+          profit_margin: 0
+        })
+      }
     }
   }
 
@@ -509,8 +517,8 @@ export async function getSalesTrendByDateRange(
     `)
     .in('transaction_type', ['sale', 'return'])
     .eq('is_deleted', false)
-    .gte('transaction_date', `${dateFrom}T00:00:00`)
-    .lte('transaction_date', `${dateTo}T23:59:59`)
+    .gte('transaction_date', `${dateFrom}T00:00:00+08:00`)
+    .lte('transaction_date', `${dateTo}T23:59:59+08:00`)
 
   if (error) throw error
 
@@ -586,59 +594,40 @@ export interface SalesFeeSummary {
 export async function getSalesFeeSummary(filters: SalesReportFilters = {}): Promise<SalesFeeSummary> {
   const supabase = createClient()
 
-  // If category filter is present, we need to filter transactions that have items from that category
-  let validTransactionIdsForCategory: Set<string> | null = null
-  if (filters.category_id) {
-    const { data: categoryLines } = await supabase
-      .from('transaction_lines')
-      .select('transaction_id, product:products!product_id(category_id)')
-    
-    validTransactionIdsForCategory = new Set(
-      (categoryLines || [])
-        .filter((line: any) => line.product?.category_id === filters.category_id)
-        .map((line: any) => line.transaction_id)
-    )
-  }
-
-  // Get transaction fees AND transaction-level discounts
-  let txnQuery = supabase
+  // Query from transactions with joined lines — apply DB-level date filter with PH timezone.
+  let query = supabase
     .from('transactions')
-    .select('id, delivery_fee, other_fees, discount_amount, transaction_date, branch_id')
+    .select(`
+      id,
+      delivery_fee,
+      other_fees,
+      discount_amount,
+      transaction_date,
+      branch_id,
+      lines:transaction_lines(
+        discount_amount,
+        product:products!product_id(
+          id,
+          category_id
+        )
+      )
+    `)
     .eq('transaction_type', 'sale')
     .eq('is_deleted', false)
 
-  // Apply filters
+  // Apply date filter with PH timezone (+08:00)
   if (filters.date_from) {
-    txnQuery = txnQuery.gte('transaction_date', `${filters.date_from}T00:00:00`)
+    query = query.gte('transaction_date', `${filters.date_from}T00:00:00+08:00`)
   }
   if (filters.date_to) {
-    txnQuery = txnQuery.lte('transaction_date', `${filters.date_to}T23:59:59`)
+    query = query.lte('transaction_date', `${filters.date_to}T23:59:59+08:00`)
   }
   if (filters.branch_id) {
-    txnQuery = txnQuery.eq('branch_id', filters.branch_id)
+    query = query.eq('branch_id', filters.branch_id)
   }
 
-  const { data: txnData, error: txnError } = await txnQuery
+  const { data: txnData, error: txnError } = await query
   if (txnError) throw txnError
-
-  // Get discount amounts from transaction_lines with proper SQL filtering
-  let lineQuery = supabase
-    .from('transaction_lines')
-    .select(`
-      discount_amount,
-      product:products!product_id(
-        category_id
-      ),
-      transaction:transactions!transaction_id(
-        transaction_type,
-        transaction_date,
-        branch_id,
-        is_deleted
-      )
-    `)
-
-  const { data: lineData, error: lineError } = await lineQuery
-  if (lineError) throw lineError
 
   const summary: SalesFeeSummary = {
     total_delivery_fees: 0,
@@ -650,16 +639,16 @@ export async function getSalesFeeSummary(filters: SalesReportFilters = {}): Prom
     items_with_discount: 0,
   }
 
-  // Sum transaction fees and transaction-level discounts
   for (const txn of (txnData as any[]) || []) {
-    // Skip transaction if category filter is active and this transaction has no items from that category
-    if (validTransactionIdsForCategory && !validTransactionIdsForCategory.has(txn.id)) {
-      continue
-    }
-
     const deliveryFee = txn.delivery_fee || 0
     const otherFees = txn.other_fees || 0
     const transactionDiscount = txn.discount_amount || 0
+
+    // Check category filter: skip if transaction has no lines in that category
+    if (filters.category_id) {
+      const hasCategory = (txn.lines || []).some((l: any) => l.product?.category_id === filters.category_id)
+      if (!hasCategory) continue
+    }
 
     summary.total_delivery_fees += deliveryFee
     summary.total_other_fees += otherFees
@@ -669,28 +658,14 @@ export async function getSalesFeeSummary(filters: SalesReportFilters = {}): Prom
     if (deliveryFee > 0) summary.transactions_with_delivery_fee++
     if (otherFees > 0) summary.transactions_with_other_fees++
     if (transactionDiscount > 0) summary.items_with_discount++
-  }
 
-  // Sum discounts from lines
-  for (const line of (lineData as any[]) || []) {
-    // Filter by transaction type and deleted status
-    if (line.transaction?.transaction_type !== 'sale') continue
-    if (line.transaction?.is_deleted) continue
-
-    // Filter by date range - proper date comparison
-    const txnDate = line.transaction.transaction_date
-    if (filters.date_from && txnDate < `${filters.date_from}T00:00:00`) continue
-    if (filters.date_to && txnDate > `${filters.date_to}T23:59:59`) continue
-
-    // Filter by branch
-    if (filters.branch_id && line.transaction.branch_id !== filters.branch_id) continue
-
-    // Filter by category
-    if (filters.category_id && line.product?.category_id !== filters.category_id) continue
-
-    const discount = line.discount_amount || 0
-    summary.total_discounts += discount
-    if (discount > 0) summary.items_with_discount++
+    // Sum line-level discounts
+    for (const line of txn.lines || []) {
+      if (filters.category_id && line.product?.category_id !== filters.category_id) continue
+      const discount = line.discount_amount || 0
+      summary.total_discounts += discount
+      if (discount > 0) summary.items_with_discount++
+    }
   }
 
   return summary

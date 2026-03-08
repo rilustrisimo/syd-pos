@@ -37,6 +37,7 @@ import {
   Percent,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils/formatting'
+import { getTodayPH } from '@/lib/utils/datetime'
 import {
   ResponsiveContainer,
   AreaChart,
@@ -61,10 +62,6 @@ function formatPercent(value: number): string {
 
 // ─── Date preset helpers ──────────────────────────────────────────────────────
 
-function todayStr(): string {
-  return new Date().toISOString().split('T')[0]
-}
-
 function formatLocalDate(year: number, month: number, day: number): string {
   const yyyy = year.toString()
   const mm = (month + 1).toString().padStart(2, '0')
@@ -80,7 +77,7 @@ function getPresetRange(preset: string): { from: string; to: string } {
 
   switch (preset) {
     case 'today':
-      return { from: todayStr(), to: todayStr() }
+      return { from: getTodayPH(), to: getTodayPH() }
     case 'yesterday': {
       const yest = new Date(y, m, d - 1)
       return { 
@@ -93,7 +90,7 @@ function getPresetRange(preset: string): { from: string; to: string } {
       const weekStart = new Date(y, m, d - dow)
       return { 
         from: formatLocalDate(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate()), 
-        to: todayStr() 
+        to: getTodayPH() 
       }
     }
     case 'last_week': {
@@ -108,7 +105,7 @@ function getPresetRange(preset: string): { from: string; to: string } {
     case 'this_month':
       return {
         from: formatLocalDate(y, m, 1),
-        to: todayStr(),
+        to: getTodayPH(),
       }
     case 'last_month': {
       const firstOfLast = new Date(y, m - 1, 1)
@@ -122,7 +119,7 @@ function getPresetRange(preset: string): { from: string; to: string } {
       const qStart = new Date(y, Math.floor(m / 3) * 3, 1)
       return { 
         from: formatLocalDate(qStart.getFullYear(), qStart.getMonth(), qStart.getDate()), 
-        to: todayStr() 
+        to: getTodayPH() 
       }
     }
     case 'last_quarter': {
@@ -137,7 +134,7 @@ function getPresetRange(preset: string): { from: string; to: string } {
     case 'this_year':
       return {
         from: formatLocalDate(y, 0, 1),
-        to: todayStr(),
+        to: getTodayPH(),
       }
     case 'last_year':
       return {
@@ -146,8 +143,8 @@ function getPresetRange(preset: string): { from: string; to: string } {
       }
     default:
       return {
-        from: new Date(y, m, 1).toISOString().split('T')[0],
-        to: todayStr(),
+        from: formatLocalDate(y, 0, 1),
+        to: getTodayPH(),
       }
   }
 }
