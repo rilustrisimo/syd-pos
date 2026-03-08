@@ -183,6 +183,9 @@ export default function CanvasPage() {
   // Ref for the print template rendered inside the view dialog
   const canvasTemplateRef = useRef<HTMLDivElement>(null)
 
+  // Absolute logo URL — needed so the blank print window can resolve the image
+  const logoUrl = typeof window !== 'undefined' ? `${window.location.origin}/syd-logo.svg` : undefined
+
   // ── Queries ───────────────────────────────────────────────────────────────
   const { data: branches } = useBranches()
   const { data: discountRules = [] } = useDiscountRules()
@@ -1345,6 +1348,7 @@ export default function CanvasPage() {
                 <CanvasTemplate
                   ref={canvasTemplateRef}
                   data={buildTemplateData(viewCanvas)}
+                  logoUrl={logoUrl}
                 />
               </div>
             )}

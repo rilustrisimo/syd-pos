@@ -66,19 +66,21 @@ function fmtQty(n: number): string {
 const GOLD   = '#ffc107'
 const DARK   = '#111827'
 const GRAY50 = '#f9fafb'
-const GRAY100= '#f3f4f6'
-const GRAY400= '#9ca3af'
-const GRAY600= '#4b5563'
-const GRAY700= '#374151'
+const GRAY400 = '#9ca3af'
+const GRAY600 = '#4b5563'
+const GRAY700 = '#374151'
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
 interface CanvasTemplateProps {
   data: CanvasTemplateData
+  /** Absolute URL to the logo SVG — needed so the print window can load it.
+   *  Pass `window.location.origin + '/syd-logo.svg'` from the client. */
+  logoUrl?: string
 }
 
 export const CanvasTemplate = forwardRef<HTMLDivElement, CanvasTemplateProps>(
-  ({ data }, ref) => {
+  ({ data, logoUrl }, ref) => {
     const hasDiscount   = data.discount_amount > 0
     const hasDelivery   = data.delivery_fee > 0
     const hasOtherFees  = data.other_fees > 0
@@ -103,31 +105,40 @@ export const CanvasTemplate = forwardRef<HTMLDivElement, CanvasTemplateProps>(
         {/* ── Header ──────────────────────────────────────────────────────── */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '5mm' }}>
           {/* Company block */}
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
-              {/* Logo mark — coloured square with S */}
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+            {/* Logo image — uses absolute URL so print window can resolve it */}
+            {logoUrl ? (
+              <img
+                src={logoUrl}
+                alt="SYD Logo"
+                style={{ width: '96px', height: 'auto', objectFit: 'contain', flexShrink: 0, marginTop: '2px' }}
+              />
+            ) : (
+              /* Fallback letter mark when no URL is provided */
               <div style={{
-                width: '38px', height: '38px',
+                width: '44px', height: '44px',
                 backgroundColor: GOLD,
                 borderRadius: '6px',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 flexShrink: 0,
               }}>
-                <span style={{ fontSize: '22px', fontWeight: '900', color: DARK, lineHeight: 1 }}>S</span>
+                <span style={{ fontSize: '26px', fontWeight: '900', color: DARK, lineHeight: 1 }}>S</span>
               </div>
-              <div>
-                <div style={{ fontSize: '18px', fontWeight: '800', color: DARK, letterSpacing: '-0.4px', lineHeight: 1.1 }}>
-                  SYD CONSTRUCTION
-                </div>
-                <div style={{ fontSize: '12px', fontWeight: '700', color: GRAY700, letterSpacing: '0.5px' }}>
-                  SUPPLIES TRADING
-                </div>
+            )}
+
+            {/* Company name + branch info */}
+            <div>
+              <div style={{ fontSize: '17px', fontWeight: '800', color: DARK, letterSpacing: '-0.3px', lineHeight: 1.15 }}>
+                SYD CONSTRUCTION
               </div>
-            </div>
-            <div style={{ fontSize: '10px', color: GRAY600, lineHeight: 1.6, marginTop: '4px' }}>
-              {data.branch.name && <div>{data.branch.name}</div>}
-              {data.branch.address && <div>{data.branch.address}</div>}
-              {data.branch.phone && <div>Tel: {data.branch.phone}</div>}
+              <div style={{ fontSize: '13px', fontWeight: '700', color: GRAY700, letterSpacing: '0.8px', marginTop: '1px' }}>
+                SUPPLIES TRADING
+              </div>
+              <div style={{ fontSize: '10px', color: GRAY600, lineHeight: 1.7, marginTop: '5px' }}>
+                {data.branch.name && <div>{data.branch.name}</div>}
+                {data.branch.address && <div>{data.branch.address}</div>}
+                {data.branch.phone && <div>Tel: {data.branch.phone}</div>}
+              </div>
             </div>
           </div>
 
