@@ -292,6 +292,13 @@ export default function POSPage() {
             product.selling_uom_id &&
             product.selling_uom_id !== product.uom_id
 
+          // Calculate COGS: only apply conversion if units differ
+          const cogsCost = unitIsStaleBaseEntry 
+            ? product.cogs 
+            : (unit.conversion_factor && unit.conversion_factor !== 1)
+              ? product.cogs / unit.conversion_factor
+              : product.cogs
+
           addItem({
             product_id: product.id,
             product_code: product.code,
@@ -304,7 +311,7 @@ export default function POSPage() {
               ? (product.selling_uom_abbreviation || product.selling_uom_name || product.uom_abbreviation || '')
               : (unit.uom?.code || unit.uom?.name || product.selling_uom_abbreviation || product.uom_abbreviation || ''),
             unit_price: unitIsStaleBaseEntry ? product.unit_price : unit.selling_price,
-            cogs_per_unit: unitIsStaleBaseEntry ? product.cogs : product.cogs / unit.conversion_factor,
+            cogs_per_unit: cogsCost,
             markup_percentage: unitIsStaleBaseEntry ? (product.markup_percentage ?? 0) : unit.markup_percentage,
             discount_amount: 0,
             available_stock: product.available_stock,
@@ -353,6 +360,11 @@ export default function POSPage() {
       return
     }
     
+    // Calculate COGS: only apply conversion if factor is valid and not 1
+    const cogsCost = (sellingUnit.conversion_factor && sellingUnit.conversion_factor !== 1)
+      ? selectedProduct.cogs / sellingUnit.conversion_factor
+      : selectedProduct.cogs
+    
     addItem({
       product_id: selectedProduct.id,
       product_code: selectedProduct.code,
@@ -363,7 +375,7 @@ export default function POSPage() {
       uom_id: sellingUnit.uom_id,
       uom_name: sellingUnit.uom?.code || sellingUnit.uom?.name || '',
       unit_price: sellingUnit.selling_price,
-      cogs_per_unit: selectedProduct.cogs / sellingUnit.conversion_factor,
+      cogs_per_unit: cogsCost,
       markup_percentage: sellingUnit.markup_percentage,
       discount_amount: 0,
       available_stock: selectedProduct.available_stock,
