@@ -25,6 +25,7 @@ import {
   BarChart,
   Receipt,
   Tag,
+  Percent,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
@@ -69,7 +70,7 @@ const navigation = [
       { name: 'P&L Report', href: '/reports/pl', icon: TrendingDown },
       { name: 'AR Aging', href: '/reports/ar-aging', icon: Clock },
       { name: 'Inventory Turnover', href: '/reports/inventory-turnover', icon: RefreshCw },
-      { name: 'Profit Margin', href: '/reports/profit-margin', icon: TrendingUp },
+      { name: 'Profit Margin', href: '/reports/profit-margin', icon: Percent },
       { name: 'Supplier History', href: '/reports/supplier-history', icon: Truck },
       { name: 'Demand Forecast', href: '/reports/demand-forecast', icon: BarChart },
     ],
