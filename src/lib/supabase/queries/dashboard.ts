@@ -1058,3 +1058,203 @@ export async function getRecentTransactions(limit: number = 5): Promise<RecentTr
     created_at: txn.created_at
   }))
 }
+
+// ============================================
+// PROFIT & LOSS REPORT
+// ============================================
+
+export interface ExpenseByCategory {
+  category_id: string | null
+  category_name: string
+  category_color: string
+  total_amount: number
+  count: number
+}
+
+export interface DailyPLPoint {
+  date: string           // YYYY-MM-DD (PH date)
+  revenue: number
+  gross_profit: number
+  expenses: number
+  net_profit: number
+}
+
+export interface PLReport {
+  // Revenue / COGS from transactions
+  revenue: number
+  cogs: number
+  gross_profit: number
+  gross_margin: number   // %
+
+  // Operating expenses
+  total_expenses: number
+  expenses_by_category: ExpenseByCategory[]
+
+  // Net
+  net_profit: number
+  net_margin: number     // %
+
+  // Daily trend (for chart)
+  daily_trend: DailyPLPoint[]
+}
+
+export async function getPLReport(dateFrom: string, dateTo: string): Promise<PLReport> {
+  const supabase = createClient()
+  const startTime = new Date(`${dateFrom}T00:00:00+08:00`).toISOString()
+  const endTime = new Date(`${dateTo}T23:59:59.999+08:00`).toISOString()
+
+  // ── 1. Revenue & COGS from transactions ────────────────────────────────────
+
+  const { data: txnData, error: txnError } = await supabase
+    .from('transactions')
+    .select(`
+      id,
+      transaction_type,
+      transaction_date,
+      delivery_fee,
+      other_fees,
+      discount_amount,
+      subtotal,
+      lines:transaction_lines(
+        quantity,
+        unit_price,
+        cogs_per_unit,
+        line_total,
+        discount_amount
+      )
+    `)
+    .in('transaction_type', ['sale', 'return'])
+    .eq('is_deleted', false)
+    .gte('transaction_date', startTime)
+    .lte('transaction_date', endTime)
+
+  if (txnError) throw txnError
+
+  let totalRevenue = 0
+  let totalCogs = 0
+
+  // Daily revenue/profit map (keyed by PH date)
+  const dailyRevenueMap = new Map<string, { revenue: number; gross_profit: number }>()
+
+  for (const txn of (txnData as any[]) || []) {
+    const sign = txn.transaction_type === 'return' ? -1 : 1
+    const subtotal = txn.subtotal || 0
+    const deliveryFee = txn.delivery_fee || 0
+    const otherFees = txn.other_fees || 0
+    const transactionDiscount = txn.discount_amount || 0
+
+    // PH date for this transaction
+    const phDateStr = new Date(new Date(txn.transaction_date).getTime() + 8 * 3600 * 1000)
+      .toISOString().split('T')[0]
+
+    let txnRevenue = 0
+    let txnCogs = 0
+
+    for (const line of txn.lines || []) {
+      const lineTotal = line.line_total || 0
+      const cost = (line.quantity || 0) * (line.cogs_per_unit || 0)
+      const lineRatio = subtotal > 0 ? lineTotal / subtotal : 0
+      const proportionalDeliveryFee = deliveryFee * lineRatio
+      const proportionalOtherFees = otherFees * lineRatio
+      const proportionalTransactionDiscount = transactionDiscount * lineRatio
+
+      txnRevenue += lineTotal + proportionalDeliveryFee + proportionalOtherFees - proportionalTransactionDiscount
+      txnCogs += cost
+    }
+
+    totalRevenue += sign * txnRevenue
+    totalCogs += sign * txnCogs
+
+    const existing = dailyRevenueMap.get(phDateStr) || { revenue: 0, gross_profit: 0 }
+    dailyRevenueMap.set(phDateStr, {
+      revenue: existing.revenue + sign * txnRevenue,
+      gross_profit: existing.gross_profit + sign * (txnRevenue - txnCogs),
+    })
+  }
+
+  // ── 2. Expenses ────────────────────────────────────────────────────────────
+
+  const { data: expData, error: expError } = await supabase
+    .from('expenses')
+    .select(`
+      id,
+      amount,
+      expense_date,
+      category_id,
+      category:expense_categories(id, name, color)
+    `)
+    .eq('is_deleted', false)
+    .gte('expense_date', startTime)
+    .lte('expense_date', endTime)
+
+  if (expError) throw expError
+
+  const categoryMap = new Map<string, ExpenseByCategory>()
+  let totalExpenses = 0
+  const dailyExpenseMap = new Map<string, number>()
+
+  for (const exp of (expData as any[]) || []) {
+    const amount = exp.amount || 0
+    totalExpenses += amount
+
+    // PH date for this expense
+    const phDateStr = new Date(new Date(exp.expense_date).getTime() + 8 * 3600 * 1000)
+      .toISOString().split('T')[0]
+    dailyExpenseMap.set(phDateStr, (dailyExpenseMap.get(phDateStr) || 0) + amount)
+
+    const catKey = exp.category_id || '__none__'
+    const catName = exp.category?.name || 'Uncategorized'
+    const catColor = exp.category?.color || '#6b7280'
+    const existing = categoryMap.get(catKey)
+    if (existing) {
+      existing.total_amount += amount
+      existing.count++
+    } else {
+      categoryMap.set(catKey, {
+        category_id: exp.category_id,
+        category_name: catName,
+        category_color: catColor,
+        total_amount: amount,
+        count: 1,
+      })
+    }
+  }
+
+  const expensesByCategory = Array.from(categoryMap.values())
+    .sort((a, b) => b.total_amount - a.total_amount)
+
+  // ── 3. Daily trend ─────────────────────────────────────────────────────────
+
+  const dailyTrend: DailyPLPoint[] = []
+  const start = new Date(dateFrom + 'T00:00:00')
+  const end = new Date(dateTo + 'T00:00:00')
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    const key = d.toISOString().split('T')[0]
+    const rev = dailyRevenueMap.get(key) || { revenue: 0, gross_profit: 0 }
+    const exp = dailyExpenseMap.get(key) || 0
+    dailyTrend.push({
+      date: key,
+      revenue: rev.revenue,
+      gross_profit: rev.gross_profit,
+      expenses: exp,
+      net_profit: rev.gross_profit - exp,
+    })
+  }
+
+  // ── 4. Summary ─────────────────────────────────────────────────────────────
+
+  const grossProfit = totalRevenue - totalCogs
+  const netProfit = grossProfit - totalExpenses
+
+  return {
+    revenue: totalRevenue,
+    cogs: totalCogs,
+    gross_profit: grossProfit,
+    gross_margin: totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0,
+    total_expenses: totalExpenses,
+    expenses_by_category: expensesByCategory,
+    net_profit: netProfit,
+    net_margin: totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0,
+    daily_trend: dailyTrend,
+  }
+}

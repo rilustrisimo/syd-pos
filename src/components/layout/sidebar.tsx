@@ -20,8 +20,11 @@ import {
   RotateCcw,
   Clock,
   TrendingUp,
+  TrendingDown,
   RefreshCw,
   BarChart,
+  Receipt,
+  Tag,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
@@ -49,11 +52,21 @@ const navigation = [
   { name: 'Customers', href: '/customers', icon: Users },
   { name: 'Suppliers', href: '/suppliers', icon: Truck },
   {
+    name: 'Expenses',
+    href: '/expenses',
+    icon: Receipt,
+    children: [
+      { name: 'Manage Expenses', href: '/expenses', icon: Receipt },
+      { name: 'Categories', href: '/expenses/categories', icon: Tag },
+    ],
+  },
+  {
     name: 'Reports',
     href: '/reports',
     icon: BarChart3,
     children: [
       { name: 'Sales', href: '/reports/sales', icon: TrendingUp },
+      { name: 'P&L Report', href: '/reports/pl', icon: TrendingDown },
       { name: 'AR Aging', href: '/reports/ar-aging', icon: Clock },
       { name: 'Inventory Turnover', href: '/reports/inventory-turnover', icon: RefreshCw },
       { name: 'Profit Margin', href: '/reports/profit-margin', icon: TrendingUp },

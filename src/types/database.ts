@@ -271,6 +271,35 @@ export interface InventoryMovementRow {
   created_at: string
 }
 
+export interface ExpenseCategoryRow {
+  id: string
+  name: string
+  description: string | null
+  color: string
+  is_active: boolean
+  is_system: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface ExpenseRow {
+  id: string
+  expense_number: string
+  branch_id: string
+  category_id: string | null
+  amount: number
+  expense_date: string
+  description: string | null
+  notes: string | null
+  reference_number: string | null
+  paid_to: string | null
+  is_deleted: boolean
+  deleted_at: string | null
+  created_by: string
+  created_at: string
+  updated_at: string
+}
+
 // Database interface for Supabase
 export interface Database {
   public: {
@@ -365,6 +394,16 @@ export interface Database {
         Insert: Omit<InventoryMovementRow, 'id' | 'created_at'> & { id?: string; created_at?: string }
         Update: Partial<Omit<InventoryMovementRow, 'id' | 'created_at'>>
       }
+      expense_categories: {
+        Row: ExpenseCategoryRow
+        Insert: Omit<ExpenseCategoryRow, 'id' | 'created_at' | 'updated_at'> & { id?: string; created_at?: string; updated_at?: string }
+        Update: Partial<Omit<ExpenseCategoryRow, 'id' | 'created_at' | 'updated_at'>>
+      }
+      expenses: {
+        Row: ExpenseRow
+        Insert: Omit<ExpenseRow, 'id' | 'created_at' | 'updated_at' | 'is_deleted' | 'deleted_at'> & { id?: string; created_at?: string; updated_at?: string; is_deleted?: boolean; deleted_at?: string | null }
+        Update: Partial<Omit<ExpenseRow, 'id' | 'created_at' | 'updated_at'>>
+      }
     }
     Views: {
       [_ in never]: never
@@ -375,6 +414,10 @@ export interface Database {
         Returns: string
       }
       generate_transaction_number: {
+        Args: Record<string, never>
+        Returns: string
+      }
+      generate_expense_number: {
         Args: Record<string, never>
         Returns: string
       }

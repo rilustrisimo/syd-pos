@@ -14,10 +14,14 @@ import {
   getSalesFeeSummary,
   getSupplierPurchaseHistory,
   getDemandForecast,
+  getPLReport,
   SalesReportFilters,
   SupplierHistoryFilters,
   DemandForecastFilters,
+  PLReport,
 } from '@/lib/supabase/queries/dashboard'
+
+export type { PLReport }
 
 // Query keys
 export const dashboardKeys = {
@@ -149,5 +153,18 @@ export function useDemandForecast(filters: DemandForecastFilters = {}) {
     queryKey: [...dashboardKeys.all, 'demand-forecast', filters],
     queryFn: () => getDemandForecast(filters),
     staleTime: 300000, // 5 minutes
+  })
+}
+
+// ============================================
+// P&L REPORT
+// ============================================
+
+export function usePLReport(dateFrom: string, dateTo: string) {
+  return useQuery({
+    queryKey: [...dashboardKeys.all, 'pl-report', dateFrom, dateTo],
+    queryFn: () => getPLReport(dateFrom, dateTo),
+    staleTime: 300000, // 5 minutes
+    enabled: !!dateFrom && !!dateTo,
   })
 }
