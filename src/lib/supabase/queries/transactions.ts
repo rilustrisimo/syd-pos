@@ -782,15 +782,6 @@ export async function createReturnTransaction(
 export async function getReturnsForTransaction(originalTransactionId: string) {
   const supabase = createClient()
 
-  const { data: originalTxn, error: origError } = await supabase
-    .from('transactions')
-    .select('transaction_number')
-    .eq('id', originalTransactionId)
-    .eq('is_deleted', false)
-    .single()
-
-  if (origError) throw origError
-
   const { data, error } = await supabase
     .from('transactions')
     .select(`
@@ -804,8 +795,8 @@ export async function getReturnsForTransaction(originalTransactionId: string) {
       payments:transaction_payments(*)
     `)
     .eq('transaction_type', 'return')
+    .eq('original_transaction_id', originalTransactionId)
     .eq('is_deleted', false)
-    .ilike('notes', `%${(originalTxn as any).transaction_number}%`)
     .order('created_at', { ascending: false })
 
   if (error) throw error

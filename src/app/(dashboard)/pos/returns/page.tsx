@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react'
 import { useTransactions, useTransaction, useCreateReturn, useSoftDeleteTransaction } from '@/hooks/useTransactions'
-import { getTransaction } from '@/lib/supabase/queries/transactions'
+import { getTransaction, getReturnsForTransaction } from '@/lib/supabase/queries/transactions'
 import { useBranches } from '@/hooks/useInventory'
 import { useAuthStore } from '@/lib/stores/auth'
 import { toast } from 'sonner'
@@ -100,7 +100,9 @@ interface ReturnLine {
   productName: string
   productCode: string
   variantId: string | null
-  maxQuantity: number
+  originalQuantity: number // Original quantity in transaction
+  returnedQuantity: number // Already returned quantity
+  maxQuantity: number // Available to return (originalQuantity - returnedQuantity)
   quantity: number
   uomId: string
   uomName: string
@@ -176,24 +178,49 @@ export default function ReturnsPage() {
 
   // Populate return lines when transaction data loads
   useMemo(() => {
-    if (selectedTransaction?.lines) {
-      const lines: ReturnLine[] = selectedTransaction.lines.map((line: any) => ({
-        lineId: line.id,
-        productId: line.product_id,
-        productName: line.product?.name || 'Product',
-        productCode: line.product?.code || '',
-        variantId: line.variant_id,
-        maxQuantity: line.quantity,
-        quantity: 0,
-        uomId: line.uom_id,
-        uomName: line.uom?.abbreviation || line.uom?.name || 'pc',
-        unitPrice: line.unit_price,
-        cogsPerUnit: line.cogs_per_unit,
-        selected: false,
-        should_restock: true,
-        return_reason: 'customer_request' as const,
-      }))
-      setReturnLines(lines)
+    if (selectedTransaction?.lines && selectedTransaction.lines.length > 0) {
+      // Fetch return history to calculate already returned quantities
+      getReturnsForTransaction(selectedTransaction.id).then(returnTransactions => {
+        // Calculate returned quantities per line
+        const returnedQuantities: Record<string, number> = {}
+        
+        returnTransactions.forEach(returnTxn => {
+          returnTxn.lines?.forEach((returnLine: any) => {
+            const key = `${returnLine.product_id}_${returnLine.uom_id}`
+            returnedQuantities[key] = (returnedQuantities[key] || 0) + returnLine.quantity
+          })
+        })
+
+        const lines: ReturnLine[] = selectedTransaction.lines!.map((line: any) => {
+          const key = `${line.product_id}_${line.uom_id}`
+          const returnedQty = returnedQuantities[key] || 0
+          const availableQty = Math.max(0, line.quantity - returnedQty)
+
+          return {
+            lineId: line.id,
+            productId: line.product_id,
+            productName: line.product?.name || 'Product',
+            productCode: line.product?.code || '',
+            variantId: line.variant_id,
+            originalQuantity: line.quantity,
+            returnedQuantity: returnedQty,
+            maxQuantity: availableQty,
+            quantity: 0,
+            uomId: line.uom_id,
+            uomName: line.uom?.abbreviation || line.uom?.name || 'pc',
+            unitPrice: line.unit_price,
+            cogsPerUnit: line.cogs_per_unit,
+            selected: false,
+            should_restock: true,
+            return_reason: 'customer_request' as const,
+          }
+        })
+        
+        setReturnLines(lines)
+      }).catch(err => {
+        console.error('Failed to load return history:', err)
+        toast.error('Failed to load return history')
+      })
     }
   }, [selectedTransaction])
 
@@ -564,13 +591,18 @@ export default function ReturnsPage() {
                   Select Items to Return
                 </h4>
                 <div className="space-y-2.5">
-                  {returnLines.map((line) => (
+                  {returnLines.map((line) => {
+                    const isFullyReturned = line.maxQuantity === 0
+                    
+                    return (
                     <div
                       key={line.lineId}
                       className={`border rounded-lg p-4 transition-all ${
-                        line.selected 
-                          ? 'border-primary bg-primary/5 shadow-sm' 
-                          : 'border-border hover:border-primary/50'
+                        isFullyReturned
+                          ? 'border-border bg-muted/30 opacity-60'
+                          : line.selected 
+                            ? 'border-primary bg-primary/5 shadow-sm' 
+                            : 'border-border hover:border-primary/50'
                       }`}
                     >
                       <div className="flex items-start gap-3">
@@ -579,18 +611,32 @@ export default function ReturnsPage() {
                           checked={line.selected}
                           onCheckedChange={() => toggleLineSelection(line.lineId)}
                           className="mt-0.5"
+                          disabled={isFullyReturned}
                         />
                         <div className="flex-1 min-w-0">
                           <div className="flex items-start justify-between gap-4">
-                            <Label
-                              htmlFor={`line-${line.lineId}`}
-                              className="font-medium cursor-pointer flex-1"
-                            >
-                              {line.productName}
-                              <span className="text-muted-foreground ml-2 text-sm font-normal">
-                                ({line.productCode})
-                              </span>
-                            </Label>
+                            <div className="flex items-start gap-2 flex-1">
+                              <Label
+                                htmlFor={`line-${line.lineId}`}
+                                className={`font-medium flex-1 ${isFullyReturned ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+                              >
+                                {line.productName}
+                                <span className="text-muted-foreground ml-2 text-sm font-normal">
+                                  ({line.productCode})
+                                </span>
+                              </Label>
+                              {isFullyReturned && (
+                                <Badge variant="secondary" className="shrink-0">
+                                  <Check className="h-3 w-3 mr-1" />
+                                  Returned
+                                </Badge>
+                              )}
+                              {line.returnedQuantity > 0 && !isFullyReturned && (
+                                <Badge variant="outline" className="shrink-0">
+                                  {line.returnedQuantity}/{line.originalQuantity} returned
+                                </Badge>
+                              )}
+                            </div>
                             <div className="text-right whitespace-nowrap">
                               <span className="text-sm font-medium">
                                 {formatCurrency(line.unitPrice)}
@@ -693,7 +739,7 @@ export default function ReturnsPage() {
                         </div>
                       </div>
                     </div>
-                  ))}
+                  )})}
                 </div>
               </div>
 
