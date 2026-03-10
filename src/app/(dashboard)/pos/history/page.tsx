@@ -19,6 +19,9 @@ import {
   Eye,
   Edit,
   Truck,
+  RotateCcw,
+  ShoppingCart,
+  ExternalLink,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -364,16 +367,53 @@ export default function TransactionHistoryPage() {
                       <TableHead>Date</TableHead>
                       <TableHead>Customer</TableHead>
                       <TableHead>Type</TableHead>
+                      <TableHead>Delivery</TableHead>
                       <TableHead className="text-right">Total</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead className="w-[150px]">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {transactions.map((txn: any) => (
-                      <TableRow key={txn.id}>
+                    {transactions.map((txn: any) => {
+                      const isReturn = txn.transaction_type === 'return'
+                      
+                      return (
+                      <TableRow 
+                        key={txn.id}
+                        className={isReturn ? 'bg-orange-50/50 hover:bg-orange-50' : ''}
+                      >
                         <TableCell className="font-mono text-sm">
-                          {txn.transaction_number}
+                          <div className="flex items-center gap-2">
+                            {isReturn ? (
+                              <RotateCcw className="h-4 w-4 text-orange-600" />
+                            ) : (
+                              <ShoppingCart className="h-4 w-4 text-blue-600" />
+                            )}
+                            <span className={isReturn ? 'text-orange-700 font-semibold' : ''}>
+                              {txn.transaction_number}
+                            </span>
+                          </div>
+                          {isReturn && txn.notes && (
+                            <div className="text-xs text-orange-600 mt-1 flex items-center gap-1">
+                              <ExternalLink className="h-3 w-3" />
+                              <button
+                                onClick={() => {
+                                  const match = txn.notes.match(/TXN-\d{8}-\d{4}/)
+                                  if (match) {
+                                    const originalTxn = transactions.find((t: any) => t.transaction_number === match[0])
+                                    if (originalTxn) {
+                                      handleViewDetails(originalTxn.id)
+                                    } else {
+                                      toast.info(`Original sale: ${match[0]}`)
+                                    }
+                                  }
+                                }}
+                                className="hover:underline"
+                              >
+                                Ref: {txn.notes.match(/TXN-\d{8}-\d{4}/)?.[0] || 'N/A'}
+                              </button>
+                            </div>
+                          )}
                         </TableCell>
                         <TableCell>
                           <div>{formatDate(txn.transaction_date)}</div>
@@ -385,12 +425,24 @@ export default function TransactionHistoryPage() {
                           {txn.customer?.name || 'Walk-in Customer'}
                         </TableCell>
                         <TableCell>
+                          <Badge 
+                            variant={isReturn ? 'secondary' : 'default'}
+                            className={isReturn ? 'bg-orange-100 text-orange-700 border-orange-300' : 'bg-blue-100 text-blue-700 border-blue-300'}
+                          >
+                            {isReturn ? (
+                              <><RotateCcw className="h-3 w-3 mr-1" />Return</>
+                            ) : (
+                              <><ShoppingCart className="h-3 w-3 mr-1" />Sale</>
+                            )}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
                           <Badge variant="outline" className="capitalize">
                             {txn.delivery_type}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-right font-semibold">
-                          {formatCurrency(txn.total_amount)}
+                        <TableCell className={`text-right font-semibold ${isReturn ? 'text-orange-700' : ''}`}>
+                          {isReturn && '- '}{formatCurrency(Math.abs(txn.total_amount))}
                         </TableCell>
                         <TableCell>
                           <Badge variant={paymentStatusColors[txn.payment_status]}>
@@ -431,7 +483,7 @@ export default function TransactionHistoryPage() {
                           </div>
                         </TableCell>
                       </TableRow>
-                    ))}
+                    )})}
                   </TableBody>
                 </Table>
               </div>
