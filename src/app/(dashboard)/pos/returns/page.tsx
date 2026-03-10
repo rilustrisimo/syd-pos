@@ -117,6 +117,7 @@ export default function ReturnsPage() {
   const [branchFilter, setBranchFilter] = useState<string>('all')
   const [currentPage, setCurrentPage] = useState(1)
   const [detailsTransactionId, setDetailsTransactionId] = useState<string | null>(null)
+  const [detailsTransaction, setDetailsTransaction] = useState<any>(null)
   const [loadingDetails, setLoadingDetails] = useState(false)
 
   // Return dialog state
@@ -161,10 +162,11 @@ export default function ReturnsPage() {
   // View transaction details
   const handleViewDetails = async (txnId: string) => {
     setDetailsTransactionId(txnId)
+    setDetailsTransaction(null)
     setLoadingDetails(true)
     try {
       const txn = await getTransaction(txnId)
-      // The details will be displayed, but we're just fetching to ensure we have full data
+      setDetailsTransaction(txn)
     } catch (err: any) {
       toast.error('Failed to load transaction details')
     } finally {
@@ -798,7 +800,7 @@ export default function ReturnsPage() {
           <DialogHeader>
             <DialogTitle>Transaction Details</DialogTitle>
             <DialogDescription>
-              {transactions.find(t => t.id === detailsTransactionId)?.transaction_number}
+              {detailsTransaction?.transaction_number}
             </DialogDescription>
           </DialogHeader>
 
@@ -809,7 +811,7 @@ export default function ReturnsPage() {
           ) : (
             <>
               {(() => {
-                const txn = transactions.find(t => t.id === detailsTransactionId)
+                const txn = detailsTransaction
                 if (!txn) return null
 
                 return (
