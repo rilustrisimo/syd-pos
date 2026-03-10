@@ -553,13 +553,18 @@ export default function ReturnsPage() {
 
               {/* Items to Return */}
               <div>
-                <h4 className="font-medium mb-3">Select Items to Return</h4>
-                <div className="space-y-3">
+                <h4 className="font-semibold mb-4 flex items-center gap-2">
+                  <Package className="h-4 w-4" />
+                  Select Items to Return
+                </h4>
+                <div className="space-y-2.5">
                   {returnLines.map((line) => (
                     <div
                       key={line.lineId}
-                      className={`border rounded-lg p-3 transition-colors ${
-                        line.selected ? 'border-primary bg-primary/5' : ''
+                      className={`border rounded-lg p-4 transition-all ${
+                        line.selected 
+                          ? 'border-primary bg-primary/5 shadow-sm' 
+                          : 'border-border hover:border-primary/50'
                       }`}
                     >
                       <div className="flex items-start gap-3">
@@ -567,97 +572,114 @@ export default function ReturnsPage() {
                           id={`line-${line.lineId}`}
                           checked={line.selected}
                           onCheckedChange={() => toggleLineSelection(line.lineId)}
+                          className="mt-0.5"
                         />
-                        <div className="flex-1 space-y-2">
-                          <div className="flex items-center justify-between">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between gap-4">
                             <Label
                               htmlFor={`line-${line.lineId}`}
-                              className="font-medium cursor-pointer"
+                              className="font-medium cursor-pointer flex-1"
                             >
                               {line.productName}
-                              <span className="text-muted-foreground ml-2 text-sm">
+                              <span className="text-muted-foreground ml-2 text-sm font-normal">
                                 ({line.productCode})
                               </span>
                             </Label>
-                            <span className="text-sm text-muted-foreground">
-                              {formatCurrency(line.unitPrice)} / {line.uomName}
-                            </span>
+                            <div className="text-right whitespace-nowrap">
+                              <span className="text-sm font-medium">
+                                {formatCurrency(line.unitPrice)}
+                              </span>
+                              <span className="text-muted-foreground text-sm"> / {line.uomName}</span>
+                            </div>
                           </div>
 
                           {line.selected && (
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-2">
-                              <div>
-                                <Label className="text-xs">Quantity</Label>
-                                <div className="flex items-center gap-1 mt-1">
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="icon"
-                                    className="h-7 w-7"
-                                    onClick={() => updateLineQuantity(line.lineId, line.quantity - 1)}
+                            <div className="space-y-3 mt-3 pt-3 border-t">
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {/* Quantity Control */}
+                                <div className="space-y-2">
+                                  <Label className="text-sm font-medium">Quantity</Label>
+                                  <div className="flex items-center gap-2">
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="icon"
+                                      className="h-9 w-9"
+                                      onClick={() => updateLineQuantity(line.lineId, line.quantity - 1)}
+                                      disabled={line.quantity <= 1}
+                                    >
+                                      -
+                                    </Button>
+                                    <div className="flex-1 min-w-0">
+                                      <Input
+                                        type="number"
+                                        min={1}
+                                        max={line.maxQuantity}
+                                        value={line.quantity}
+                                        onChange={(e) => updateLineQuantity(line.lineId, parseInt(e.target.value) || 0)}
+                                        className="h-9 text-center"
+                                      />
+                                      <p className="text-xs text-muted-foreground text-center mt-1">
+                                        Max: {line.maxQuantity} {line.uomName}
+                                      </p>
+                                    </div>
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="icon"
+                                      className="h-9 w-9"
+                                      onClick={() => updateLineQuantity(line.lineId, line.quantity + 1)}
+                                      disabled={line.quantity >= line.maxQuantity}
+                                    >
+                                      +
+                                    </Button>
+                                  </div>
+                                </div>
+
+                                {/* Return Reason */}
+                                <div className="space-y-2">
+                                  <Label className="text-sm font-medium">Reason</Label>
+                                  <Select
+                                    value={line.return_reason}
+                                    onValueChange={(v) => updateLineReasonCode(line.lineId, v as ReturnLine['return_reason'])}
                                   >
-                                    -
-                                  </Button>
-                                  <Input
-                                    type="number"
-                                    min={1}
-                                    max={line.maxQuantity}
-                                    value={line.quantity}
-                                    onChange={(e) => updateLineQuantity(line.lineId, parseInt(e.target.value) || 0)}
-                                    className="h-7 w-14 text-center px-1"
-                                  />
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="icon"
-                                    className="h-7 w-7"
-                                    onClick={() => updateLineQuantity(line.lineId, line.quantity + 1)}
-                                  >
-                                    +
-                                  </Button>
-                                  <span className="text-xs text-muted-foreground">
-                                    / {line.maxQuantity}
-                                  </span>
+                                    <SelectTrigger className="h-9">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {Object.entries(RETURN_REASON_CODES).map(([code, label]) => (
+                                        <SelectItem key={code} value={code}>
+                                          {label}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
                                 </div>
                               </div>
 
-                              <div>
-                                <Label className="text-xs">Reason</Label>
-                                <Select
-                                  value={line.return_reason}
-                                  onValueChange={(v) => updateLineReasonCode(line.lineId, v as ReturnLine['return_reason'])}
-                                >
-                                  <SelectTrigger className="h-7 mt-1 text-xs">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {Object.entries(RETURN_REASON_CODES).map(([code, label]) => (
-                                      <SelectItem key={code} value={code} className="text-xs">
-                                        {label}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-
-                              <div className="flex items-end">
+                              {/* Restock checkbox and Subtotal */}
+                              <div className="flex items-center justify-between pt-2">
                                 <div className="flex items-center gap-2">
                                   <Checkbox
                                     id={`restock-${line.lineId}`}
                                     checked={line.should_restock}
                                     onCheckedChange={() => toggleLineRestock(line.lineId)}
                                   />
-                                  <Label htmlFor={`restock-${line.lineId}`} className="text-xs cursor-pointer flex items-center gap-1">
-                                    <Package className="h-3 w-3" />
+                                  <Label htmlFor={`restock-${line.lineId}`} className="text-sm cursor-pointer flex items-center gap-1.5">
+                                    <Package className="h-4 w-4" />
                                     Restock
                                   </Label>
+                                  {!line.should_restock && (
+                                    <span className="text-xs text-amber-600 font-medium">
+                                      (Won't be added back to inventory)
+                                    </span>
+                                  )}
                                 </div>
-                              </div>
-
-                              <div className="text-right">
-                                <Label className="text-xs">Subtotal</Label>
-                                <div className="font-medium mt-1">
-                                  {formatCurrency(line.quantity * line.unitPrice)}
+                                <div className="text-right">
+                                  <p className="text-xs text-muted-foreground">Subtotal</p>
+                                  <p className="text-lg font-semibold">
+                                    {formatCurrency(line.quantity * line.unitPrice)}
+                                  </p>
                                 </div>
                               </div>
                             </div>
@@ -672,26 +694,26 @@ export default function ReturnsPage() {
               <Separator />
 
               {/* Return Reason */}
-              <div>
-                <Label htmlFor="returnReason">Return Reason *</Label>
+              <div className="space-y-2">
+                <Label htmlFor="returnReason" className="text-sm font-medium">
+                  Return Reason <span className="text-destructive">*</span>
+                </Label>
                 <Textarea
                   id="returnReason"
                   placeholder="Explain why this return is being processed..."
                   value={returnReason}
                   onChange={(e) => setReturnReason(e.target.value)}
-                  className="mt-1"
-                  rows={2}
+                  rows={3}
                 />
               </div>
 
-              <div>
-                <Label htmlFor="returnNotes">Additional Notes</Label>
+              <div className="space-y-2">
+                <Label htmlFor="returnNotes" className="text-sm font-medium">Additional Notes</Label>
                 <Textarea
                   id="returnNotes"
                   placeholder="Any additional notes..."
                   value={returnNotes}
                   onChange={(e) => setReturnNotes(e.target.value)}
-                  className="mt-1"
                   rows={2}
                 />
               </div>
@@ -699,45 +721,44 @@ export default function ReturnsPage() {
               <Separator />
 
               {/* Refund Details */}
-              <div>
-                <h4 className="font-medium mb-3">Refund Details</h4>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label>Refund Method</Label>
+              <div className="space-y-4">
+                <h4 className="font-semibold">Refund Details</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Refund Method</Label>
                     <Select
                       value={refundMethod}
                       onValueChange={(v) => setRefundMethod(v as typeof refundMethod)}
                     >
-                      <SelectTrigger className="mt-1">
+                      <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="cash">Cash</SelectItem>
-                        <SelectItem value="gcash">GCash</SelectItem>
-                        <SelectItem value="maya">Maya</SelectItem>
-                        <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
-                        <SelectItem value="store_credit">Store Credit</SelectItem>
+                        <SelectItem value="cash">💵 Cash</SelectItem>
+                        <SelectItem value="gcash">📱 GCash</SelectItem>
+                        <SelectItem value="maya">📱 Maya</SelectItem>
+                        <SelectItem value="bank_transfer">🏦 Bank Transfer</SelectItem>
+                        <SelectItem value="store_credit">🎫 Store Credit</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
 
                   {refundMethod !== 'cash' && (
-                    <div>
-                      <Label>Reference Number</Label>
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium">Reference Number</Label>
                       <Input
-                        placeholder="Reference #"
+                        placeholder="Enter reference number"
                         value={refundReference}
                         onChange={(e) => setRefundReference(e.target.value)}
-                        className="mt-1"
                       />
                     </div>
                   )}
                 </div>
 
-                <div className="mt-4 p-4 bg-muted rounded-lg">
-                  <div className="flex items-center justify-between text-lg font-semibold">
-                    <span>Total Refund Amount:</span>
-                    <span className="text-green-600">{formatCurrency(refundTotal)}</span>
+                <div className="p-4 bg-primary/10 border border-primary/20 rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <span className="text-base font-medium">Total Refund Amount:</span>
+                    <span className="text-2xl font-bold text-primary">{formatCurrency(refundTotal)}</span>
                   </div>
                 </div>
               </div>

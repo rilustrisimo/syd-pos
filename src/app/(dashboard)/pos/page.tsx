@@ -292,10 +292,11 @@ export default function POSPage() {
             product.selling_uom_id &&
             product.selling_uom_id !== product.uom_id
 
-          // Calculate COGS: only apply conversion if units differ
+          // Calculate COGS: only apply conversion if the unit's UOM differs from base UOM
+          // Don't divide if selling the same unit as base (even if conversion_factor exists)
           const cogsCost = unitIsStaleBaseEntry 
             ? product.cogs 
-            : (unit.conversion_factor && unit.conversion_factor !== 1)
+            : (unit.uom_id !== product.uom_id && unit.conversion_factor && unit.conversion_factor !== 1)
               ? product.cogs / unit.conversion_factor
               : product.cogs
 
@@ -360,8 +361,11 @@ export default function POSPage() {
       return
     }
     
-    // Calculate COGS: only apply conversion if factor is valid and not 1
-    const cogsCost = (sellingUnit.conversion_factor && sellingUnit.conversion_factor !== 1)
+    // Calculate COGS: only apply conversion if the unit's UOM differs from base UOM
+    // Don't divide if selling the same unit as base (even if conversion_factor exists)
+    const cogsCost = (sellingUnit.uom_id !== selectedProduct.uom_id && 
+                      sellingUnit.conversion_factor && 
+                      sellingUnit.conversion_factor !== 1)
       ? selectedProduct.cogs / sellingUnit.conversion_factor
       : selectedProduct.cogs
     
