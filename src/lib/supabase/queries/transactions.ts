@@ -167,7 +167,8 @@ export async function getTransactions(filters: TransactionFilters = {}) {
     .select(`
       *,
       customer:customers!customer_id(id, name, phone, customer_type),
-      branch:branches!branch_id(id, name)
+      branch:branches!branch_id(id, name),
+      lines:transaction_lines(id, product_id, quantity)
     `, { count: 'exact' })
     .eq('is_deleted', false)  // Explicitly filter out deleted transactions
 

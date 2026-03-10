@@ -1,12 +1,15 @@
 -- ============================================================================
--- Migration 00036: Fix return_reason type casting in create_return_transaction_atomic
+-- Migration 00036: Fix type casting in create_return_transaction_atomic
 -- ============================================================================
--- PROBLEM: When creating return transactions, the RPC extracts return_reason
+-- PROBLEM 1: When creating return transactions, the RPC extracts return_reason
 -- from JSONB as TEXT but the transaction_lines.return_reason column is an ENUM.
 -- PostgreSQL throws: "column return_reason is of type return_reason but 
 -- expression is of type text"
 --
--- FIX: Cast v_return_reason to return_reason enum type when inserting
+-- PROBLEM 2: Similarly, payment_method is extracted as TEXT but needs to be
+-- cast to payment_method ENUM type.
+--
+-- FIX: Cast both v_return_reason and p_refund_method to their respective enum types
 -- ============================================================================
 
 CREATE OR REPLACE FUNCTION create_return_transaction_atomic(
@@ -246,7 +249,7 @@ BEGIN
             transaction_id, payment_method, amount, reference_number, created_by
         ) VALUES (
             v_return_id,
-            p_refund_method,
+            p_refund_method::payment_method,  -- Cast to payment_method enum
             -p_refund_amount,  -- Negative amount for refund
             p_refund_reference,
             p_created_by

@@ -428,9 +428,13 @@ export default function ReturnsPage() {
                           {txn.customer?.name || 'Walk-in Customer'}
                         </TableCell>
                         <TableCell>
-                          <Badge variant="outline">
-                            {txn.lines?.length || '-'} items
-                          </Badge>
+                          {txn.lines && txn.lines.length > 0 ? (
+                            <Badge variant="outline">
+                              {txn.lines.length} {txn.lines.length === 1 ? 'item' : 'items'}
+                            </Badge>
+                          ) : (
+                            <span className="text-muted-foreground text-sm">No items</span>
+                          )}
                         </TableCell>
                         <TableCell className="text-right font-semibold">
                           {formatCurrency(txn.total_amount)}
