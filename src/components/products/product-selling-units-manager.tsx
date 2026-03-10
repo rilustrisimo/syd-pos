@@ -48,12 +48,14 @@ import { calculateSellingPrice } from '@/lib/supabase/queries/product-selling-un
 interface ProductSellingUnitsManagerProps {
   productId: string
   baseUomId: string
+  sellingUomId: string // primary selling unit - cannot be deleted
   productCOGS: number // latest_cogs from product
 }
 
 export function ProductSellingUnitsManager({
   productId,
   baseUomId,
+  sellingUomId,
   productCOGS,
 }: ProductSellingUnitsManagerProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
@@ -180,7 +182,13 @@ export function ProductSellingUnitsManager({
     }
   }
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (id: string, uomId: string) => {
+    // Prevent deletion of the primary selling unit
+    if (uomId === sellingUomId) {
+      alert('Cannot delete the primary selling unit. Please change the primary selling unit first in the product settings above.')
+      return
+    }
+    
     if (confirm('Are you sure you want to remove this selling unit?')) {
       await deleteUnit.mutateAsync(id)
     }
@@ -275,7 +283,9 @@ export function ProductSellingUnitsManager({
                         type="button"
                         variant="ghost"
                         size="sm"
-                        onClick={() => handleDelete(unit.id)}
+                        onClick={() => handleDelete(unit.id, unit.uom_id)}
+                        disabled={unit.uom_id === sellingUomId}
+                        title={unit.uom_id === sellingUomId ? "Cannot delete the primary selling unit" : "Delete unit"}
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>

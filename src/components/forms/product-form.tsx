@@ -644,6 +644,7 @@ export function ProductForm({ product, mode }: ProductFormProps) {
               <ProductSellingUnitsManager
                 productId={product.id}
                 baseUomId={watchBaseUom || product.base_uom_id}
+                sellingUomId={watchSellingUom || product.selling_uom_id}
                 productCOGS={Number(watchCost) || product.latest_cogs}
               />
             </CardContent>

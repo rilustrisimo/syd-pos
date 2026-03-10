@@ -232,19 +232,30 @@ export default function POSPage() {
 
   // Auto-select primary unit when selling units are loaded
   useEffect(() => {
-    if (sellingUnits.length > 0 && !selectedUnitId) {
+    if (sellingUnits.length > 0 && !selectedUnitId && selectedProduct) {
+      // First, try to find a primary unit in product_selling_units
       const primaryUnit = sellingUnits.find(su => su.is_primary && su.is_active)
       if (primaryUnit) {
         setSelectedUnitId(primaryUnit.uom_id)
       } else {
-        // Fallback to first active unit
-        const firstActive = sellingUnits.find(su => su.is_active)
-        if (firstActive) {
-          setSelectedUnitId(firstActive.uom_id)
+        // If no primary in selling units, check if product has a selling_uom_id
+        // that's different from the selling units (meaning it's an additional option)
+        const hasProductPrimaryOption = selectedProduct.selling_uom_id && 
+          !sellingUnits.some(su => su.uom_id === selectedProduct.selling_uom_id && su.is_active)
+        
+        if (hasProductPrimaryOption) {
+          // Select the product's primary selling unit
+          setSelectedUnitId(selectedProduct.selling_uom_id)
+        } else {
+          // Fallback to first active unit from selling units
+          const firstActive = sellingUnits.find(su => su.is_active)
+          if (firstActive) {
+            setSelectedUnitId(firstActive.uom_id)
+          }
         }
       }
     }
-  }, [sellingUnits, selectedUnitId])
+  }, [sellingUnits, selectedUnitId, selectedProduct])
 
   // Handle product selection
   const handleAddProduct = useCallback(async (product: any) => {
@@ -259,13 +270,19 @@ export default function POSPage() {
       const units = await getProductSellingUnits(product.id)
       const activeUnits = units.filter(u => u.is_active)
       
-      // If only 0 or 1 active unit, add directly without showing dialog
-      if (activeUnits.length <= 1) {
+      // Check if we should show unit selector:
+      // - If there are multiple active selling units in product_selling_units, OR
+      // - If there's at least 1 active selling unit AND it's different from the product's selling UOM
+      //   (meaning the product can be sold in both its primary UOM and additional units)
+      const hasMultipleOptions = activeUnits.length > 1 || 
+        (activeUnits.length === 1 && activeUnits[0].uom_id !== product.selling_uom_id)
+      
+      if (!hasMultipleOptions) {
+        // Only 0 or 1 option total - add directly without showing dialog
         const unit = activeUnits[0]
         
         if (!unit) {
-          // No selling units configured — use the product's selling UOM if it
-          // differs from the base UOM (e.g. base=ROLL, selling=M, price per M)
+          // No selling units configured — use the product's selling UOM
           addItem({
             product_id: product.id,
             product_code: product.code,
@@ -353,11 +370,37 @@ export default function POSPage() {
   const handleAddWithUnit = useCallback(() => {
     if (!selectedProduct || !selectedUnitId) return
     
-    // Find the selected selling unit
+    // Find the selected selling unit from product_selling_units
     const sellingUnit = sellingUnits.find(su => su.uom_id === selectedUnitId)
     
+    // If not found in selling units, user selected the product's primary selling unit
     if (!sellingUnit) {
-      toast.error('Please select a unit')
+      // User selected the product's primary/default selling unit
+      if (selectedUnitId === selectedProduct.selling_uom_id) {
+        addItem({
+          product_id: selectedProduct.id,
+          product_code: selectedProduct.code,
+          product_name: selectedProduct.name,
+          variant_id: null,
+          variant_name: null,
+          quantity: 1,
+          uom_id: selectedProduct.selling_uom_id || selectedProduct.uom_id,
+          uom_name: selectedProduct.selling_uom_abbreviation || selectedProduct.uom_abbreviation || selectedProduct.uom_name,
+          unit_price: selectedProduct.unit_price,
+          cogs_per_unit: selectedProduct.cogs,
+          markup_percentage: selectedProduct.markup_percentage ?? 0,
+          discount_amount: 0,
+          available_stock: selectedProduct.available_stock,
+        })
+        
+        setProductSearch('')
+        setIsUnitSelectorOpen(false)
+        setSelectedProduct(null)
+        setSelectedUnitId('')
+        toast.success(`Added ${selectedProduct.name} to cart`)
+      } else {
+        toast.error('Please select a valid unit')
+      }
       return
     }
     
@@ -1706,6 +1749,33 @@ export default function POSPage() {
               </div>
             ) : (
               <div className="grid gap-2">
+                {/* Show product's primary selling unit first (if not already in selling units) */}
+                {selectedProduct && !sellingUnits.some(su => su.uom_id === selectedProduct.selling_uom_id && su.is_active) && (
+                  <Button
+                    key="primary"
+                    type="button"
+                    variant={selectedUnitId === selectedProduct.selling_uom_id ? 'default' : 'outline'}
+                    className="w-full justify-start h-auto py-3"
+                    onClick={() => setSelectedUnitId(selectedProduct.selling_uom_id)}
+                  >
+                    <div className="flex flex-col items-start w-full">
+                      <div className="flex items-center justify-between w-full">
+                        <span className="font-medium">
+                          {selectedProduct.selling_uom_name || selectedProduct.uom_name} ({selectedProduct.selling_uom_abbreviation || selectedProduct.uom_abbreviation})
+                          <Badge variant="secondary" className="ml-2">Primary</Badge>
+                        </span>
+                        <span className="font-bold">
+                          {formatCurrency(selectedProduct.unit_price)}
+                        </span>
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-1">
+                        Product default selling unit
+                      </div>
+                    </div>
+                  </Button>
+                )}
+                
+                {/* Show additional selling units */}
                 {sellingUnits
                   .filter(su => su.is_active)
                   .map((unit) => (
