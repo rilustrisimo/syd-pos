@@ -147,9 +147,32 @@ export default function ReturnsPage() {
   const createReturn = useCreateReturn()
   const softDeleteTransaction = useSoftDeleteTransaction()
   const [deleteTransactionId, setDeleteTransactionId] = useState<string | null>(null)
+  const [transactionReturns, setTransactionReturns] = useState<Record<string, number>>({})
 
   const transactions = transactionsData?.transactions || []
   const totalPages = transactionsData?.totalPages || 1
+
+  // Load return counts for all transactions
+  useMemo(() => {
+    if (transactions.length > 0) {
+      Promise.all(
+        transactions.map(async (txn: any) => {
+          try {
+            const returns = await getReturnsForTransaction(txn.id)
+            return { id: txn.id, count: returns.length }
+          } catch {
+            return { id: txn.id, count: 0 }
+          }
+        })
+      ).then(results => {
+        const returnCounts: Record<string, number> = {}
+        results.forEach(r => {
+          returnCounts[r.id] = r.count
+        })
+        setTransactionReturns(returnCounts)
+      })
+    }
+  }, [transactions])
 
   // Initialize return lines when transaction is selected
   const handleSelectTransaction = (txnId: string) => {
@@ -486,17 +509,24 @@ export default function ReturnsPage() {
                               <RotateCcw className="h-4 w-4 mr-1" />
                               Return
                             </Button>
-                            {user?.role && ['admin', 'manager'].includes(user.role) && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setDeleteTransactionId(txn.id)}
-                                className="text-destructive hover:text-destructive"
-                                title="Delete transaction"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            )}
+                            {user?.role && ['admin', 'manager'].includes(user.role) && (() => {
+                              const hasReturns = (transactionReturns[txn.id] || 0) > 0
+                              return (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => !hasReturns && setDeleteTransactionId(txn.id)}
+                                  className="text-destructive hover:text-destructive"
+                                  disabled={hasReturns}
+                                  title={hasReturns 
+                                    ? `Cannot delete - ${transactionReturns[txn.id]} return(s) exist. Delete returns first.`
+                                    : "Delete transaction"
+                                  }
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              )
+                            })()}
                           </div>
                         </TableCell>
                       </TableRow>
@@ -980,9 +1010,34 @@ export default function ReturnsPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Transaction</AlertDialogTitle>
             <AlertDialogDescription>
-              This will remove the transaction from all views and analytics. The record is kept
-              for audit purposes but will no longer appear in reports or listings.
-              This action cannot be undone.
+              {(() => {
+                const hasReturns = deleteTransactionId && (transactionReturns[deleteTransactionId] || 0) > 0
+                if (hasReturns) {
+                  return (
+                    <div className="space-y-2">
+                      <p className="text-destructive font-semibold">
+                        ⚠️ Cannot delete this transaction
+                      </p>
+                      <p>
+                        This sale has {transactionReturns[deleteTransactionId]} associated return transaction(s). 
+                        Deleting this sale would cause inventory discrepancies.
+                      </p>
+                      <p className="text-sm">
+                        <strong>To delete this transaction:</strong>
+                        <br />1. First delete all return transactions
+                        <br />2. Then delete this sale transaction
+                      </p>
+                    </div>
+                  )
+                }
+                return (
+                  <>
+                    This will remove the transaction from all views and analytics. The record is kept
+                    for audit purposes but will no longer appear in reports or listings.
+                    This action cannot be undone.
+                  </>
+                )
+              })()}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
