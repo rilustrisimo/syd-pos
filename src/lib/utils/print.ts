@@ -1,10 +1,10 @@
 /**
- * Print utilities for thermal receipts and A4 invoices
+ * Print utilities for A4 standard printer
  */
 
 export interface PrintOptions {
   title?: string
-  paperSize?: 'thermal-58mm' | 'thermal-80mm' | 'a4'
+  paperSize?: 'a4'
   orientation?: 'portrait' | 'landscape'
 }
 
@@ -24,44 +24,17 @@ export function printElement(
     return
   }
 
-  // Determine paper size styles
-  let paperStyles = ''
-  if (paperSize === 'thermal-58mm') {
-    paperStyles = `
-      @page {
-        size: 58mm auto;
-        margin: 0;
-      }
-      body {
-        width: 58mm;
-        margin: 0;
-        padding: 0;
-      }
-    `
-  } else if (paperSize === 'thermal-80mm') {
-    paperStyles = `
-      @page {
-        size: 80mm auto;
-        margin: 0;
-      }
-      body {
-        width: 80mm;
-        margin: 0;
-        padding: 0;
-      }
-    `
-  } else {
-    paperStyles = `
-      @page {
-        size: A4 ${orientation};
-        margin: 10mm;
-      }
-      body {
-        width: 210mm;
-        margin: 0 auto;
-      }
-    `
-  }
+  // A4 paper styles
+  const paperStyles = `
+    @page {
+      size: A4 ${orientation};
+      margin: 10mm;
+    }
+    body {
+      width: 210mm;
+      margin: 0 auto;
+    }
+  `
 
   // Write print content
   printWindow.document.write(`

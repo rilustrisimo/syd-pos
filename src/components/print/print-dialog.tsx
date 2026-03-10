@@ -38,7 +38,6 @@ export function PrintDialog({
   const [activeTab, setActiveTab] = useState<'receipt' | 'invoice' | 'packing'>(
     hasReceiptTab ? 'receipt' : 'invoice'
   )
-  const [receiptWidth] = useState<'58mm' | '80mm'>('80mm')
   const receiptRef = useRef<HTMLDivElement>(null)
   const invoiceRef = useRef<HTMLDivElement>(null)
   const packingRef = useRef<HTMLDivElement>(null)
@@ -47,7 +46,7 @@ export function PrintDialog({
     if (receiptRef.current) {
       printElement(receiptRef.current, {
         title: `Receipt - ${receiptData?.transaction_number}`,
-        paperSize: receiptWidth === '58mm' ? 'thermal-58mm' : 'thermal-80mm',
+        paperSize: 'a4',
       })
     }
   }

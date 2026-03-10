@@ -1,10 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useTransactions, useSoftDeleteTransaction, useUpdateTransactionDeliveryType } from '@/hooks/useTransactions'
 import { getTransaction } from '@/lib/supabase/queries/transactions'
-import { printUSBReceipt } from '@/lib/utils/usb-thermal-print'
-import { usePrinterStore } from '@/lib/stores/printer'
+import { printElement } from '@/lib/utils/print'
 import { useBranches } from '@/hooks/useInventory'
 import { useAuthStore } from '@/lib/stores/auth'
 import { toast } from 'sonner'
@@ -69,6 +68,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import type { ReceiptData } from '@/components/print/receipt-template'
+import { ReceiptTemplate } from '@/components/print/receipt-template'
 
 function formatCurrency(amount: number): string {
   return new Intl.NumberFormat('en-PH', {
@@ -109,6 +109,8 @@ export default function TransactionHistoryPage() {
   const [detailsTransactionId, setDetailsTransactionId] = useState<string | null>(null)
   const [detailsTransaction, setDetailsTransaction] = useState<any | null>(null)
   const [loadingDetails, setLoadingDetails] = useState(false)
+  const printRef = useRef<HTMLDivElement>(null)
+  const [printData, setPrintData] = useState<ReceiptData | null>(null)
   
   // Edit delivery type state
   const [isEditingDelivery, setIsEditingDelivery] = useState(false)
@@ -117,7 +119,6 @@ export default function TransactionHistoryPage() {
   const [editDeliveryPhone, setEditDeliveryPhone] = useState('')
 
   const { user } = useAuthStore()
-  const { cupsQueueName } = usePrinterStore()
 
   const { data: branches } = useBranches()
   const { data: transactionsData, isLoading, refetch } = useTransactions({
@@ -191,7 +192,7 @@ export default function TransactionHistoryPage() {
     }
   }
 
-  // Fetch full transaction details then print directly to USB thermal printer
+  // Fetch full transaction details then print using browser print
   const handlePrintTransaction = async (txnId: string) => {
     setPrintingId(txnId)
     const toastId = toast.loading('Fetching transaction…')
@@ -233,12 +234,24 @@ export default function TransactionHistoryPage() {
         notes: txn.notes,
       }
 
-      toast.loading('Printing receipt…', { id: toastId })
-      await printUSBReceipt(receiptData, cupsQueueName)
-      toast.success('Receipt printed!', { id: toastId })
+      // Set receipt data and trigger print after render
+      setPrintData(receiptData)
+      toast.dismiss(toastId)
+      
+      // Wait for render then print
+      setTimeout(() => {
+        if (printRef.current) {
+          printElement(printRef.current, {
+            title: `Receipt - ${receiptData.transaction_number}`,
+            paperSize: 'a4',
+          })
+          toast.success('Print dialog opened')
+          setPrintData(null)
+          setPrintingId(null)
+        }
+      }, 100)
     } catch (err: any) {
-      toast.error(err?.message || 'Print failed — check USB printer in Settings', { id: toastId })
-    } finally {
+      toast.error(err?.message || 'Print failed', { id: toastId })
       setPrintingId(null)
     }
   }
@@ -787,6 +800,15 @@ export default function TransactionHistoryPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Hidden print template */}
+      {printData && (
+        <div style={{ position: 'absolute', left: '-9999px' }}>
+          <div ref={printRef}>
+            <ReceiptTemplate data={printData} />
+          </div>
+        </div>
+      )}
     </div>
   )
 }
