@@ -122,6 +122,14 @@ export async function getProduct(id: string) {
 export async function createProduct(product: InsertTables<'products'>) {
   const supabase = getClient()
 
+  // Validate required UOM fields
+  if (!product.base_uom_id) {
+    throw new Error('Base unit of measure is required')
+  }
+  if (!product.selling_uom_id) {
+    throw new Error('Selling unit of measure is required')
+  }
+
   const { data, error } = await supabase
     .from('products')
     .insert(product as any)
@@ -135,6 +143,14 @@ export async function createProduct(product: InsertTables<'products'>) {
 // Update a product
 export async function updateProduct(id: string, updates: UpdateTables<'products'>) {
   const supabase = getClient()
+
+  // Validate UOM fields if they're being updated
+  if ('base_uom_id' in updates && !updates.base_uom_id) {
+    throw new Error('Base unit of measure cannot be removed')
+  }
+  if ('selling_uom_id' in updates && !updates.selling_uom_id) {
+    throw new Error('Selling unit of measure cannot be removed')
+  }
 
   const { data, error } = await supabase
     .from('products')

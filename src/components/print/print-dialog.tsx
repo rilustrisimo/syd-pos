@@ -127,7 +127,7 @@ export function PrintDialog({
               <div className="flex-1 overflow-auto bg-gray-100 rounded-lg p-4 flex justify-center">
                 <div className="bg-white shadow-lg">
                   {receiptData && (
-                    <ReceiptTemplate ref={receiptRef} data={receiptData} width={receiptWidth} />
+                    <ReceiptTemplate ref={receiptRef} data={receiptData} />
                   )}
                 </div>
               </div>

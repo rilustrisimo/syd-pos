@@ -94,8 +94,21 @@ export default function AdjustStockPage() {
       return
     }
 
-    if (!selectedProductData?.base_uom_id) {
-      toast.error('Product base unit not found')
+    // Get base UOM ID from either the direct field or the joined object
+    const baseUomId = selectedProductData?.base_uom_id || selectedProductData?.base_uom?.id
+    
+    if (!baseUomId) {
+      console.error('Product missing base UOM:', {
+        productId: selectedProduct,
+        productName: selectedProductData?.name,
+        productCode: selectedProductData?.code,
+        base_uom_id: selectedProductData?.base_uom_id,
+        base_uom: selectedProductData?.base_uom,
+      })
+      toast.error(
+        `Product "${selectedProductData?.name}" is missing a base unit of measure. ` +
+        'Please edit the product to set a base UOM before adjusting inventory.'
+      )
       return
     }
 
@@ -107,7 +120,7 @@ export default function AdjustStockPage() {
         productId: selectedProduct,
         variantId: null, // Add variant support later if needed
         quantityChange,
-        uomId: selectedProductData.base_uom_id, // Use base unit for now
+        uomId: baseUomId,
         reason: adjustmentReason,
         notes: notes.trim(),
         userId: user.id,
