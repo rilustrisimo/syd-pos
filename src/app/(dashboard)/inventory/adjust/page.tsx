@@ -1,11 +1,12 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useBranches, useAdjustInventory } from '@/hooks/useInventory'
 import type { Branch } from '@/lib/supabase/queries/inventory'
 import { useProducts } from '@/hooks/useProducts'
+import type { Product } from '@/lib/supabase/queries/products'
 import { useAuthStore } from '@/lib/stores/auth'
 import { toast } from 'sonner'
 import { ArrowLeft, Plus, Minus, Loader2, Save } from 'lucide-react'
@@ -36,6 +37,7 @@ export default function AdjustStockPage() {
   const { user } = useAuthStore()
   const [selectedBranch, setSelectedBranch] = useState('')
   const [selectedProduct, setSelectedProduct] = useState('')
+  const [selectedProductData, setSelectedProductData] = useState<Product | null>(null)
   const [adjustmentType, setAdjustmentType] = useState<'add' | 'subtract'>('add')
   const [adjustmentReason, setAdjustmentReason] = useState('')
   const [quantity, setQuantity] = useState('')
@@ -70,10 +72,6 @@ export default function AdjustStockPage() {
   const adjustMutation = useAdjustInventory()
 
   const products = productsData?.data || []
-  const selectedProductData = useMemo(
-    () => products.find((p) => p.id === selectedProduct),
-    [products, selectedProduct]
-  )
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -132,6 +130,7 @@ export default function AdjustStockPage() {
       
       // Reset form
       setSelectedProduct('')
+      setSelectedProductData(null)
       setQuantity('')
       setAdjustmentReason('')
       setNotes('')
@@ -230,6 +229,7 @@ export default function AdjustStockPage() {
                       type="button"
                       onClick={() => {
                         setSelectedProduct(product.id)
+                        setSelectedProductData(product)
                         setProductSearch(product.name)
                       }}
                       className={`w-full text-left p-3 rounded hover:bg-accent transition-colors ${
