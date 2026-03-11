@@ -28,6 +28,7 @@ export const useTransactions = (
         `,
           { count: 'exact' }
         )
+        .eq('is_deleted', false)
         .order('created_at', { ascending: false })
         .range(offset, offset + limit - 1)
 
@@ -75,6 +76,7 @@ export const useSearchTransactions = (
           payments:transaction_payments(*)
         `
         )
+        .eq('is_deleted', false)
         .or(`transaction_number.ilike.${searchTerm},customer.name.ilike.${searchTerm}`)
         .limit(20)
 
@@ -234,6 +236,7 @@ export const useCustomerTransactions = (customerId: string | undefined) => {
         `
         )
         .eq('customer_id', customerId)
+        .eq('is_deleted', false)
         .order('created_at', { ascending: false })
 
       if (error) {
