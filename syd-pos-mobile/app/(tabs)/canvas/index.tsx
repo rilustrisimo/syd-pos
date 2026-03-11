@@ -11,6 +11,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  ActivityIndicator,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import {
@@ -21,6 +22,7 @@ import {
   useCustomers,
   useWalkInCustomer,
   useProductCategories,
+  useUpsertCustomer,
 } from '@syd/api'
 import { Ionicons } from '@expo/vector-icons'
 import { useAuthStore } from '../../../store/auth'
@@ -92,37 +94,38 @@ export default function CanvasScreen() {
   const paperWidth = usePrinterStore((s) => s.paperWidth)
 
   // Canvas store
-  const cart           = useCanvasStore((s) => s.cart)
-  const title          = useCanvasStore((s) => s.title)
-  const customerName   = useCanvasStore((s) => s.customerName)
-  const customerId     = useCanvasStore((s) => s.customerId)
-  const deliveryFee    = useCanvasStore((s) => s.deliveryFee)
-  const otherFees      = useCanvasStore((s) => s.otherFees)
-  const otherFeesNotes = useCanvasStore((s) => s.otherFeesNotes)
-  const discountAmount = useCanvasStore((s) => s.discountAmount)
+  const cart               = useCanvasStore((s) => s.cart)
+  const title              = useCanvasStore((s) => s.title)
+  const customerName       = useCanvasStore((s) => s.customerName)
+  const customerId         = useCanvasStore((s) => s.customerId)
+  const deliveryFee        = useCanvasStore((s) => s.deliveryFee)
+  const otherFees          = useCanvasStore((s) => s.otherFees)
+  const otherFeesNotes     = useCanvasStore((s) => s.otherFeesNotes)
+  const discountAmount     = useCanvasStore((s) => s.discountAmount)
   const discountPercentage = useCanvasStore((s) => s.discountPercentage)
-  const discountType   = useCanvasStore((s) => s.discountType)
-  const notes          = useCanvasStore((s) => s.notes)
+  const discountType       = useCanvasStore((s) => s.discountType)
+  const notes              = useCanvasStore((s) => s.notes)
 
-  const addItem        = useCanvasStore((s) => s.addItem)
-  const incrementItem  = useCanvasStore((s) => s.incrementItem)
-  const decrementItem  = useCanvasStore((s) => s.decrementItem)
-  const removeItem     = useCanvasStore((s) => s.removeItem)
-  const clearCart      = useCanvasStore((s) => s.clearCart)
-  const setTitle       = useCanvasStore((s) => s.setTitle)
-  const setCustomerName = useCanvasStore((s) => s.setCustomerName)
-  const setDeliveryFee  = useCanvasStore((s) => s.setDeliveryFee)
-  const setOtherFees    = useCanvasStore((s) => s.setOtherFees)
-  const setOtherFeesNotes = useCanvasStore((s) => s.setOtherFeesNotes)
-  const setDiscountAmount = useCanvasStore((s) => s.setDiscountAmount)
+  const addItem            = useCanvasStore((s) => s.addItem)
+  const incrementItem      = useCanvasStore((s) => s.incrementItem)
+  const decrementItem      = useCanvasStore((s) => s.decrementItem)
+  const removeItem         = useCanvasStore((s) => s.removeItem)
+  const clearCart          = useCanvasStore((s) => s.clearCart)
+  const setTitle           = useCanvasStore((s) => s.setTitle)
+  const setCustomerName    = useCanvasStore((s) => s.setCustomerName)
+  const setCustomerId      = useCanvasStore((s) => s.setCustomerId)
+  const setDeliveryFee     = useCanvasStore((s) => s.setDeliveryFee)
+  const setOtherFees       = useCanvasStore((s) => s.setOtherFees)
+  const setOtherFeesNotes  = useCanvasStore((s) => s.setOtherFeesNotes)
+  const setDiscountAmount  = useCanvasStore((s) => s.setDiscountAmount)
   const setDiscountPercentage = useCanvasStore((s) => s.setDiscountPercentage)
-  const setDiscountType = useCanvasStore((s) => s.setDiscountType)
-  const setNotes        = useCanvasStore((s) => s.setNotes)
-  const resetAll        = useCanvasStore((s) => s.resetAll)
+  const setDiscountType    = useCanvasStore((s) => s.setDiscountType)
+  const setNotes           = useCanvasStore((s) => s.setNotes)
+  const resetAll           = useCanvasStore((s) => s.resetAll)
 
   // POS store (for Convert to Sale)
-  const posAddItem     = usePosStore((s) => s.addItem)
-  const posClearCart   = usePosStore((s) => s.clearCart)
+  const posAddItem  = usePosStore((s) => s.addItem)
+  const posClearCart = usePosStore((s) => s.clearCart)
 
   // Data
   const { products, isLoading: productsLoading } = useInventoryCache()
@@ -130,18 +133,26 @@ export default function CanvasScreen() {
   const { data: allCustomers = [] } = useCustomers()
   const { data: walkInCustomer } = useWalkInCustomer()
   const { data: canvasesData, refetch: refetchCanvases } = useCanvases(1, 20)
-  const createCanvas  = useCreateCanvas()
+  const createCanvas         = useCreateCanvas()
   const deleteCanvasMutation = useDeleteCanvas()
+  const upsertCustomer       = useUpsertCustomer()
 
   // UI state
-  const [productSearch, setProductSearch] = useState('')
+  const [productSearch, setProductSearch]         = useState('')
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
-  const [showCartModal, setShowCartModal] = useState(false)
-  const [showSaveModal, setShowSaveModal] = useState(false)
-  const [showListModal, setShowListModal] = useState(false)
-  const [discountInput, setDiscountInput] = useState('')
-  const [isPrinting, setIsPrinting] = useState(false)
-  const [activeTab, setActiveTab] = useState<'build' | 'list'>('build')
+  const [showCartModal, setShowCartModal]         = useState(false)
+  const [showSaveModal, setShowSaveModal]         = useState(false)
+  const [showListModal, setShowListModal]         = useState(false)
+  const [showCustomerModal, setShowCustomerModal] = useState(false)
+  const [discountInput, setDiscountInput]         = useState('')
+  const [isPrinting, setIsPrinting]               = useState(false)
+
+  // Customer picker state
+  const [customerSearch, setCustomerSearch]   = useState('')
+  const [showCreateForm, setShowCreateForm]   = useState(false)
+  const [newCustName, setNewCustName]         = useState('')
+  const [newCustPhone, setNewCustPhone]       = useState('')
+  const [isCreatingCust, setIsCreatingCust]   = useState(false)
 
   // ── Derived values ────────────────────────────────────────────────────────
   const filteredProducts = useMemo(() => {
@@ -153,6 +164,16 @@ export default function CanvasScreen() {
     }
     return list
   }, [products, selectedCategoryId, productSearch])
+
+  const filteredCustomers = useMemo(() => {
+    const q = customerSearch.trim().toLowerCase()
+    if (!q) return allCustomers
+    return allCustomers.filter(
+      (c: any) =>
+        c.name?.toLowerCase().includes(q) ||
+        c.phone?.toLowerCase().includes(q)
+    )
+  }, [allCustomers, customerSearch])
 
   const subtotal = useMemo(
     () => cart.reduce((s, i) => s + i.price * i.quantity - i.discount * i.quantity, 0),
@@ -178,20 +199,58 @@ export default function CanvasScreen() {
 
   const cartCount = cart.reduce((s, i) => s + i.quantity, 0)
 
+  // Display label for selected customer
+  const selectedCustomerLabel = customerId
+    ? (customerName || 'Customer')
+    : 'Walk-in Customer'
+
   // ── Handlers ──────────────────────────────────────────────────────────────
   function handleAddProduct(product: Product) {
     const uomName = (product as any).selling_uom_abbreviation || (product as any).uom_abbreviation || 'pc'
     const uomId   = (product as any).selling_uom_id || (product as any).base_uom_id || ''
     addItem({
-      productId:    product.id,
-      name:         product.name,
-      quantity:     1,
-      price:        product.current_selling_price,
+      productId:     product.id,
+      name:          product.name,
+      quantity:      1,
+      price:         product.current_selling_price,
       cogs_per_unit: (product as any).latest_cogs ?? product.current_selling_price,
-      discount:     0,
-      uom_id:       uomId,
-      uom_name:     uomName,
+      discount:      0,
+      uom_id:        uomId,
+      uom_name:      uomName,
     })
+  }
+
+  function handleSelectCustomer(id: string | null, name: string) {
+    setCustomerId(id)
+    setCustomerName(name)
+    setShowCustomerModal(false)
+    setCustomerSearch('')
+    setShowCreateForm(false)
+  }
+
+  async function handleCreateCustomer() {
+    if (!newCustName.trim()) {
+      Alert.alert('Required', 'Please enter a customer name.')
+      return
+    }
+    setIsCreatingCust(true)
+    try {
+      const created = await upsertCustomer.mutateAsync({
+        name:          newCustName.trim(),
+        phone:         newCustPhone.trim() || undefined,
+        customer_type: 'cash',
+        is_active:     true,
+        credit_limit:       0,
+        outstanding_balance: 0,
+      } as any)
+      handleSelectCustomer(created.id, created.name)
+      setNewCustName('')
+      setNewCustPhone('')
+    } catch (err: any) {
+      Alert.alert('Error', err.message || 'Failed to create customer')
+    } finally {
+      setIsCreatingCust(false)
+    }
   }
 
   async function handleSaveCanvas() {
@@ -202,20 +261,20 @@ export default function CanvasScreen() {
     try {
       const saved = await createCanvas.mutateAsync({
         input: {
-          branch_id:          effectiveBranchId,
-          customer_id:        customerId || null,
-          title:              title || null,
-          notes:              notes || null,
+          branch_id:           effectiveBranchId,
+          customer_id:         customerId || walkInCustomer?.id || null,
+          title:               title || null,
+          notes:               notes || null,
           subtotal,
-          discount_amount:    orderDiscount,
+          discount_amount:     orderDiscount,
           discount_percentage: discountType === 'percentage' ? (parseFloat(discountInput) || 0) : 0,
-          delivery_fee:       deliveryFee,
-          other_fees:         otherFees,
-          other_fees_notes:   otherFeesNotes || null,
-          total_amount:       grandTotal,
-          canvas_date:        new Date().toISOString(),
+          delivery_fee:        deliveryFee,
+          other_fees:          otherFees,
+          other_fees_notes:    otherFeesNotes || null,
+          total_amount:        grandTotal,
+          canvas_date:         new Date().toISOString(),
         },
-        lines: cart.map((item, i) => ({
+        lines: cart.map((item) => ({
           product_id:      item.productId,
           quantity:        item.quantity,
           uom_id:          item.uom_id,
@@ -226,7 +285,6 @@ export default function CanvasScreen() {
         userId: authUser.id,
       })
 
-      // Optionally print immediately
       if (btPrinter.isConnected()) {
         await handlePrintCanvas(saved)
       }
@@ -250,11 +308,11 @@ export default function CanvasScreen() {
     try {
       const canvasData: CanvasData = {
         canvas_number: canvas.canvas_number,
-        date: fmtDate(canvas.canvas_date),
-        cashier: authUser?.full_name || 'Staff',
-        branch:  'SYD Main Branch',
-        customer: (canvas as any).customer?.name || customerName || 'Walk-in Customer',
-        title:   canvas.title || undefined,
+        date:          fmtDate(canvas.canvas_date),
+        cashier:       authUser?.full_name || 'Staff',
+        branch:        'SYD Main Branch',
+        customer:      (canvas as any).customer?.name || customerName || 'Walk-in Customer',
+        title:         canvas.title || undefined,
         items: (canvas.lines || []).map((line: any) => ({
           name:       line.product?.name || line.product_id,
           quantity:   line.quantity,
@@ -263,13 +321,13 @@ export default function CanvasScreen() {
           discount:   line.discount_amount,
           total:      line.line_total,
         })),
-        subtotal:        canvas.subtotal,
-        discount:        canvas.discount_amount,
-        delivery_fee:    canvas.delivery_fee || 0,
-        other_fees:      canvas.other_fees || 0,
+        subtotal:         canvas.subtotal,
+        discount:         canvas.discount_amount,
+        delivery_fee:     canvas.delivery_fee || 0,
+        other_fees:       canvas.other_fees || 0,
         other_fees_notes: canvas.other_fees_notes,
-        total:           canvas.total_amount,
-        notes:           canvas.notes,
+        total:            canvas.total_amount,
+        notes:            canvas.notes,
       }
       await btPrinter.printCanvas(canvasData, paperWidth)
     } catch (err: any) {
@@ -304,11 +362,7 @@ export default function CanvasScreen() {
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Canvas</Text>
         <View style={styles.headerActions}>
-          {/* List button */}
-          <TouchableOpacity
-            style={styles.headerBtn}
-            onPress={() => setShowListModal(true)}
-          >
+          <TouchableOpacity style={styles.headerBtn} onPress={() => setShowListModal(true)}>
             <Ionicons name="list-outline" size={22} color="#3b82f6" />
             {(canvasesData?.total ?? 0) > 0 && (
               <View style={styles.headerBtnBadge}>
@@ -316,7 +370,6 @@ export default function CanvasScreen() {
               </View>
             )}
           </TouchableOpacity>
-          {/* Cart button */}
           <TouchableOpacity style={styles.headerBtn} onPress={() => setShowCartModal(true)}>
             <Ionicons name="clipboard-outline" size={22} color="#3b82f6" />
             {cartCount > 0 && (
@@ -334,6 +387,7 @@ export default function CanvasScreen() {
         <TextInput
           style={styles.searchInput}
           placeholder="Search products..."
+          placeholderTextColor="#9ca3af"
           value={productSearch}
           onChangeText={setProductSearch}
           returnKeyType="search"
@@ -345,26 +399,32 @@ export default function CanvasScreen() {
         ) : null}
       </View>
 
-      {/* Category pills */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryRow} contentContainerStyle={styles.categoryRowContent}>
-        <TouchableOpacity
-          style={[styles.categoryPill, !selectedCategoryId && styles.categoryPillActive]}
-          onPress={() => setSelectedCategoryId(null)}
+      {/* Category pills — fixed height so pills never get clipped */}
+      <View style={styles.categoryRowWrapper}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.categoryRowContent}
         >
-          <Text style={[styles.categoryPillText, !selectedCategoryId && styles.categoryPillTextActive]}>All</Text>
-        </TouchableOpacity>
-        {categories.map((cat: any) => (
           <TouchableOpacity
-            key={cat.id}
-            style={[styles.categoryPill, selectedCategoryId === cat.id && styles.categoryPillActive]}
-            onPress={() => setSelectedCategoryId(cat.id === selectedCategoryId ? null : cat.id)}
+            style={[styles.categoryPill, !selectedCategoryId && styles.categoryPillActive]}
+            onPress={() => setSelectedCategoryId(null)}
           >
-            <Text style={[styles.categoryPillText, selectedCategoryId === cat.id && styles.categoryPillTextActive]}>
-              {cat.name}
-            </Text>
+            <Text style={[styles.categoryPillText, !selectedCategoryId && styles.categoryPillTextActive]}>All</Text>
           </TouchableOpacity>
-        ))}
-      </ScrollView>
+          {categories.map((cat: any) => (
+            <TouchableOpacity
+              key={cat.id}
+              style={[styles.categoryPill, selectedCategoryId === cat.id && styles.categoryPillActive]}
+              onPress={() => setSelectedCategoryId(cat.id === selectedCategoryId ? null : cat.id)}
+            >
+              <Text style={[styles.categoryPillText, selectedCategoryId === cat.id && styles.categoryPillTextActive]}>
+                {cat.name}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
 
       {/* Product grid */}
       <FlatList
@@ -561,14 +621,24 @@ export default function CanvasScreen() {
               onChangeText={setTitle}
             />
 
-            {/* Customer name */}
-            <Text style={styles.fieldLabel}>Customer Name (optional)</Text>
-            <TextInput
-              style={styles.fieldInput}
-              placeholder="Walk-in / customer name"
-              value={customerName}
-              onChangeText={setCustomerName}
-            />
+            {/* Customer picker */}
+            <Text style={styles.fieldLabel}>Customer</Text>
+            <TouchableOpacity
+              style={styles.customerPickerBtn}
+              onPress={() => setShowCustomerModal(true)}
+            >
+              <View style={styles.customerPickerLeft}>
+                <Ionicons
+                  name={customerId ? 'person' : 'person-outline'}
+                  size={16}
+                  color={customerId ? '#3b82f6' : '#94a3b8'}
+                />
+                <Text style={[styles.customerPickerText, customerId && styles.customerPickerTextSelected]}>
+                  {selectedCustomerLabel}
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
+            </TouchableOpacity>
 
             {/* Notes */}
             <Text style={styles.fieldLabel}>Notes (optional)</Text>
@@ -634,6 +704,137 @@ export default function CanvasScreen() {
         </SafeAreaView>
       </Modal>
 
+      {/* ── Customer Picker Modal ───────────────────────────────────────────── */}
+      <Modal visible={showCustomerModal} animationType="slide" presentationStyle="pageSheet">
+        <SafeAreaView style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Select Customer</Text>
+            <TouchableOpacity onPress={() => { setShowCustomerModal(false); setCustomerSearch(''); setShowCreateForm(false) }}>
+              <Ionicons name="close" size={24} color="#1e293b" />
+            </TouchableOpacity>
+          </View>
+
+          {/* Customer search */}
+          <View style={styles.custSearchRow}>
+            <Ionicons name="search-outline" size={16} color="#9ca3af" style={{ marginRight: 8 }} />
+            <TextInput
+              style={styles.custSearchInput}
+              placeholder="Search by name or phone..."
+              placeholderTextColor="#9ca3af"
+              value={customerSearch}
+              onChangeText={setCustomerSearch}
+              autoFocus
+            />
+            {customerSearch ? (
+              <TouchableOpacity onPress={() => setCustomerSearch('')}>
+                <Ionicons name="close-circle" size={16} color="#9ca3af" />
+              </TouchableOpacity>
+            ) : null}
+          </View>
+
+          <ScrollView style={{ flex: 1 }} keyboardShouldPersistTaps="handled">
+            {/* Walk-in Customer (always first) */}
+            <TouchableOpacity
+              style={[styles.custRow, !customerId && styles.custRowSelected]}
+              onPress={() => handleSelectCustomer(null, '')}
+            >
+              <View style={styles.custRowLeft}>
+                <View style={styles.custAvatar}>
+                  <Ionicons name="person-outline" size={18} color="#64748b" />
+                </View>
+                <View>
+                  <Text style={styles.custName}>Walk-in Customer</Text>
+                  <Text style={styles.custSub}>Default · no account</Text>
+                </View>
+              </View>
+              {!customerId && <Ionicons name="checkmark-circle" size={20} color="#3b82f6" />}
+            </TouchableOpacity>
+
+            <View style={styles.custDivider} />
+
+            {/* Existing customers */}
+            {filteredCustomers
+              .filter((c: any) => c.name !== 'Walk-in Customer')
+              .map((c: any) => (
+                <TouchableOpacity
+                  key={c.id}
+                  style={[styles.custRow, customerId === c.id && styles.custRowSelected]}
+                  onPress={() => handleSelectCustomer(c.id, c.name)}
+                >
+                  <View style={styles.custRowLeft}>
+                    <View style={[styles.custAvatar, { backgroundColor: '#eff6ff' }]}>
+                      <Ionicons name="person" size={18} color="#3b82f6" />
+                    </View>
+                    <View>
+                      <Text style={styles.custName}>{c.name}</Text>
+                      {c.phone ? <Text style={styles.custSub}>{c.phone}</Text> : null}
+                    </View>
+                  </View>
+                  {customerId === c.id && <Ionicons name="checkmark-circle" size={20} color="#3b82f6" />}
+                </TouchableOpacity>
+              ))}
+
+            {filteredCustomers.filter((c: any) => c.name !== 'Walk-in Customer').length === 0 && customerSearch.trim() && (
+              <View style={styles.custEmpty}>
+                <Text style={styles.custEmptyText}>No customers match "{customerSearch}"</Text>
+              </View>
+            )}
+
+            <View style={styles.custDivider} />
+
+            {/* Create new customer */}
+            {!showCreateForm ? (
+              <TouchableOpacity
+                style={styles.createCustBtn}
+                onPress={() => setShowCreateForm(true)}
+              >
+                <Ionicons name="person-add-outline" size={18} color="#3b82f6" />
+                <Text style={styles.createCustBtnText}>Create New Customer</Text>
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.createCustForm}>
+                <Text style={styles.createCustFormTitle}>New Customer</Text>
+                <TextInput
+                  style={styles.createCustInput}
+                  placeholder="Full name *"
+                  placeholderTextColor="#9ca3af"
+                  value={newCustName}
+                  onChangeText={setNewCustName}
+                />
+                <TextInput
+                  style={styles.createCustInput}
+                  placeholder="Phone (optional)"
+                  placeholderTextColor="#9ca3af"
+                  value={newCustPhone}
+                  onChangeText={setNewCustPhone}
+                  keyboardType="phone-pad"
+                />
+                <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
+                  <TouchableOpacity
+                    style={[styles.footerBtn, styles.footerBtnSecondary, { flex: 1, paddingVertical: 10 }]}
+                    onPress={() => { setShowCreateForm(false); setNewCustName(''); setNewCustPhone('') }}
+                  >
+                    <Text style={styles.footerBtnSecondaryText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.footerBtn, styles.footerBtnPrimary, { flex: 2, paddingVertical: 10 }, isCreatingCust && styles.footerBtnDisabled]}
+                    onPress={handleCreateCustomer}
+                    disabled={isCreatingCust}
+                  >
+                    {isCreatingCust
+                      ? <ActivityIndicator size="small" color="#fff" />
+                      : <><Ionicons name="person-add-outline" size={15} color="#fff" /><Text style={styles.footerBtnPrimaryText}>Create & Select</Text></>
+                    }
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+
+            <View style={{ height: 24 }} />
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
+
       {/* ── Saved Canvases List Modal ───────────────────────────────────────── */}
       <Modal visible={showListModal} animationType="slide" presentationStyle="pageSheet">
         <SafeAreaView style={styles.modalContainer}>
@@ -683,17 +884,16 @@ export default function CanvasScreen() {
                     <TouchableOpacity
                       style={[styles.canvasActionBtn, { backgroundColor: '#f0fdf4', borderColor: '#bbf7d0' }]}
                       onPress={() => {
-                        // Load canvas into POS store and close
                         posClearCart()
                         canvas.lines?.forEach((line: any) => {
                           posAddItem({
-                            productId:    line.product_id,
-                            name:         line.product?.name || line.product_id,
-                            quantity:     line.quantity,
-                            price:        line.unit_price,
+                            productId:     line.product_id,
+                            name:          line.product?.name || line.product_id,
+                            quantity:      line.quantity,
+                            price:         line.unit_price,
                             cogs_per_unit: line.cogs_per_unit,
-                            discount:     0,
-                            uom_name:     line.uom?.code || line.uom?.name || 'pc',
+                            discount:      0,
+                            uom_name:      line.uom?.code || line.uom?.name || 'pc',
                           })
                         })
                         setShowListModal(false)
@@ -730,15 +930,16 @@ const styles = StyleSheet.create({
   headerBtnBadge: { position: 'absolute', top: -4, right: -4, backgroundColor: '#ef4444', borderRadius: 8, minWidth: 16, height: 16, alignItems: 'center', justifyContent: 'center' },
   headerBtnBadgeText: { color: '#fff', fontSize: 10, fontWeight: '700' },
 
-  searchContainer: { flexDirection: 'row', alignItems: 'center', margin: 12, backgroundColor: '#fff', borderRadius: 10, borderWidth: 1, borderColor: '#e2e8f0', paddingHorizontal: 12, paddingVertical: 8 },
+  searchContainer: { flexDirection: 'row', alignItems: 'center', margin: 12, marginBottom: 8, backgroundColor: '#fff', borderRadius: 10, borderWidth: 1, borderColor: '#e2e8f0', paddingHorizontal: 12, paddingVertical: 8 },
   searchIcon:      { marginRight: 8 },
   searchInput:     { flex: 1, fontSize: 14, color: '#1e293b' },
 
-  categoryRow:        { maxHeight: 40, marginBottom: 4 },
-  categoryRowContent: { paddingHorizontal: 12, gap: 8, alignItems: 'center' },
-  categoryPill:       { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, backgroundColor: '#f1f5f9', borderWidth: 1, borderColor: '#e2e8f0' },
-  categoryPillActive: { backgroundColor: '#3b82f6', borderColor: '#3b82f6' },
-  categoryPillText:   { fontSize: 12, fontWeight: '600', color: '#64748b' },
+  // Category row — fixed height wrapper prevents pills from being clipped
+  categoryRowWrapper:  { height: 48, marginBottom: 4 },
+  categoryRowContent:  { paddingHorizontal: 12, gap: 8, alignItems: 'center', flexDirection: 'row' },
+  categoryPill:        { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, backgroundColor: '#f1f5f9', borderWidth: 1, borderColor: '#e2e8f0' },
+  categoryPillActive:  { backgroundColor: '#3b82f6', borderColor: '#3b82f6' },
+  categoryPillText:    { fontSize: 13, fontWeight: '600', color: '#64748b' },
   categoryPillTextActive: { color: '#fff' },
 
   grid:    { paddingHorizontal: GRID_PADDING, paddingTop: 8, paddingBottom: 16 },
@@ -763,55 +964,82 @@ const styles = StyleSheet.create({
   modalTitle:     { fontSize: 17, fontWeight: '700', color: '#1e293b' },
   modalFooter:    { flexDirection: 'row', gap: 10, padding: 16, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#e2e8f0' },
 
-  footerBtn:            { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 13, borderRadius: 10 },
-  footerBtnPrimary:     { backgroundColor: '#3b82f6' },
-  footerBtnSecondary:   { backgroundColor: '#f1f5f9', borderWidth: 1, borderColor: '#e2e8f0' },
-  footerBtnDisabled:    { opacity: 0.5 },
-  footerBtnPrimaryText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+  footerBtn:              { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 13, borderRadius: 10 },
+  footerBtnPrimary:       { backgroundColor: '#3b82f6' },
+  footerBtnSecondary:     { backgroundColor: '#f1f5f9', borderWidth: 1, borderColor: '#e2e8f0' },
+  footerBtnDisabled:      { opacity: 0.5 },
+  footerBtnPrimaryText:   { color: '#fff', fontWeight: '700', fontSize: 15 },
   footerBtnSecondaryText: { color: '#64748b', fontWeight: '600', fontSize: 15 },
 
   // Cart
-  cartList:        { flex: 1, padding: 12 },
-  cartItem:        { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 8, padding: 10, marginBottom: 8, borderWidth: 1, borderColor: '#e2e8f0' },
-  cartItemInfo:    { flex: 1 },
-  cartItemName:    { fontSize: 13, fontWeight: '600', color: '#1e293b' },
-  cartItemPrice:   { fontSize: 11, color: '#64748b', marginTop: 2 },
+  cartList:         { flex: 1, padding: 12 },
+  cartItem:         { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 8, padding: 10, marginBottom: 8, borderWidth: 1, borderColor: '#e2e8f0' },
+  cartItemInfo:     { flex: 1 },
+  cartItemName:     { fontSize: 13, fontWeight: '600', color: '#1e293b' },
+  cartItemPrice:    { fontSize: 11, color: '#64748b', marginTop: 2 },
   cartItemControls: { flexDirection: 'row', alignItems: 'center', gap: 6, marginHorizontal: 8 },
-  qtyBtn:          { width: 26, height: 26, borderRadius: 6, backgroundColor: '#eff6ff', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#bfdbfe' },
-  qtyText:         { fontSize: 14, fontWeight: '700', color: '#1e293b', minWidth: 20, textAlign: 'center' },
-  removeBtn:       { width: 26, height: 26, borderRadius: 6, backgroundColor: '#fef2f2', alignItems: 'center', justifyContent: 'center' },
-  cartItemTotal:   { fontSize: 13, fontWeight: '700', color: '#1e293b', minWidth: 64, textAlign: 'right' },
+  qtyBtn:           { width: 26, height: 26, borderRadius: 6, backgroundColor: '#eff6ff', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#bfdbfe' },
+  qtyText:          { fontSize: 14, fontWeight: '700', color: '#1e293b', minWidth: 20, textAlign: 'center' },
+  removeBtn:        { width: 26, height: 26, borderRadius: 6, backgroundColor: '#fef2f2', alignItems: 'center', justifyContent: 'center' },
+  cartItemTotal:    { fontSize: 13, fontWeight: '700', color: '#1e293b', minWidth: 64, textAlign: 'right' },
 
   // Section cards
-  sectionCard:   { backgroundColor: '#fff', borderRadius: 10, borderWidth: 1, borderColor: '#e2e8f0', padding: 12, marginBottom: 10 },
-  sectionLabel:  { fontSize: 12, fontWeight: '700', color: '#64748b', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
+  sectionCard:  { backgroundColor: '#fff', borderRadius: 10, borderWidth: 1, borderColor: '#e2e8f0', padding: 12, marginBottom: 10 },
+  sectionLabel: { fontSize: 12, fontWeight: '700', color: '#64748b', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
 
-  discountPills:        { flexDirection: 'row', gap: 6 },
-  discountPill:         { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 14, backgroundColor: '#f1f5f9', borderWidth: 1, borderColor: '#e2e8f0' },
-  discountPillActive:   { backgroundColor: '#3b82f6', borderColor: '#3b82f6' },
-  discountPillText:     { fontSize: 12, fontWeight: '600', color: '#64748b' },
+  discountPills:          { flexDirection: 'row', gap: 6 },
+  discountPill:           { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 14, backgroundColor: '#f1f5f9', borderWidth: 1, borderColor: '#e2e8f0' },
+  discountPillActive:     { backgroundColor: '#3b82f6', borderColor: '#3b82f6' },
+  discountPillText:       { fontSize: 12, fontWeight: '600', color: '#64748b' },
   discountPillTextActive: { color: '#fff' },
-  discountInput:        { marginTop: 8, borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, fontSize: 14, backgroundColor: '#f8fafc' },
+  discountInput:          { marginTop: 8, borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, fontSize: 14, backgroundColor: '#f8fafc' },
 
   feeRow:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
   feeLabel: { fontSize: 13, color: '#374151' },
   feeInput: { borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, fontSize: 13, width: 100, textAlign: 'right', backgroundColor: '#f8fafc' },
 
   // Totals
-  totalsCard:       { backgroundColor: '#fff', borderRadius: 10, borderWidth: 1, borderColor: '#e2e8f0', padding: 12, marginBottom: 10 },
-  totalRow:         { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
-  totalLabel:       { fontSize: 13, color: '#64748b' },
-  totalValue:       { fontSize: 13, fontWeight: '500', color: '#1e293b' },
-  grandTotalRow:    { borderTopWidth: 1, borderTopColor: '#e2e8f0', paddingTop: 8, marginTop: 4 },
-  grandTotalLabel:  { fontSize: 16, fontWeight: '700', color: '#1e293b' },
-  grandTotalValue:  { fontSize: 18, fontWeight: '800', color: '#3b82f6' },
+  totalsCard:      { backgroundColor: '#fff', borderRadius: 10, borderWidth: 1, borderColor: '#e2e8f0', padding: 12, marginBottom: 10 },
+  totalRow:        { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
+  totalLabel:      { fontSize: 13, color: '#64748b' },
+  totalValue:      { fontSize: 13, fontWeight: '500', color: '#1e293b' },
+  grandTotalRow:   { borderTopWidth: 1, borderTopColor: '#e2e8f0', paddingTop: 8, marginTop: 4 },
+  grandTotalLabel: { fontSize: 16, fontWeight: '700', color: '#1e293b' },
+  grandTotalValue: { fontSize: 18, fontWeight: '800', color: '#3b82f6' },
 
-  // Save modal
+  // Save modal fields
   fieldLabel: { fontSize: 12, fontWeight: '600', color: '#64748b', marginBottom: 4, marginTop: 12 },
   fieldInput: { borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, backgroundColor: '#fff' },
-  summaryCard:   { backgroundColor: '#f8fafc', borderRadius: 10, borderWidth: 1, borderColor: '#e2e8f0', padding: 12, marginTop: 16 },
-  summaryLabel:  { fontSize: 13, color: '#64748b' },
-  summaryValue:  { fontSize: 13, fontWeight: '500', color: '#1e293b' },
+
+  // Customer picker button (in Save modal)
+  customerPickerBtn:          { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 11, backgroundColor: '#fff' },
+  customerPickerLeft:         { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  customerPickerText:         { fontSize: 14, color: '#94a3b8' },
+  customerPickerTextSelected: { color: '#1e293b', fontWeight: '600' },
+
+  // Customer picker modal
+  custSearchRow:   { flexDirection: 'row', alignItems: 'center', margin: 12, borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: '#fff' },
+  custSearchInput: { flex: 1, fontSize: 14, color: '#1e293b' },
+  custRow:         { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 13, backgroundColor: '#fff' },
+  custRowSelected: { backgroundColor: '#eff6ff' },
+  custRowLeft:     { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  custAvatar:      { width: 36, height: 36, borderRadius: 18, backgroundColor: '#f1f5f9', alignItems: 'center', justifyContent: 'center' },
+  custName:        { fontSize: 14, fontWeight: '600', color: '#1e293b' },
+  custSub:         { fontSize: 12, color: '#94a3b8', marginTop: 1 },
+  custDivider:     { height: 1, backgroundColor: '#f1f5f9', marginVertical: 4 },
+  custEmpty:       { paddingHorizontal: 16, paddingVertical: 12 },
+  custEmptyText:   { fontSize: 13, color: '#94a3b8', textAlign: 'center' },
+
+  createCustBtn:      { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 14 },
+  createCustBtnText:  { fontSize: 14, fontWeight: '600', color: '#3b82f6' },
+  createCustForm:     { margin: 12, padding: 14, backgroundColor: '#fff', borderRadius: 12, borderWidth: 1, borderColor: '#e2e8f0', gap: 10 },
+  createCustFormTitle: { fontSize: 14, fontWeight: '700', color: '#1e293b', marginBottom: 2 },
+  createCustInput:    { borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, backgroundColor: '#f8fafc', color: '#1e293b' },
+
+  // Summary card
+  summaryCard:  { backgroundColor: '#f8fafc', borderRadius: 10, borderWidth: 1, borderColor: '#e2e8f0', padding: 12, marginTop: 16 },
+  summaryLabel: { fontSize: 13, color: '#64748b' },
+  summaryValue: { fontSize: 13, fontWeight: '500', color: '#1e293b' },
 
   // Canvas list
   canvasCard:       { backgroundColor: '#fff', borderRadius: 10, borderWidth: 1, borderColor: '#e2e8f0', padding: 12 },
