@@ -28,13 +28,58 @@ const CMD = {
   CUT:           [GS,  0x56, 0x42, 0x00], // partial cut
 }
 
+// ── Special-character sanitizer ───────────────────────────────────────────────
+/**
+ * Replace Unicode characters that CP437 thermal printers cannot render
+ * (they appear as garbage/box-drawing chars). Convert them to clean ASCII
+ * equivalents so the receipt always prints correctly.
+ */
+function sanitize(str: string): string {
+  return str
+    // Vulgar fractions → text form
+    .replace(/¼/g, '1/4')
+    .replace(/½/g, '1/2')
+    .replace(/¾/g, '3/4')
+    .replace(/⅓/g, '1/3')
+    .replace(/⅔/g, '2/3')
+    .replace(/⅛/g, '1/8')
+    .replace(/⅜/g, '3/8')
+    .replace(/⅝/g, '5/8')
+    .replace(/⅞/g, '7/8')
+    // Typographic punctuation → plain ASCII
+    .replace(/['']/g, "'")
+    .replace(/[""]/g, '"')
+    .replace(/–/g, '-')
+    .replace(/—/g, '-')
+    .replace(/…/g, '...')
+    // Math / currency
+    .replace(/×/g, 'x')
+    .replace(/÷/g, '/')
+    .replace(/±/g, '+/-')
+    .replace(/°/g, ' deg')
+    .replace(/₱/g, 'PHP')
+    .replace(/€/g, 'EUR')
+    .replace(/£/g, 'GBP')
+    // Common accented letters → base letter
+    .replace(/[àáâãäå]/gi, (c) => c.toLowerCase() === c ? 'a' : 'A')
+    .replace(/[èéêë]/gi,   (c) => c.toLowerCase() === c ? 'e' : 'E')
+    .replace(/[ìíîï]/gi,   (c) => c.toLowerCase() === c ? 'i' : 'I')
+    .replace(/[òóôõö]/gi,  (c) => c.toLowerCase() === c ? 'o' : 'O')
+    .replace(/[ùúûü]/gi,   (c) => c.toLowerCase() === c ? 'u' : 'U')
+    .replace(/[ñ]/gi,      (c) => c.toLowerCase() === c ? 'n' : 'N')
+    .replace(/[ç]/gi,      (c) => c.toLowerCase() === c ? 'c' : 'C')
+    // Strip any remaining non-ASCII characters
+    .replace(/[^\x00-\x7F]/g, '?')
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/** Convert an ASCII/Latin string to bytes (one byte per char, 0xFF mask). */
+/** Convert a sanitized string to bytes (one byte per char, 0xFF mask). */
 function strBytes(str: string): number[] {
+  const safe = sanitize(str)
   const out: number[] = []
-  for (let i = 0; i < str.length; i++) {
-    out.push(str.charCodeAt(i) & 0xff)
+  for (let i = 0; i < safe.length; i++) {
+    out.push(safe.charCodeAt(i) & 0xff)
   }
   return out
 }
@@ -60,6 +105,10 @@ function lr(left: string, right: string, width: number): string {
   }
   return left + ' '.repeat(gap) + right
 }
+
+// ── Store constants ───────────────────────────────────────────────────────────
+const STORE_ADDRESS  = 'Sitio Landing, Talakag, Bukidnon'
+const STORE_CONTACTS = '09164527225 / 09274746352'
 
 // ── Receipt data type ─────────────────────────────────────────────────────────
 
@@ -135,8 +184,9 @@ export function buildReceiptBytes(data: ReceiptData, width = 48): Uint8Array {
   line('SYD CONSTRUCTION')
   line('SUPPLIES TRADING')
   cmd(CMD.NORMAL_SIZE, CMD.BOLD_OFF)
-  line(data.branch)
   line('Construction Materials & Hardware')
+  line(STORE_ADDRESS)
+  line(STORE_CONTACTS)
 
   // ── Divider ──────────────────────────────────────────────────────────────────
   cmd(CMD.LEFT)
@@ -231,8 +281,13 @@ export function buildReceiptBytes(data: ReceiptData, width = 48): Uint8Array {
   cmd(CMD.CENTER, CMD.BOLD_ON)
   line('Thank you for your purchase!')
   cmd(CMD.BOLD_OFF)
-  line('Please keep this receipt')
-  line('for returns/exchanges.')
+  line('Please keep this receipt.')
+  bytes.push(LF)
+  // Returns policy
+  line('Returns due to change of mind')
+  line('will NOT be accepted.')
+  line('Items may be exchanged only')
+  line('if in good condition.')
   bytes.push(LF)
   line('This serves as your official receipt.')
   bytes.push(LF)
@@ -295,8 +350,9 @@ export function buildCanvasBytes(data: CanvasData, width = 48): Uint8Array {
   line('SYD CONSTRUCTION')
   line('SUPPLIES TRADING')
   cmd(CMD.NORMAL_SIZE, CMD.BOLD_OFF)
-  line(data.branch)
   line('Construction Materials & Hardware')
+  line(STORE_ADDRESS)
+  line(STORE_CONTACTS)
 
   cmd(CMD.LEFT)
   line(divider)
@@ -371,7 +427,9 @@ export function buildCanvasBytes(data: CanvasData, width = 48): Uint8Array {
   line('** PRICE QUOTATION ONLY **')
   line('** NOT A SALES RECEIPT  **')
   cmd(CMD.BOLD_OFF)
-  line('Prices subject to change.')
+  line('Prices are subject to change')
+  line('without prior notice.')
+  bytes.push(LF)
   line('Valid as of date above.')
   bytes.push(LF)
   line('--- END OF CANVASS SHEET ---')
@@ -407,8 +465,10 @@ export function buildDeliverySlipBytes(data: ReceiptData, width = 48): Uint8Arra
   cmd(CMD.CENTER, CMD.BOLD_ON, CMD.DOUBLE_SIZE)
   line('DELIVERY SLIP')
   cmd(CMD.NORMAL_SIZE, CMD.BOLD_OFF)
-  line('SYD CONSTRUCTION SUPPLIES')
-  line(data.branch)
+  line('SYD CONSTRUCTION SUPPLIES TRADING')
+  line('Construction Materials & Hardware')
+  line(STORE_ADDRESS)
+  line(STORE_CONTACTS)
   cmd(CMD.LEFT)
   line(divider)
 
@@ -424,7 +484,6 @@ export function buildDeliverySlipBytes(data: ReceiptData, width = 48): Uint8Arra
   line('DELIVER TO:')
   cmd(CMD.BOLD_OFF)
   cmd(CMD.DOUBLE_SIZE)
-  // Wrap long customer names
   const nameStr = data.customer.name.substring(0, width)
   line(nameStr)
   cmd(CMD.NORMAL_SIZE)
@@ -449,7 +508,7 @@ export function buildDeliverySlipBytes(data: ReceiptData, width = 48): Uint8Arra
   cmd(CMD.BOLD_OFF)
   for (const item of data.items) {
     const maxNameLen = width - 12
-    const name = item.name.length > maxNameLen ? item.name.substring(0, maxNameLen - 1) + '…' : item.name
+    const name = item.name.length > maxNameLen ? item.name.substring(0, maxNameLen - 1) + '...' : item.name
     line(lr(name, `${item.quantity} ${item.uom}`, width))
   }
   line(thinDivider)
