@@ -9,14 +9,13 @@ BEGIN
   -- Get or create a default UOM (pieces)
   SELECT id INTO default_uom_id
   FROM units_of_measure
-  WHERE code = 'pcs'
+  WHERE code = 'PC'
   LIMIT 1;
 
   -- If pieces doesn't exist, use the first available UOM
   IF default_uom_id IS NULL THEN
     SELECT id INTO default_uom_id
     FROM units_of_measure
-    WHERE is_active = TRUE
     ORDER BY name
     LIMIT 1;
   END IF;
