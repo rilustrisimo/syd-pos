@@ -5,6 +5,8 @@
 DO $$
 DECLARE
   default_uom_id UUID;
+  base_uom_count INTEGER;
+  selling_uom_count INTEGER;
 BEGIN
   -- Get or create a default UOM (pieces)
   SELECT id INTO default_uom_id
@@ -21,14 +23,12 @@ BEGIN
   END IF;
 
   -- Log products with missing base_uom_id before fixing
-  RAISE NOTICE 'Products missing base_uom_id: %', (
-    SELECT COUNT(*) FROM products WHERE base_uom_id IS NULL
-  );
+  SELECT COUNT(*) INTO base_uom_count FROM products WHERE base_uom_id IS NULL;
+  RAISE NOTICE 'Products missing base_uom_id: %', base_uom_count;
 
   -- Log products with missing selling_uom_id before fixing
-  RAISE NOTICE 'Products missing selling_uom_id: %', (
-    SELECT COUNT(*) FROM products WHERE selling_uom_id IS NULL
-  );
+  SELECT COUNT(*) INTO selling_uom_count FROM products WHERE selling_uom_id IS NULL;
+  RAISE NOTICE 'Products missing selling_uom_id: %', selling_uom_count;
 
   -- Fix products missing base_uom_id
   IF default_uom_id IS NOT NULL THEN
@@ -37,8 +37,7 @@ BEGIN
         updated_at = NOW()
     WHERE base_uom_id IS NULL;
 
-    RAISE NOTICE 'Updated % products with missing base_uom_id', 
-      (SELECT changes() FROM pg_stat_all_tables WHERE schemaname = 'public' LIMIT 1);
+    RAISE NOTICE 'Updated % products with missing base_uom_id', base_uom_count;
 
     -- Fix products missing selling_uom_id
     UPDATE products
@@ -46,8 +45,7 @@ BEGIN
         updated_at = NOW()
     WHERE selling_uom_id IS NULL;
 
-    RAISE NOTICE 'Updated % products with missing selling_uom_id', 
-      (SELECT changes() FROM pg_stat_all_tables WHERE schemaname = 'public' LIMIT 1);
+    RAISE NOTICE 'Updated % products with missing selling_uom_id', selling_uom_count;
   ELSE
     RAISE WARNING 'No default UOM found. Please create a UOM before running this migration.';
   END IF;
