@@ -854,6 +854,7 @@ export default function CanvasScreen() {
             <FlatList
               data={canvasesData.data}
               keyExtractor={(c) => c.id}
+              style={{ flex: 1 }}
               contentContainerStyle={{ padding: 16, gap: 10 }}
               renderItem={({ item: canvas }) => (
                 <View style={styles.canvasCard}>
