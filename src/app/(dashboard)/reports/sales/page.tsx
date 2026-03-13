@@ -35,6 +35,8 @@ import {
   Calendar,
   Truck,
   Percent,
+  Copy,
+  CheckCheck,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils/formatting'
 import { getTodayPH } from '@/lib/utils/datetime'
@@ -228,6 +230,7 @@ function SummaryCard({
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function SalesReportPage() {
   const [activeTab, setActiveTab] = useState<'overview' | 'product' | 'category'>('overview')
+  const [copied, setCopied] = useState(false)
 
   // Default to this month
   const [selectedPreset, setSelectedPreset] = useState<string>('this_month')
@@ -341,6 +344,45 @@ export default function SalesReportPage() {
     return preset?.label ?? ''
   }, [selectedPreset, dateFrom, dateTo])
 
+  // ── Copy to clipboard ─────────────────────────────────────────────────────
+  const handleCopy = () => {
+    const top10 = (productData ?? [])
+      .slice()
+      .sort((a, b) => b.total_revenue - a.total_revenue)
+      .slice(0, 10)
+
+    const pad = (s: string, n: number) => s.padEnd(n)
+
+    const productLines = top10.length
+      ? top10.map((p, i) => {
+          const rank  = `${i + 1}.`.padStart(3)
+          const name  = `${p.product_name} (${p.product_code})`
+          return [
+            `${rank} ${name}`,
+            `     Qty: ${p.quantity_sold.toLocaleString('en-PH')}  |  Revenue: ${formatCurrency(p.total_revenue)}  |  Profit: ${formatCurrency(p.gross_profit)}`,
+          ].join('\n')
+        }).join('\n')
+      : '   (no data)'
+
+    const text = [
+      `📊 Sales Report · ${periodLabel}`,
+      `Period: ${dateFrom} – ${dateTo}`,
+      '',
+      `${pad('Revenue:', 16)} ${formatCurrency(summary.revenue)}`,
+      `${pad('Cost (COGS):', 16)} ${formatCurrency(summary.cost)}`,
+      `${pad('Gross Profit:', 16)} ${formatCurrency(summary.profit)}`,
+      `${pad('Margin:', 16)} ${overallMargin.toFixed(1)}%`,
+      '',
+      '📦 Top Products (by Revenue):',
+      productLines,
+    ].join('\n')
+
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+
   return (
     <div className="space-y-6">
       {/* ── Header ── */}
@@ -351,14 +393,23 @@ export default function SalesReportPage() {
             Revenue, cost &amp; profit analysis · {periodLabel}
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isLoading}>
-          {isLoading ? (
-            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-          ) : (
-            <RefreshCw className="h-4 w-4 mr-2" />
-          )}
-          Refresh
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={handleCopy} disabled={isLoading || !productData?.length}>
+            {copied ? (
+              <><CheckCheck className="h-4 w-4 mr-2 text-green-600" />Copied!</>
+            ) : (
+              <><Copy className="h-4 w-4 mr-2" />Copy Report</>
+            )}
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isLoading}>
+            {isLoading ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4 mr-2" />
+            )}
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {/* ── Date Presets + Filters ── */}
