@@ -26,6 +26,7 @@ import {
   Receipt,
   Tag,
   Percent,
+  Monitor,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
@@ -42,6 +43,7 @@ const navigation = [
     icon: ShoppingCart,
     children: [
       { name: 'New Sale', href: '/pos', icon: ShoppingCart },
+      { name: 'Frontline POS', href: '/frontline', icon: Monitor, newTab: true },
       { name: 'Canvas', href: '/pos/canvas', icon: ClipboardList },
       { name: 'History', href: '/pos/history', icon: History },
       { name: 'Returns', href: '/pos/returns', icon: RotateCcw },
@@ -164,6 +166,8 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
                         key={child.href}
                         href={child.href}
                         onClick={onNavigate}
+                        target={child.newTab ? '_blank' : undefined}
+                        rel={child.newTab ? 'noopener noreferrer' : undefined}
                         className={cn(
                           'flex items-center gap-3 rounded-lg px-3 py-1.5 text-sm transition-colors',
                           isChildActive
