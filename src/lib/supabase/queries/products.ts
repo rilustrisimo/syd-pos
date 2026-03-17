@@ -17,9 +17,11 @@ export async function getProducts(params?: {
   categoryId?: string
   page?: number
   limit?: number
+  /** 'active' (default) | 'inactive' | 'all' */
+  statusFilter?: 'active' | 'inactive' | 'all'
 }) {
   const supabase = getClient()
-  const { search, categoryId, page = 1, limit = 50 } = params || {}
+  const { search, categoryId, page = 1, limit = 50, statusFilter = 'active' } = params || {}
   const offset = (page - 1) * limit
 
   let query = supabase
@@ -31,9 +33,15 @@ export async function getProducts(params?: {
       base_uom:units_of_measure!products_base_uom_id_fkey(*),
       selling_uom:units_of_measure!products_selling_uom_id_fkey(*)
     `, { count: 'exact' })
-    .eq('is_active', true)
     .order('name')
     .range(offset, offset + limit - 1)
+
+  if (statusFilter === 'active') {
+    query = query.eq('is_active', true)
+  } else if (statusFilter === 'inactive') {
+    query = query.eq('is_active', false)
+  }
+  // 'all' — no is_active filter
 
   if (search) {
     query = query.or(`name.ilike.%${search}%,code.ilike.%${search}%`)
@@ -170,6 +178,18 @@ export async function deleteProduct(id: string) {
   const { error } = await supabase
     .from('products')
     .update({ is_active: false } as any)
+    .eq('id', id)
+
+  if (error) throw error
+}
+
+// Re-activate a previously deactivated product
+export async function activateProduct(id: string) {
+  const supabase = getClient()
+
+  const { error } = await supabase
+    .from('products')
+    .update({ is_active: true } as any)
     .eq('id', id)
 
   if (error) throw error

@@ -4,7 +4,7 @@ import { use } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
-import { useProduct, useDeleteProduct } from '@/hooks/useProducts'
+import { useProduct, useDeleteProduct, useActivateProduct } from '@/hooks/useProducts'
 import { useProductPurchaseHistory } from '@/hooks/usePurchases'
 import { useProductSalesHistory } from '@/hooks/useTransactions'
 import { useProductInventory, useInventoryMovements } from '@/hooks/useInventory'
@@ -31,6 +31,7 @@ import {
   Activity,
   AlertCircle,
   TrendingDown,
+  Power,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -59,6 +60,17 @@ export default function ProductDetailPage({ params }: ProductDetailPageProps) {
   const { data: salesHistory = [], isLoading: salesLoading } = useProductSalesHistory(id)
   const { data: product, isLoading, error } = useProduct(id)
   const deleteProduct = useDeleteProduct()
+  const activateProduct = useActivateProduct()
+
+  const handleActivate = async () => {
+    if (!product) return
+    try {
+      await activateProduct.mutateAsync(id)
+      toast.success(`"${product.name}" has been activated`)
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to activate product')
+    }
+  }
   const { data: purchaseHistory = [], isLoading: historyLoading } = useProductPurchaseHistory(id)
   const { data: branchInventory = [], isLoading: inventoryLoading } = useProductInventory(id)
   const { data: movementsResult, isLoading: movementsLoading } = useInventoryMovements({ productId: id, limit: 200 })
@@ -134,26 +146,60 @@ export default function ProductDetailPage({ params }: ProductDetailPageProps) {
           </div>
         </div>
         <div className="flex gap-2">
-          <Link href={`/products/${id}/edit`}>
-            <Button variant="outline">
-              <Pencil className="mr-2 h-4 w-4" />
-              Edit
-            </Button>
-          </Link>
-          <Button 
-            variant="destructive" 
-            onClick={handleDelete}
-            disabled={deleteProduct.isPending}
-          >
-            <Trash2 className="mr-2 h-4 w-4" />
-            Delete
-          </Button>
+          {product.is_active ? (
+            <>
+              <Link href={`/products/${id}/edit`}>
+                <Button variant="outline">
+                  <Pencil className="mr-2 h-4 w-4" />
+                  Edit
+                </Button>
+              </Link>
+              <Button
+                variant="destructive"
+                onClick={handleDelete}
+                disabled={deleteProduct.isPending}
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                Delete
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button
+                variant="default"
+                onClick={handleActivate}
+                disabled={activateProduct.isPending}
+              >
+                <Power className="mr-2 h-4 w-4" />
+                {activateProduct.isPending ? 'Activating…' : 'Activate'}
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleDelete}
+                disabled={deleteProduct.isPending}
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                Delete
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
+      {/* Inactive alert */}
+      {!product.is_active && (
+        <Alert className="border-orange-300 bg-orange-50 text-orange-900">
+          <XCircle className="h-4 w-4 text-orange-600" />
+          <AlertDescription>
+            This product is <strong>inactive</strong> — it will not appear in the POS or be available for new sales.
+            Click <strong>Activate</strong> above to make it available again.
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Status Badge */}
       <div>
-        <Badge 
+        <Badge
           variant={product.is_active ? 'default' : 'secondary'}
           className="text-base px-4 py-1"
         >

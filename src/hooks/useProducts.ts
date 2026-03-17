@@ -8,6 +8,7 @@ import {
   createProduct,
   updateProduct,
   deleteProduct,
+  activateProduct,
   getCategories,
   getSubcategories,
   getUnitsOfMeasure,
@@ -26,6 +27,7 @@ export function useProducts(params?: {
   categoryId?: string
   page?: number
   limit?: number
+  statusFilter?: 'active' | 'inactive' | 'all'
 }) {
   return useQuery({
     queryKey: ['products', params],
@@ -87,6 +89,20 @@ export function useDeleteProduct() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products'] })
       queryClient.refetchQueries({ queryKey: ['products'], type: 'active' })
+    },
+  })
+}
+
+export function useActivateProduct() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (id: string) => activateProduct(id),
+    onSuccess: (_, id) => {
+      queryClient.invalidateQueries({ queryKey: ['products'] })
+      queryClient.invalidateQueries({ queryKey: ['products', id] })
+      queryClient.refetchQueries({ queryKey: ['products'], type: 'active' })
+      queryClient.refetchQueries({ queryKey: ['products', id], type: 'active' })
     },
   })
 }

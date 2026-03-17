@@ -21,16 +21,19 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Search, Plus, Package, ChevronLeft, ChevronRight, FolderTree } from 'lucide-react'
+import { Search, Plus, Package, ChevronLeft, ChevronRight, FolderTree, EyeOff } from 'lucide-react'
 import { ProductExportDialog } from '@/components/products/product-export-dialog'
 
 const STORAGE_KEY = 'products-filters'
 
+type StatusFilter = 'all' | 'active' | 'inactive'
+
 export default function ProductsPage() {
   const [search, setSearch] = useState('')
   const [categoryId, setCategoryId] = useState<string>('')
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [page, setPage] = useState(1)
   const [isInitialized, setIsInitialized] = useState(false)
   const limit = 20
@@ -43,6 +46,7 @@ export default function ProductsPage() {
         const parsed = JSON.parse(savedFilters)
         setSearch(parsed.search || '')
         setCategoryId(parsed.categoryId || '')
+        setStatusFilter(parsed.statusFilter || 'all')
         setPage(parsed.page || 1)
       }
     } catch (error) {
@@ -55,18 +59,17 @@ export default function ProductsPage() {
   // Save filters to sessionStorage whenever they change
   useEffect(() => {
     if (!isInitialized) return
-    
     try {
-      const filters = { search, categoryId, page }
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(filters))
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ search, categoryId, statusFilter, page }))
     } catch (error) {
       console.error('Failed to save filters:', error)
     }
-  }, [search, categoryId, page, isInitialized])
+  }, [search, categoryId, statusFilter, page, isInitialized])
 
   const { data: productsData, isLoading } = useProducts({
     search: search || undefined,
     categoryId: categoryId || undefined,
+    statusFilter,
     page,
     limit,
   })
@@ -167,6 +170,22 @@ export default function ProductsPage() {
                 ))}
               </SelectContent>
             </Select>
+            <Select
+              value={statusFilter}
+              onValueChange={(value) => {
+                setStatusFilter(value as StatusFilter)
+                setPage(1)
+              }}
+            >
+              <SelectTrigger className="w-[160px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="active">Active Only</SelectItem>
+                <SelectItem value="inactive">Inactive Only</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </CardContent>
       </Card>
@@ -188,6 +207,7 @@ export default function ProductsPage() {
                   onClick={() => {
                     setSearch('')
                     setCategoryId('')
+                    setStatusFilter('all')
                   }}
                 >
                   Clear filters
@@ -202,6 +222,7 @@ export default function ProductsPage() {
                   <TableRow>
                     <TableHead>Code</TableHead>
                     <TableHead>Name</TableHead>
+                    <TableHead>Status</TableHead>
                     <TableHead>Category</TableHead>
                     <TableHead>Unit</TableHead>
                     <TableHead className="text-right">Cost</TableHead>
@@ -211,7 +232,10 @@ export default function ProductsPage() {
                 </TableHeader>
                 <TableBody>
                   {products.map((product) => (
-                    <TableRow key={product.id}>
+                    <TableRow
+                      key={product.id}
+                      className={!product.is_active ? 'opacity-50 bg-muted/30' : undefined}
+                    >
                       <TableCell>
                         <Link
                           href={`/products/${product.id}`}
@@ -221,12 +245,24 @@ export default function ProductsPage() {
                         </Link>
                       </TableCell>
                       <TableCell>
-                        <Link
-                          href={`/products/${product.id}`}
-                          className="font-medium hover:underline"
-                        >
-                          {product.name}
-                        </Link>
+                        <div className="flex items-center gap-2">
+                          <Link
+                            href={`/products/${product.id}`}
+                            className="font-medium hover:underline"
+                          >
+                            {product.name}
+                          </Link>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {product.is_active ? (
+                          <Badge variant="default" className="text-xs">Active</Badge>
+                        ) : (
+                          <Badge variant="secondary" className="text-xs gap-1">
+                            <EyeOff className="h-3 w-3" />
+                            Inactive
+                          </Badge>
+                        )}
                       </TableCell>
                       <TableCell>
                         <Badge variant="outline">
