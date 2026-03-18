@@ -23,6 +23,9 @@ import {
   Loader2,
   RefreshCw,
   ArrowRight,
+  Landmark,
+  FileWarning,
+  Banknote,
 } from 'lucide-react'
 import Link from 'next/link'
 import {
@@ -33,6 +36,7 @@ import {
   useLowStockItems,
   useRecentTransactions,
 } from '@/hooks/useDashboard'
+import { useUpcomingPayments } from '@/hooks/useLiabilities'
 import { formatCurrency, formatDate, formatTime } from '@/lib/utils/formatting'
 import {
   ResponsiveContainer,
@@ -165,6 +169,7 @@ export default function DashboardPage() {
   const { data: hourlySales, isLoading: hourlyLoading } = useHourlySales()
   const { data: lowStock, isLoading: lowStockLoading } = useLowStockItems()
   const { data: recentTxns, isLoading: recentLoading } = useRecentTransactions()
+  const { data: upcomingPayments, isLoading: upcomingLoading } = useUpcomingPayments(7)
 
   const isLoading = statsLoading
 
@@ -429,6 +434,66 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Upcoming Liability Payments */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <Landmark className="h-5 w-5 text-muted-foreground" />
+              Upcoming Payments
+            </CardTitle>
+            <CardDescription>Liabilities due in the next 7 days</CardDescription>
+          </div>
+          <Link href="/liabilities">
+            <Button variant="ghost" size="sm">
+              View All <ArrowRight className="ml-1 h-4 w-4" />
+            </Button>
+          </Link>
+        </CardHeader>
+        <CardContent>
+          {upcomingLoading ? (
+            <div className="flex h-20 items-center justify-center">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : upcomingPayments && upcomingPayments.length > 0 ? (
+            <div className="space-y-2">
+              {upcomingPayments.slice(0, 5).map((item) => (
+                <div key={item.id} className={`flex items-center gap-3 rounded-lg border px-3 py-2 text-sm ${item.days_until_due < 0 ? 'border-red-200 bg-red-50' : item.days_until_due <= 3 ? 'border-amber-200 bg-amber-50' : ''}`}>
+                  <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded ${item.type === 'payable' ? 'bg-amber-100' : 'bg-purple-100'}`}>
+                    {item.type === 'payable'
+                      ? <FileWarning className="h-3 w-3 text-amber-600" />
+                      : <Banknote className="h-3 w-3 text-purple-600" />
+                    }
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium truncate text-xs">{item.reference}</p>
+                    <p className="text-xs text-muted-foreground truncate">{item.description}</p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="font-semibold text-sm">{formatCurrency(item.amount_due)}</p>
+                    <p className={`text-xs ${item.days_until_due < 0 ? 'text-red-600 font-medium' : item.days_until_due <= 3 ? 'text-amber-600' : 'text-muted-foreground'}`}>
+                      {item.days_until_due < 0 ? `${Math.abs(item.days_until_due)}d overdue` : item.days_until_due === 0 ? 'Due today' : `${item.days_until_due}d left`}
+                    </p>
+                  </div>
+                </div>
+              ))}
+              {upcomingPayments.length > 5 && (
+                <p className="text-xs text-muted-foreground text-center pt-1">
+                  +{upcomingPayments.length - 5} more — <Link href="/liabilities/cashflow" className="underline">see all</Link>
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="flex h-20 items-center justify-center text-muted-foreground">
+              <div className="text-center">
+                <Landmark className="mx-auto h-6 w-6 mb-1" />
+                <p className="text-sm">No payments due in the next 7 days</p>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Quick Actions */}
       <Card>

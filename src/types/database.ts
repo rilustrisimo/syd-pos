@@ -18,6 +18,9 @@ export type POStatus = 'draft' | 'sent' | 'confirmed' | 'partially_received' | '
 export type MovementType = 'purchase' | 'sale' | 'adjustment' | 'return' | 'transfer' | 'damaged_return'
 export type TransactionType = 'sale' | 'return'
 export type ReturnReason = 'customer_request' | 'wrong_item' | 'defective' | 'damaged' | 'expired' | 'quality_issue' | 'other'
+export type LiabilityPayableStatus = 'unpaid' | 'partial' | 'paid' | 'overdue'
+export type LoanStatus = 'active' | 'completed' | 'defaulted'
+export type InstallmentStatus = 'upcoming' | 'paid' | 'partial' | 'overdue'
 
 // Row types (what you get from the database)
 export interface BranchRow {
@@ -300,6 +303,134 @@ export interface ExpenseRow {
   updated_at: string
 }
 
+// ── Liability Payables ────────────────────────────────────────────────────────
+
+export interface LiabilityPayableRow {
+  id: string
+  payable_number: string
+  branch_id: string
+  supplier_id: string
+  description: string | null
+  invoice_reference: string | null
+  total_amount: number
+  paid_amount: number
+  invoice_date: string
+  credit_days: number
+  due_date: string
+  status: LiabilityPayableStatus
+  notes: string | null
+  is_deleted: boolean
+  deleted_at: string | null
+  created_by: string
+  created_at: string
+  updated_at: string
+}
+
+export interface LiabilityPayablePOLinkRow {
+  id: string
+  payable_id: string
+  po_id: string
+  amount: number | null
+  notes: string | null
+  created_at: string
+}
+
+export interface LiabilityPayablePaymentRow {
+  id: string
+  payable_id: string
+  amount: number
+  payment_date: string
+  payment_method: PaymentMethod
+  reference_number: string | null
+  notes: string | null
+  created_by: string
+  created_at: string
+}
+
+// ── Liability Loans ───────────────────────────────────────────────────────────
+
+export interface LiabilityLoanRow {
+  id: string
+  loan_number: string
+  branch_id: string
+  lender_name: string
+  principal_amount: number
+  interest_rate_monthly: number
+  term_months: number
+  start_date: string
+  monthly_payment: number
+  total_interest: number
+  total_payable: number
+  outstanding_balance: number
+  status: LoanStatus
+  notes: string | null
+  loan_reference: string | null
+  is_deleted: boolean
+  deleted_at: string | null
+  created_by: string
+  created_at: string
+  updated_at: string
+}
+
+export interface LiabilityLoanScheduleRow {
+  id: string
+  loan_id: string
+  installment_number: number
+  due_date: string
+  principal_portion: number
+  interest_portion: number
+  scheduled_amount: number
+  balance_before: number
+  balance_after: number
+  paid_amount: number
+  paid_date: string | null
+  payment_reference: string | null
+  status: InstallmentStatus
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface LiabilityLoanPaymentRow {
+  id: string
+  loan_id: string
+  schedule_id: string | null
+  amount: number
+  payment_date: string
+  payment_method: PaymentMethod
+  reference_number: string | null
+  notes: string | null
+  created_by: string
+  created_at: string
+}
+
+// ── Notifications ─────────────────────────────────────────────────────────────
+
+export interface NotificationRow {
+  id: string
+  type: string
+  title: string
+  message: string
+  entity_type: string | null
+  entity_id: string | null
+  target_roles: string[]
+  branch_id: string | null
+  metadata: Record<string, unknown> | null
+  is_read: boolean
+  read_at: string | null
+  created_at: string
+}
+
+export interface NotificationSettingsRow {
+  id: string
+  branch_id: string | null
+  entity_type: string
+  reminder_days: number[]
+  email_enabled: boolean
+  in_app_enabled: boolean
+  updated_at: string
+}
+
 // Database interface for Supabase
 export interface Database {
   public: {
@@ -404,6 +535,46 @@ export interface Database {
         Insert: Omit<ExpenseRow, 'id' | 'created_at' | 'updated_at' | 'is_deleted' | 'deleted_at'> & { id?: string; created_at?: string; updated_at?: string; is_deleted?: boolean; deleted_at?: string | null }
         Update: Partial<Omit<ExpenseRow, 'id' | 'created_at' | 'updated_at'>>
       }
+      liability_payables: {
+        Row: LiabilityPayableRow
+        Insert: Omit<LiabilityPayableRow, 'id' | 'created_at' | 'updated_at' | 'is_deleted' | 'deleted_at' | 'paid_amount' | 'status'> & { id?: string; created_at?: string; updated_at?: string; is_deleted?: boolean; deleted_at?: string | null; paid_amount?: number; status?: LiabilityPayableStatus }
+        Update: Partial<Omit<LiabilityPayableRow, 'id' | 'created_at' | 'updated_at'>>
+      }
+      liability_payable_po_links: {
+        Row: LiabilityPayablePOLinkRow
+        Insert: Omit<LiabilityPayablePOLinkRow, 'id' | 'created_at'> & { id?: string; created_at?: string }
+        Update: Partial<Omit<LiabilityPayablePOLinkRow, 'id' | 'created_at'>>
+      }
+      liability_payable_payments: {
+        Row: LiabilityPayablePaymentRow
+        Insert: Omit<LiabilityPayablePaymentRow, 'id' | 'created_at'> & { id?: string; created_at?: string }
+        Update: Partial<Omit<LiabilityPayablePaymentRow, 'id' | 'created_at'>>
+      }
+      liability_loans: {
+        Row: LiabilityLoanRow
+        Insert: Omit<LiabilityLoanRow, 'id' | 'created_at' | 'updated_at' | 'is_deleted' | 'deleted_at'> & { id?: string; created_at?: string; updated_at?: string; is_deleted?: boolean; deleted_at?: string | null }
+        Update: Partial<Omit<LiabilityLoanRow, 'id' | 'created_at' | 'updated_at'>>
+      }
+      liability_loan_schedule: {
+        Row: LiabilityLoanScheduleRow
+        Insert: Omit<LiabilityLoanScheduleRow, 'id' | 'created_at' | 'updated_at' | 'paid_amount' | 'status' | 'paid_date'> & { id?: string; created_at?: string; updated_at?: string; paid_amount?: number; status?: InstallmentStatus; paid_date?: string | null }
+        Update: Partial<Omit<LiabilityLoanScheduleRow, 'id' | 'created_at' | 'updated_at'>>
+      }
+      liability_loan_payments: {
+        Row: LiabilityLoanPaymentRow
+        Insert: Omit<LiabilityLoanPaymentRow, 'id' | 'created_at'> & { id?: string; created_at?: string }
+        Update: Partial<Omit<LiabilityLoanPaymentRow, 'id' | 'created_at'>>
+      }
+      notifications: {
+        Row: NotificationRow
+        Insert: Omit<NotificationRow, 'id' | 'created_at' | 'is_read' | 'read_at'> & { id?: string; created_at?: string; is_read?: boolean; read_at?: string | null }
+        Update: Partial<Omit<NotificationRow, 'id' | 'created_at'>>
+      }
+      notification_settings: {
+        Row: NotificationSettingsRow
+        Insert: Omit<NotificationSettingsRow, 'id' | 'updated_at'> & { id?: string; updated_at?: string }
+        Update: Partial<Omit<NotificationSettingsRow, 'id' | 'updated_at'>>
+      }
     }
     Views: {
       [_ in never]: never
@@ -421,6 +592,14 @@ export interface Database {
         Args: Record<string, never>
         Returns: string
       }
+      generate_payable_number: {
+        Args: Record<string, never>
+        Returns: string
+      }
+      generate_loan_number: {
+        Args: Record<string, never>
+        Returns: string
+      }
     }
     Enums: {
       user_role: UserRole
@@ -432,6 +611,9 @@ export interface Database {
       movement_type: MovementType
       transaction_type: TransactionType
       return_reason: ReturnReason
+      liability_payable_status: LiabilityPayableStatus
+      loan_status: LoanStatus
+      installment_status: InstallmentStatus
     }
   }
 }

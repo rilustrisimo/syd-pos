@@ -27,6 +27,10 @@ import {
   Tag,
   Percent,
   Monitor,
+  Landmark,
+  FileWarning,
+  Banknote,
+  CalendarClock,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
@@ -64,6 +68,17 @@ const navigation = [
     ],
   },
   {
+    name: 'Liabilities',
+    href: '/liabilities',
+    icon: Landmark,
+    children: [
+      { name: 'Overview', href: '/liabilities', icon: Landmark },
+      { name: 'Payables', href: '/liabilities/payables', icon: FileWarning },
+      { name: 'Loans', href: '/liabilities/loans', icon: Banknote },
+      { name: 'Cash Flow', href: '/liabilities/cashflow', icon: CalendarClock },
+    ],
+  },
+  {
     name: 'Reports',
     href: '/reports',
     icon: BarChart3,
@@ -71,6 +86,7 @@ const navigation = [
       { name: 'Sales', href: '/reports/sales', icon: TrendingUp },
       { name: 'P&L Report', href: '/reports/pl', icon: TrendingDown },
       { name: 'AR Aging', href: '/reports/ar-aging', icon: Clock },
+      { name: 'AP Aging', href: '/reports/ap-aging', icon: FileWarning },
       { name: 'Inventory Turnover', href: '/reports/inventory-turnover', icon: RefreshCw },
       { name: 'Profit Margin', href: '/reports/profit-margin', icon: Percent },
       { name: 'Supplier History', href: '/reports/supplier-history', icon: Truck },

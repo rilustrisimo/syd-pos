@@ -1223,6 +1223,31 @@ export async function getPLReport(dateFrom: string, dateTo: string): Promise<PLR
   const expensesByCategory = Array.from(categoryMap.values())
     .sort((a, b) => b.total_amount - a.total_amount)
 
+  // ── 2b. Loan interest expense ───────────────────────────────────────────────
+  const { data: interestData } = await supabase
+    .from('liability_loan_schedule')
+    .select('interest_portion')
+    .eq('status', 'paid')
+    .gte('paid_date', dateFrom)
+    .lte('paid_date', dateTo)
+
+  const totalInterest = (interestData || []).reduce(
+    (sum, row) => sum + (row.interest_portion || 0),
+    0
+  )
+
+  if (totalInterest > 0) {
+    totalExpenses += totalInterest
+    expensesByCategory.push({
+      category_id: null,
+      category_name: 'Interest Expense',
+      category_color: '#8b5cf6',
+      total_amount: totalInterest,
+      count: (interestData || []).length,
+    })
+    expensesByCategory.sort((a, b) => b.total_amount - a.total_amount)
+  }
+
   // ── 3. Daily trend ─────────────────────────────────────────────────────────
 
   const dailyTrend: DailyPLPoint[] = []
