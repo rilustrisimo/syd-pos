@@ -117,8 +117,10 @@ export default function LoansPage() {
   const principal = parseFloat(createForm.principal_amount) || 0
   const rate = parseFloat(createForm.interest_rate_monthly) || 0
   const termMonths = parseInt(createForm.term_months) || 0
-  const amortPreview = (principal > 0 && termMonths > 0 && (rate > 0 || createForm.rate_type === 'interest_only'))
-    ? calculateAmortization(principal, rate, termMonths, new Date(createForm.start_date), createForm.rate_type)
+  const startDateObj = new Date(createForm.start_date)
+  const startDateValid = !isNaN(startDateObj.getTime()) && createForm.start_date.length === 10
+  const amortPreview = (principal > 0 && termMonths > 0 && startDateValid && (rate > 0 || createForm.rate_type === 'interest_only'))
+    ? calculateAmortization(principal, rate, termMonths, startDateObj, createForm.rate_type)
     : null
 
   const applyFilters = () => {

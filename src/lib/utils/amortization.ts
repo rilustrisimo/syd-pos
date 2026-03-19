@@ -59,15 +59,17 @@ export function calculateAmortization(
   startDate: Date = new Date(),
   rateType: RateType = 'flat_rate'
 ): AmortizationResult {
+  // Guard against invalid dates (e.g. while user is mid-typing)
+  const validStart = isNaN(startDate.getTime()) ? new Date() : startDate
   const i = monthlyRate / 100  // percent → decimal
 
   if (rateType === 'flat_rate') {
-    return calcFlatRate(principal, i, termMonths, startDate)
+    return calcFlatRate(principal, i, termMonths, validStart)
   }
   if (rateType === 'diminishing') {
-    return calcDiminishing(principal, i, termMonths, startDate)
+    return calcDiminishing(principal, i, termMonths, validStart)
   }
-  return calcInterestOnly(principal, i, termMonths, startDate)
+  return calcInterestOnly(principal, i, termMonths, validStart)
 }
 
 // ─── Flat Rate (Add-on) ────────────────────────────────────────────────────
