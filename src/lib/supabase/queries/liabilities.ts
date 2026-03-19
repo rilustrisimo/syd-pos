@@ -317,6 +317,7 @@ export interface CreateLoanInput {
   lender_name: string
   principal_amount: number
   interest_rate_monthly: number
+  rate_type: 'flat_rate' | 'diminishing' | 'interest_only'
   term_months: number
   start_date: string
   monthly_payment: number
@@ -350,6 +351,7 @@ export async function createLiabilityLoan(input: CreateLoanInput): Promise<Liabi
       lender_name: input.lender_name,
       principal_amount: input.principal_amount,
       interest_rate_monthly: input.interest_rate_monthly,
+      rate_type: input.rate_type,
       term_months: input.term_months,
       start_date: input.start_date,
       monthly_payment: input.monthly_payment,

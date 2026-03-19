@@ -66,7 +66,7 @@ import {
 } from '@/hooks/useLiabilities'
 import { useAuthStore } from '@/lib/stores/auth'
 import { formatCurrency, formatDate } from '@/lib/utils/formatting'
-import { calculateAmortization } from '@/lib/utils/amortization'
+import { calculateAmortization, RATE_TYPE_LABELS, RATE_TYPE_DESCRIPTIONS, type RateType } from '@/lib/utils/amortization'
 
 function LoanStatusBadge({ status }: { status: string }) {
   const map: Record<string, { label: string; className: string }> = {
@@ -97,6 +97,7 @@ export default function LoansPage() {
     lender_name: '',
     principal_amount: '',
     interest_rate_monthly: '',
+    rate_type: 'flat_rate' as RateType,
     term_months: '12',
     start_date: new Date().toISOString().split('T')[0],
     loan_reference: '',
@@ -116,8 +117,8 @@ export default function LoansPage() {
   const principal = parseFloat(createForm.principal_amount) || 0
   const rate = parseFloat(createForm.interest_rate_monthly) || 0
   const termMonths = parseInt(createForm.term_months) || 0
-  const amortPreview = (principal > 0 && rate > 0 && termMonths > 0)
-    ? calculateAmortization(principal, rate, termMonths, new Date(createForm.start_date))
+  const amortPreview = (principal > 0 && termMonths > 0 && (rate > 0 || createForm.rate_type === 'interest_only'))
+    ? calculateAmortization(principal, rate, termMonths, new Date(createForm.start_date), createForm.rate_type)
     : null
 
   const applyFilters = () => {
@@ -140,6 +141,7 @@ export default function LoansPage() {
         lender_name: createForm.lender_name.trim(),
         principal_amount: principal,
         interest_rate_monthly: rate,
+        rate_type: createForm.rate_type,
         term_months: termMonths,
         start_date: createForm.start_date,
         monthly_payment: amortPreview.monthly_payment,
@@ -153,7 +155,7 @@ export default function LoansPage() {
       { loading: 'Creating loan...', success: 'Loan created with amortization schedule', error: (e) => e.message }
     )
     setCreateOpen(false)
-    setCreateForm({ lender_name: '', principal_amount: '', interest_rate_monthly: '', term_months: '12', start_date: new Date().toISOString().split('T')[0], loan_reference: '', notes: '' })
+    setCreateForm({ lender_name: '', principal_amount: '', interest_rate_monthly: '', rate_type: 'flat_rate', term_months: '12', start_date: new Date().toISOString().split('T')[0], loan_reference: '', notes: '' })
   }
 
   const handleDelete = async () => {
@@ -218,6 +220,7 @@ export default function LoansPage() {
                   <TableHead>Lender</TableHead>
                   <TableHead className="text-right">Principal</TableHead>
                   <TableHead>Rate / Month</TableHead>
+                  <TableHead>Method</TableHead>
                   <TableHead>Term</TableHead>
                   <TableHead className="text-right">Monthly</TableHead>
                   <TableHead className="text-right">Outstanding</TableHead>
@@ -228,9 +231,9 @@ export default function LoansPage() {
               </TableHeader>
               <TableBody>
                 {isLoading ? (
-                  <TableRow><TableCell colSpan={10} className="h-32 text-center"><Loader2 className="inline h-6 w-6 animate-spin" /></TableCell></TableRow>
+                  <TableRow><TableCell colSpan={11} className="h-32 text-center"><Loader2 className="inline h-6 w-6 animate-spin" /></TableCell></TableRow>
                 ) : loans.length === 0 ? (
-                  <TableRow><TableCell colSpan={10} className="h-32 text-center text-muted-foreground">No loans found</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={11} className="h-32 text-center text-muted-foreground">No loans found</TableCell></TableRow>
                 ) : (
                   loans.map(loan => {
                     const paidCount = loan.paid_installments_count
@@ -241,6 +244,9 @@ export default function LoansPage() {
                         <TableCell className="font-medium">{loan.lender_name}</TableCell>
                         <TableCell className="text-right font-mono">{formatCurrency(loan.principal_amount)}</TableCell>
                         <TableCell>{loan.interest_rate_monthly}%</TableCell>
+                        <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                          {RATE_TYPE_LABELS[loan.rate_type as RateType] ?? loan.rate_type}
+                        </TableCell>
                         <TableCell>{loan.term_months}mo</TableCell>
                         <TableCell className="text-right font-mono">{formatCurrency(loan.monthly_payment)}</TableCell>
                         <TableCell className="text-right font-mono font-semibold">{formatCurrency(loan.outstanding_balance)}</TableCell>
@@ -309,8 +315,28 @@ export default function LoansPage() {
                 </div>
                 <div className="space-y-2">
                   <Label>Monthly Interest Rate (%) *</Label>
-                  <Input type="number" min="0.01" step="0.01" placeholder="0.42" value={createForm.interest_rate_monthly} onChange={e => setCreateForm(f => ({ ...f, interest_rate_monthly: e.target.value }))} required />
+                  <Input type="number" min="0" step="0.01" placeholder="0.42" value={createForm.interest_rate_monthly} onChange={e => setCreateForm(f => ({ ...f, interest_rate_monthly: e.target.value }))} required />
                   <p className="text-xs text-muted-foreground">e.g., 0.42 for 0.42% per month</p>
+                </div>
+                <div className="col-span-2 space-y-2">
+                  <Label>Interest Method *</Label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {(Object.keys(RATE_TYPE_LABELS) as RateType[]).map(type => (
+                      <button
+                        key={type}
+                        type="button"
+                        onClick={() => setCreateForm(f => ({ ...f, rate_type: type }))}
+                        className={`rounded-lg border p-3 text-left transition-colors ${
+                          createForm.rate_type === type
+                            ? 'border-primary bg-primary/5 ring-1 ring-primary'
+                            : 'border-border hover:bg-muted/50'
+                        }`}
+                      >
+                        <p className="text-xs font-semibold">{RATE_TYPE_LABELS[type]}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5 leading-tight">{RATE_TYPE_DESCRIPTIONS[type]}</p>
+                      </button>
+                    ))}
+                  </div>
                 </div>
                 <div className="space-y-2">
                   <Label>Term (months) *</Label>

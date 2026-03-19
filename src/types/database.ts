@@ -356,6 +356,7 @@ export interface LiabilityLoanRow {
   lender_name: string
   principal_amount: number
   interest_rate_monthly: number
+  rate_type: 'flat_rate' | 'diminishing' | 'interest_only'
   term_months: number
   start_date: string
   monthly_payment: number

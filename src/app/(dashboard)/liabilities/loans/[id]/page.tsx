@@ -46,6 +46,7 @@ import { toast } from 'sonner'
 import { useLoanById, useRecordLoanPayment } from '@/hooks/useLiabilities'
 import { useAuthStore } from '@/lib/stores/auth'
 import { formatCurrency, formatDate } from '@/lib/utils/formatting'
+import { RATE_TYPE_LABELS, type RateType } from '@/lib/utils/amortization'
 import type { LiabilityLoanScheduleRow } from '@/types/database'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
@@ -129,7 +130,7 @@ export default function LoanDetailPage({ params }: { params: Promise<{ id: strin
     doc.text(`Loan: ${loan.loan_number}`, 14, 30)
     doc.text(`Lender: ${loan.lender_name}`, 14, 37)
     doc.text(`Principal: ${formatCurrency(loan.principal_amount)}`, 14, 44)
-    doc.text(`Monthly Rate: ${loan.interest_rate_monthly}%`, 14, 51)
+    doc.text(`Monthly Rate: ${loan.interest_rate_monthly}%  |  Method: ${RATE_TYPE_LABELS[loan.rate_type as RateType] ?? loan.rate_type}`, 14, 51)
     doc.text(`Term: ${loan.term_months} months`, 14, 58)
     doc.text(`Monthly Payment: ${formatCurrency(loan.monthly_payment)}`, 14, 65)
     doc.text(`Total Interest: ${formatCurrency(loan.total_interest)}`, 14, 72)
@@ -249,6 +250,7 @@ export default function LoanDetailPage({ params }: { params: Promise<{ id: strin
         </CardHeader>
         <CardContent className="grid grid-cols-2 gap-y-3 text-sm sm:grid-cols-3">
           <div><p className="text-xs text-muted-foreground">Rate</p><p className="font-medium">{loan.interest_rate_monthly}% / month</p></div>
+          <div><p className="text-xs text-muted-foreground">Interest Method</p><p className="font-medium">{RATE_TYPE_LABELS[loan.rate_type as RateType] ?? loan.rate_type}</p></div>
           <div><p className="text-xs text-muted-foreground">Term</p><p className="font-medium">{loan.term_months} months</p></div>
           <div><p className="text-xs text-muted-foreground">Start Date</p><p className="font-medium">{formatDate(loan.start_date)}</p></div>
           <div><p className="text-xs text-muted-foreground">Total Payable</p><p className="font-medium">{formatCurrency(loan.total_payable)}</p></div>
