@@ -560,14 +560,18 @@ async function updateCustomerBalance(customerId: string, amount: number) {
 // Get today's transactions summary
 export async function getTodaysSummary(branchId?: string) {
   const supabase = createClient()
-  const today = new Date().toISOString().split('T')[0]
+  // Use Philippine time (UTC+8) so "today" matches what the Sales Report shows
+  const nowPH = new Date(Date.now() + 8 * 60 * 60 * 1000)
+  const today = nowPH.toISOString().split('T')[0]
+  const startTime = new Date(`${today}T00:00:00+08:00`).toISOString()
+  const endTime = new Date(`${today}T23:59:59.999+08:00`).toISOString()
 
   let query = supabase
     .from('transactions')
     .select('total_amount, payment_status, transaction_type')
-    .eq('is_deleted', false)  // Explicitly filter out deleted transactions
-    .gte('transaction_date', `${today}T00:00:00`)
-    .lte('transaction_date', `${today}T23:59:59`)
+    .eq('is_deleted', false)
+    .gte('transaction_date', startTime)
+    .lte('transaction_date', endTime)
 
   if (branchId) {
     query = query.eq('branch_id', branchId)
