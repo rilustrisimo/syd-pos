@@ -1223,18 +1223,20 @@ export async function getPLReport(dateFrom: string, dateTo: string): Promise<PLR
   const expensesByCategory = Array.from(categoryMap.values())
     .sort((a, b) => b.total_amount - a.total_amount)
 
-  // ── 2b. Loan interest expense ───────────────────────────────────────────────
+  // ── 2b. Loan interest expense (by actual payment_date, not trigger-set paid_date) ──
+  // Each payment is proportionally allocated: interest = payment × (interest_portion / scheduled_amount)
   const { data: interestData } = await supabase
-    .from('liability_loan_schedule')
-    .select('interest_portion')
-    .eq('status', 'paid')
-    .gte('paid_date', dateFrom)
-    .lte('paid_date', dateTo)
+    .from('liability_loan_payments')
+    .select('amount, liability_loan_schedule(interest_portion, scheduled_amount)')
+    .gte('payment_date', dateFrom)
+    .lte('payment_date', dateTo)
 
-  const totalInterest = (interestData || []).reduce(
-    (sum, row) => sum + (row.interest_portion || 0),
-    0
-  )
+  const totalInterest = (interestData || []).reduce((sum, payment) => {
+    const schedule = payment.liability_loan_schedule as unknown as { interest_portion: number; scheduled_amount: number } | null
+    if (!schedule || !schedule.scheduled_amount) return sum
+    const interestShare = (payment.amount / schedule.scheduled_amount) * schedule.interest_portion
+    return sum + interestShare
+  }, 0)
 
   if (totalInterest > 0) {
     totalExpenses += totalInterest
