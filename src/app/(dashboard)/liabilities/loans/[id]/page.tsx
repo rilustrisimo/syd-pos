@@ -40,6 +40,7 @@ import {
   CheckCircle2,
   Clock,
   AlertTriangle,
+  Bell,
 } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
@@ -59,14 +60,24 @@ const PAYMENT_METHODS = [
   { value: 'credit', label: 'Credit' },
 ]
 
-function InstallmentStatusIcon({ status }: { status: string }) {
+const TODAY = new Date().toISOString().split('T')[0]
+
+function isDueToday(dueDate: string) {
+  return dueDate === TODAY
+}
+
+function InstallmentStatusIcon({ status, dueDate }: { status: string; dueDate: string }) {
   if (status === 'paid') return <CheckCircle2 className="h-4 w-4 text-green-500" />
   if (status === 'overdue') return <AlertTriangle className="h-4 w-4 text-red-500" />
   if (status === 'partial') return <Clock className="h-4 w-4 text-blue-500" />
+  if (isDueToday(dueDate)) return <Bell className="h-4 w-4 text-orange-500" />
   return <Clock className="h-4 w-4 text-muted-foreground" />
 }
 
-function InstallmentBadge({ status }: { status: string }) {
+function InstallmentBadge({ status, dueDate }: { status: string; dueDate: string }) {
+  if (status === 'upcoming' && isDueToday(dueDate)) {
+    return <Badge variant="outline" className="bg-orange-100 text-orange-700 border-orange-200">Due Today</Badge>
+  }
   const map: Record<string, { label: string; className: string }> = {
     paid: { label: 'Paid', className: 'bg-green-100 text-green-700 border-green-200' },
     partial: { label: 'Partial', className: 'bg-blue-100 text-blue-700 border-blue-200' },
@@ -291,7 +302,7 @@ export default function LoanDetailPage({ params }: { params: Promise<{ id: strin
                   <TableRow key={row.id} className={row.status === 'paid' ? 'opacity-60' : ''}>
                     <TableCell>
                       <div className="flex items-center gap-1">
-                        <InstallmentStatusIcon status={row.status} />
+                        <InstallmentStatusIcon status={row.status} dueDate={row.due_date} />
                         <span className="text-sm">{row.installment_number}</span>
                       </div>
                     </TableCell>
@@ -301,7 +312,7 @@ export default function LoanDetailPage({ params }: { params: Promise<{ id: strin
                     <TableCell className="text-right font-mono font-semibold">{formatCurrency(row.scheduled_amount)}</TableCell>
                     <TableCell className="text-right font-mono text-green-600">{row.paid_amount > 0 ? formatCurrency(row.paid_amount) : '—'}</TableCell>
                     <TableCell className="text-right font-mono text-sm">{formatCurrency(row.balance_after)}</TableCell>
-                    <TableCell><InstallmentBadge status={row.status} /></TableCell>
+                    <TableCell><InstallmentBadge status={row.status} dueDate={row.due_date} /></TableCell>
                     <TableCell>
                       {row.status !== 'paid' && (
                         <Button
