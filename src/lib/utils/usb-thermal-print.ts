@@ -204,7 +204,7 @@ function toBase64(bytes: Uint8Array): string {
 }
 
 // ---------------------------------------------------------------------------
-// Transport layer — tries QZ Tray first, falls back to CUPS API route
+// Transport layer
 // ---------------------------------------------------------------------------
 
 async function sendToCUPS(bytes: Uint8Array, printerQueue: string): Promise<void> {
@@ -213,7 +213,6 @@ async function sendToCUPS(bytes: Uint8Array, printerQueue: string): Promise<void
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ bytes: toBase64(bytes), printer: printerQueue }),
   })
-
   if (!response.ok) {
     const body = await response.json().catch(() => ({}))
     throw new Error(body?.error || `HTTP ${response.status}: print failed`)
@@ -221,39 +220,39 @@ async function sendToCUPS(bytes: Uint8Array, printerQueue: string): Promise<void
 }
 
 /**
- * Print strategy (tried in order):
- *  1. Electron IPC → node-usb (when running as Windows desktop app).
- *     printerQueue must be in "usb:{vendorId}:{productId}" format.
- *  2. QZ Tray (localhost WebSocket) — works on any device with QZ Tray installed.
- *  3. CUPS API route (/api/print) — works only on macOS with CUPS.
+ * Send ESC/POS bytes to the configured thermal printer.
+ *
+ * Priority:
+ *  1. Electron Bluetooth IPC (window.electronBluetooth) — COM port / SPP
+ *  2. Electron USB IPC (window.electronPrint) — node-usb, queue "usb:vid:pid"
+ *  3. CUPS API route (/api/print) — macOS only, queue = CUPS printer name
  */
 async function sendBytes(bytes: Uint8Array, printerQueue: string): Promise<void> {
-  // --- Branch 1: Electron desktop app — direct USB via IPC ----------------
-  if (typeof window !== 'undefined' && window.electronPrint) {
-    // Queue format in Electron context: "usb:{vendorId}:{productId}"
-    const parts = printerQueue.split(':')
-    if (parts[0] === 'usb' && parts.length === 3) {
-      const vendorId = parseInt(parts[1], 10)
-      const productId = parseInt(parts[2], 10)
-      if (!isNaN(vendorId) && !isNaN(productId)) {
-        // Convert Uint8Array → base64 for IPC transfer
-        const b64 = btoa(String.fromCharCode(...bytes))
-        const result = await window.electronPrint.printBytes(vendorId, productId, b64)
-        if (result.success) return
-        console.warn('[print] Electron IPC USB failed:', result.error, '— falling back to QZ Tray')
-      }
-    }
+  // --- Branch 1: Bluetooth via serialport IPC (Electron desktop) ----------
+  if (typeof window !== 'undefined' && window.electronBluetooth && printerQueue) {
+    let binary = ''
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
+    const b64 = btoa(binary)
+    const result = await window.electronBluetooth.printBytes(printerQueue, b64)
+    if (result.success) return
+    throw new Error(result.error || 'Bluetooth print failed')
   }
 
-  // --- Branch 2: QZ Tray --------------------------------------------------
-  // Dynamic import keeps qz-tray out of the SSR bundle
-  const { printWithQZ } = await import('./qz-print')
-
-  try {
-    await printWithQZ(bytes, printerQueue)
-    return
-  } catch (qzErr) {
-    console.warn('[print] QZ Tray unavailable, trying CUPS API route:', qzErr)
+  // --- Branch 2: USB via node-usb IPC (Electron desktop) ------------------
+  if (typeof window !== 'undefined' && window.electronPrint) {
+    const parts = printerQueue.split(':')
+    if (parts[0] === 'usb' && parts.length === 3) {
+      const vendorId  = parseInt(parts[1], 10)
+      const productId = parseInt(parts[2], 10)
+      if (!isNaN(vendorId) && !isNaN(productId)) {
+        let binary = ''
+        for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
+        const b64    = btoa(binary)
+        const result = await window.electronPrint.printBytes(vendorId, productId, b64)
+        if (result.success) return
+        throw new Error(result.error || 'USB print failed')
+      }
+    }
   }
 
   // --- Branch 3: CUPS API route (macOS only) ------------------------------

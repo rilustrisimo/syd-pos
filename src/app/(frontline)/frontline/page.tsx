@@ -39,6 +39,8 @@ import {
   PackageCheck,
 } from 'lucide-react'
 import type { ReceiptData } from '@/components/print/receipt-template'
+import { buildReceiptBytes } from '@/lib/utils/usb-thermal-print'
+import { usePrinterStore } from '@/lib/stores/printer'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -235,6 +237,23 @@ export default function FrontlinePOSPage() {
       (c.phone && c.phone.toLowerCase().includes(searchLower))
     )
   }, [allCustomers, customerSearch])
+
+  // Printer settings
+  const { btPortPath } = usePrinterStore()
+
+  // Auto-print to Bluetooth thermal printer if configured (fire-and-forget)
+  const autoPrintBluetooth = useCallback(async (receipt: ReceiptData) => {
+    if (!btPortPath || typeof window === 'undefined' || !window.electronBluetooth) return
+    try {
+      const bytes = buildReceiptBytes(receipt)
+      let binary  = ''
+      for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
+      const result = await window.electronBluetooth.printBytes(btPortPath, btoa(binary))
+      if (!result.success) toast.error(`Thermal print failed: ${result.error}`)
+    } catch (err: any) {
+      toast.error(`Thermal print error: ${err?.message}`)
+    }
+  }, [btPortPath])
 
   // Get authenticated user
   const { user } = useAuthStore()
@@ -767,6 +786,8 @@ export default function FrontlinePOSPage() {
       }
       setPendingReceipt(receiptData)
       setPendingInvoice(invoiceData)
+      // Auto-print thermal receipt immediately, then open dialog for A4 invoice
+      autoPrintBluetooth(receiptData)
       setIsPrintOpen(true)
     } catch (error: any) {
       toast.error(error.message || 'Failed to complete transaction')
@@ -815,8 +836,14 @@ export default function FrontlinePOSPage() {
         notes: txn.notes,
       }
       toast.dismiss(toastId)
-      setReprintReceiptData(receipt)
-      setIsReprintOpen(true)
+      // If Bluetooth printer is configured, print immediately without opening dialog
+      if (btPortPath && typeof window !== 'undefined' && window.electronBluetooth) {
+        autoPrintBluetooth(receipt)
+        toast.success('Sent to thermal printer')
+      } else {
+        setReprintReceiptData(receipt)
+        setIsReprintOpen(true)
+      }
     } catch (err: any) {
       toast.error(err?.message || 'Failed to load transaction', { id: toastId })
     } finally {
