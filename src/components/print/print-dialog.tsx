@@ -47,9 +47,12 @@ export function PrintDialog({
   onComplete,
 }: PrintDialogProps) {
   const hasReceiptTab = receiptData !== null && receiptData !== undefined
-  const [activeTab, setActiveTab] = useState<'receipt' | 'invoice' | 'packing'>(
-    hasReceiptTab ? 'receipt' : 'invoice'
-  )
+  const [activeTab, setActiveTab] = useState<'receipt' | 'invoice' | 'packing'>('receipt')
+
+  // Always reset to Receipt tab (or invoice if no receipt) when dialog opens
+  useEffect(() => {
+    if (open) setActiveTab(hasReceiptTab ? 'receipt' : 'invoice')
+  }, [open, hasReceiptTab])
   const receiptRef = useRef<HTMLDivElement>(null)
   const invoiceRef = useRef<HTMLDivElement>(null)
   const packingRef = useRef<HTMLDivElement>(null)
@@ -304,11 +307,14 @@ export function PrintDialog({
 
           <TabsContent value="invoice" className="flex-1 overflow-auto mt-4 flex flex-col">
             <div className="flex-1 overflow-auto bg-gray-100 rounded-lg p-4">
-              <div
-                className="bg-white shadow-lg mx-auto"
-                style={{ maxWidth: '210mm', transform: 'scale(0.7)', transformOrigin: 'top center' }}
-              >
-                {invoiceData && <InvoiceTemplate ref={invoiceRef} data={invoiceData} />}
+              {/* scale() shrinks visually but keeps layout size — outer div holds the full height */}
+              <div style={{ minHeight: '600px' }}>
+                <div
+                  className="bg-white shadow-lg mx-auto"
+                  style={{ maxWidth: '210mm', transform: 'scale(0.7)', transformOrigin: 'top center' }}
+                >
+                  {invoiceData && <InvoiceTemplate ref={invoiceRef} data={invoiceData} />}
+                </div>
               </div>
             </div>
             <div className="mt-4 flex flex-wrap gap-2 justify-end">
