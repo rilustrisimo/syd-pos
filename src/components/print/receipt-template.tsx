@@ -63,6 +63,9 @@ function formatCurrency(amount: number): string {
   }).format(amount)
 }
 
+const STORE_ADDRESS  = 'Sitio Landing, Talakag, Bukidnon'
+const STORE_CONTACTS = '09164527225 / 09274746352'
+
 export const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptTemplateProps>(
   ({ data, width = '80mm' }, ref) => {
     const charWidth = width === '58mm' ? 32 : 48
@@ -81,21 +84,22 @@ export const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptTemplateProps>(
           lineHeight: 1.4,
         }}
       >
-        {/* Header */}
-        <div className="text-center mb-2">
-          <div className="font-bold text-lg">SYD CONSTRUCTION</div>
-          <div className="font-bold">SUPPLIES TRADING</div>
-          <div className="text-xs mt-1">{data.branch}</div>
-          <div className="text-xs">Construction Materials & Hardware</div>
+        {/* Header — matches ESC/POS output exactly */}
+        <div className="text-center mb-1">
+          <div className="font-bold" style={{ fontSize: '1.5em' }}>SYD CONSTRUCTION</div>
+          <div className="font-bold" style={{ fontSize: '1.5em' }}>SUPPLIES TRADING</div>
+          <div className="text-xs mt-1">Construction Materials &amp; Hardware</div>
+          <div className="text-xs">{STORE_ADDRESS}</div>
+          <div className="text-xs">{STORE_CONTACTS}</div>
         </div>
 
-        <div className="text-center text-xs my-2">{divider}</div>
+        <div className="text-xs my-1">{divider}</div>
 
         {/* Transaction Info */}
         <div className="text-xs space-y-0.5">
           <div className="flex justify-between">
             <span>TXN#:</span>
-            <span className="font-bold">{data.transaction_number}</span>
+            <span>{data.transaction_number}</span>
           </div>
           <div className="flex justify-between">
             <span>Date:</span>
@@ -126,13 +130,13 @@ export const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptTemplateProps>(
         </div>
 
         {data.delivery_type === 'delivery' && data.delivery_address && (
-          <div className="text-xs mt-1">
+          <div className="text-xs mt-0.5">
             <div>Deliver to:</div>
             <div className="pl-2">{data.delivery_address}</div>
           </div>
         )}
 
-        <div className="text-center text-xs my-2">{thinDivider}</div>
+        <div className="text-xs my-1">{thinDivider}</div>
 
         {/* Items */}
         <div className="text-xs">
@@ -145,13 +149,11 @@ export const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptTemplateProps>(
             <div key={index} className="mb-1">
               <div className="truncate">{item.name}</div>
               <div className="flex justify-between pl-2">
-                <span>
-                  {item.quantity} {item.uom} x {formatCurrency(item.unit_price)}
-                </span>
+                <span>{item.quantity} {item.uom} x {formatCurrency(item.unit_price)}</span>
                 <span>{formatCurrency(item.total)}</span>
               </div>
               {item.discount > 0 && (
-                <div className="flex justify-between pl-2 text-xs">
+                <div className="flex justify-between pl-2">
                   <span>Discount</span>
                   <span>-{formatCurrency(item.discount)}</span>
                 </div>
@@ -160,7 +162,7 @@ export const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptTemplateProps>(
           ))}
         </div>
 
-        <div className="text-center text-xs my-2">{thinDivider}</div>
+        <div className="text-xs my-1">{thinDivider}</div>
 
         {/* Totals */}
         <div className="text-xs space-y-0.5">
@@ -174,19 +176,36 @@ export const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptTemplateProps>(
               <span>-{formatCurrency(data.discount)}</span>
             </div>
           )}
+          {(data.delivery_fee ?? 0) > 0 && (
+            <div className="flex justify-between">
+              <span>Delivery Fee:</span>
+              <span>{formatCurrency(data.delivery_fee!)}</span>
+            </div>
+          )}
+          {(data.other_fees ?? 0) > 0 && (
+            <div>
+              <div className="flex justify-between">
+                <span>Other Fees:</span>
+                <span>{formatCurrency(data.other_fees!)}</span>
+              </div>
+              {data.other_fees_notes && (
+                <div className="pl-2 text-[10px] text-gray-500">{data.other_fees_notes}</div>
+              )}
+            </div>
+          )}
           {data.tax > 0 && (
             <div className="flex justify-between">
               <span>Tax:</span>
               <span>{formatCurrency(data.tax)}</span>
             </div>
           )}
-          <div className="flex justify-between font-bold text-sm mt-1">
+          <div className="flex justify-between font-bold mt-0.5">
             <span>TOTAL:</span>
             <span>PHP {formatCurrency(data.total)}</span>
           </div>
         </div>
 
-        <div className="text-center text-xs my-2">{thinDivider}</div>
+        <div className="text-xs my-1">{thinDivider}</div>
 
         {/* Payments */}
         <div className="text-xs space-y-0.5">
@@ -200,7 +219,7 @@ export const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptTemplateProps>(
               <span>{formatCurrency(payment.amount)}</span>
             </div>
           ))}
-          <div className="flex justify-between mt-1">
+          <div className="flex justify-between">
             <span>Amount Paid:</span>
             <span>{formatCurrency(data.amount_paid)}</span>
           </div>
@@ -214,7 +233,7 @@ export const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptTemplateProps>(
 
         {data.notes && (
           <>
-            <div className="text-center text-xs my-2">{thinDivider}</div>
+            <div className="text-xs my-1">{thinDivider}</div>
             <div className="text-xs">
               <div className="font-bold">Notes:</div>
               <div className="pl-2">{data.notes}</div>
@@ -222,19 +241,18 @@ export const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptTemplateProps>(
           </>
         )}
 
-        <div className="text-center text-xs my-2">{divider}</div>
+        <div className="text-xs my-1">{divider}</div>
 
-        {/* Footer */}
+        {/* Footer — matches ESC/POS output exactly */}
         <div className="text-center text-xs">
           <div className="font-bold">Thank you for your purchase!</div>
-          <div className="mt-1">Please keep this receipt</div>
-          <div>for returns/exchanges.</div>
-          <div className="mt-2 text-[10px]">
-            This serves as your official receipt.
-          </div>
-          <div className="mt-2 text-[10px]">
-            --- END OF RECEIPT ---
-          </div>
+          <div>Please keep this receipt.</div>
+          <div className="mt-1">Returns due to change of mind</div>
+          <div>will NOT be accepted.</div>
+          <div>Items may be exchanged only</div>
+          <div>if in good condition.</div>
+          <div className="mt-1">This serves as your official receipt.</div>
+          <div className="mt-1">--- END OF RECEIPT ---</div>
         </div>
       </div>
     )

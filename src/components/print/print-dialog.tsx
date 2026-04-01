@@ -155,6 +155,7 @@ export function PrintDialog({
   }
 
   const hasPackingSlip = packingSlipData !== null && packingSlipData !== undefined
+  const hasInvoice     = invoiceData !== null && invoiceData !== undefined
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -174,17 +175,19 @@ export function PrintDialog({
           onValueChange={(v) => setActiveTab(v as 'receipt' | 'invoice' | 'packing')}
           className="flex-1 overflow-hidden flex flex-col"
         >
-          <TabsList className={`grid w-full ${hasReceiptTab && hasPackingSlip ? 'grid-cols-3' : hasReceiptTab || hasPackingSlip ? 'grid-cols-2' : 'grid-cols-1'}`}>
+          <TabsList className={`grid w-full grid-cols-${[hasReceiptTab, hasInvoice, hasPackingSlip].filter(Boolean).length || 1}`}>
             {hasReceiptTab && (
               <TabsTrigger value="receipt" className="flex items-center gap-2">
                 <Receipt className="h-4 w-4" />
                 Receipt
               </TabsTrigger>
             )}
+            {hasInvoice && (
             <TabsTrigger value="invoice" className="flex items-center gap-2">
               <FileText className="h-4 w-4" />
               A4 Invoice
             </TabsTrigger>
+            )}
             {hasPackingSlip && (
               <TabsTrigger value="packing" className="flex items-center gap-2">
                 <Package className="h-4 w-4" />
@@ -197,7 +200,7 @@ export function PrintDialog({
             <TabsContent value="receipt" className="flex-1 overflow-auto mt-4 flex flex-col">
               <div className="flex-1 overflow-auto bg-gray-100 rounded-lg p-4 flex justify-center">
                 <div className="bg-white shadow-lg">
-                  {receiptData && <ReceiptTemplate ref={receiptRef} data={receiptData} />}
+                  {receiptData && <ReceiptTemplate ref={receiptRef} data={receiptData} width={paperWidth} />}
                 </div>
               </div>
 
@@ -314,15 +317,9 @@ export function PrintDialog({
           )}
 
           <TabsContent value="invoice" className="flex-1 overflow-auto mt-4 flex flex-col">
-            <div className="flex-1 overflow-auto bg-gray-100 rounded-lg p-4">
-              {/* scale() shrinks visually but keeps layout size — outer div holds the full height */}
-              <div style={{ minHeight: '600px' }}>
-                <div
-                  className="bg-white shadow-lg mx-auto"
-                  style={{ maxWidth: '210mm', transform: 'scale(0.7)', transformOrigin: 'top center' }}
-                >
-                  {invoiceData && <InvoiceTemplate ref={invoiceRef} data={invoiceData} />}
-                </div>
+            <div className="flex-1 overflow-auto bg-gray-100 rounded-lg p-4 flex justify-center items-start">
+              <div className="bg-white shadow-lg" style={{ width: '210mm', transformOrigin: 'top center', transform: 'scale(0.7)' }}>
+                {invoiceData && <InvoiceTemplate ref={invoiceRef} data={invoiceData} />}
               </div>
             </div>
             <div className="mt-4 flex flex-wrap gap-2 justify-end">
@@ -341,11 +338,8 @@ export function PrintDialog({
 
           {hasPackingSlip && (
             <TabsContent value="packing" className="flex-1 overflow-auto mt-4 flex flex-col">
-              <div className="flex-1 overflow-auto bg-gray-100 rounded-lg p-4">
-                <div
-                  className="bg-white shadow-lg mx-auto"
-                  style={{ maxWidth: '210mm', transform: 'scale(0.8)', transformOrigin: 'top center' }}
-                >
+              <div className="flex-1 overflow-auto bg-gray-100 rounded-lg p-4 flex justify-center items-start">
+                <div className="bg-white shadow-lg" style={{ width: '210mm', transformOrigin: 'top center', transform: 'scale(0.7)' }}>
                   {packingSlipData && <PackingSlipTemplate ref={packingRef} data={packingSlipData} />}
                 </div>
               </div>
