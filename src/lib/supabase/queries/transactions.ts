@@ -190,11 +190,11 @@ export async function getTransactions(filters: TransactionFilters = {}) {
   }
 
   if (rest.date_from) {
-    query = query.gte('transaction_date', rest.date_from)
+    query = query.gte('transaction_date', rest.date_from + 'T00:00:00+08:00')
   }
 
   if (rest.date_to) {
-    query = query.lte('transaction_date', rest.date_to)
+    query = query.lte('transaction_date', rest.date_to + 'T23:59:59+08:00')
   }
 
   if (rest.search) {
