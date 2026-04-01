@@ -191,6 +191,8 @@ export default function FrontlinePOSPage() {
   const [isHistoryOpen, setIsHistoryOpen] = useState(false)
   const [historySearch, setHistorySearch] = useState('')
   const [historyPage, setHistoryPage] = useState(1)
+  const [historyDateFrom, setHistoryDateFrom] = useState(getTodayPH())
+  const [historyDateTo, setHistoryDateTo] = useState(getTodayPH())
   const [reprintReceiptData, setReprintReceiptData] = useState<ReceiptData | null>(null)
   const [isReprintOpen, setIsReprintOpen] = useState(false)
   const [reprintingId, setReprintingId] = useState<string | null>(null)
@@ -201,13 +203,11 @@ export default function FrontlinePOSPage() {
   const [editDeliveryPhone, setEditDeliveryPhone] = useState('')
   const [savingDelivery, setSavingDelivery] = useState(false)
 
-  // Today's transactions for the selected branch
-  const todayStr = getTodayPH()
   const { data: historyData, isLoading: isLoadingHistory, refetch: refetchHistory } = useTransactions({
     branch_id: branchId || undefined,
     search: historySearch || undefined,
-    date_from: todayStr,
-    date_to: todayStr,
+    date_from: historyDateFrom || undefined,
+    date_to: historyDateTo || undefined,
     page: historyPage,
     limit: 20,
   })
@@ -1685,7 +1685,7 @@ export default function FrontlinePOSPage() {
           <div className="flex items-center justify-between px-6 py-4 border-b">
             <SheetTitle className="text-lg font-semibold flex items-center gap-2">
               <History className="h-5 w-5" />
-              Today&apos;s Transactions
+              Transaction History
             </SheetTitle>
             <Button
               variant="ghost"
@@ -1697,8 +1697,8 @@ export default function FrontlinePOSPage() {
             </Button>
           </div>
 
-          {/* Search */}
-          <div className="px-6 py-3 border-b">
+          {/* Filters */}
+          <div className="px-6 py-3 border-b space-y-2">
             <div className="relative">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
@@ -1707,6 +1707,35 @@ export default function FrontlinePOSPage() {
                 value={historySearch}
                 onChange={(e) => { setHistorySearch(e.target.value); setHistoryPage(1) }}
               />
+            </div>
+            <div className="flex gap-2 items-center">
+              <Input
+                type="date"
+                className="h-9 text-sm"
+                value={historyDateFrom}
+                onChange={(e) => { setHistoryDateFrom(e.target.value); setHistoryPage(1) }}
+              />
+              <span className="text-muted-foreground text-sm shrink-0">to</span>
+              <Input
+                type="date"
+                className="h-9 text-sm"
+                value={historyDateTo}
+                onChange={(e) => { setHistoryDateTo(e.target.value); setHistoryPage(1) }}
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                className="shrink-0"
+                onClick={() => {
+                  const today = getTodayPH()
+                  setHistoryDateFrom(today)
+                  setHistoryDateTo(today)
+                  setHistorySearch('')
+                  setHistoryPage(1)
+                }}
+              >
+                Today
+              </Button>
             </div>
           </div>
 
@@ -1719,13 +1748,17 @@ export default function FrontlinePOSPage() {
             ) : historyTransactions.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
                 <Receipt className="h-10 w-10 mb-3 opacity-30" />
-                <p className="text-sm">No transactions found for today</p>
+                <p className="text-sm">No transactions found</p>
               </div>
             ) : (
               <div className="divide-y">
                 {historyTransactions.map((txn: any) => {
                   const txnDate = new Date(txn.transaction_date)
-                  const time = txnDate.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })
+                  const todayStr = getTodayPH()
+                  const isSameDay = historyDateFrom === historyDateTo && historyDateFrom === todayStr
+                  const dateLabel = isSameDay
+                    ? txnDate.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })
+                    : txnDate.toLocaleDateString('en-PH', { month: 'short', day: 'numeric' }) + ' ' + txnDate.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })
                   const isReprinting = reprintingId === txn.id
                   return (
                     <div key={txn.id} className="px-6 py-4 hover:bg-muted/40 transition-colors">
@@ -1757,7 +1790,7 @@ export default function FrontlinePOSPage() {
                           <div className="text-sm text-muted-foreground mt-0.5">
                             {(txn.customer as any)?.name || 'Walk-in Customer'}
                             <span className="mx-1.5">·</span>
-                            {time}
+                            {dateLabel}
                           </div>
                           {txn.delivery_type === 'delivery' && txn.delivery_address && (
                             <div className="text-xs text-muted-foreground mt-0.5 truncate">
