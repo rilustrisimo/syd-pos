@@ -39,7 +39,7 @@ import {
   PackageCheck,
 } from 'lucide-react'
 import type { ReceiptData } from '@/components/print/receipt-template'
-import { buildReceiptBytes } from '@/lib/utils/usb-thermal-print'
+import { buildReceiptBytes, buildDeliverySlipBytes } from '@/lib/utils/usb-thermal-print'
 import { usePrinterStore } from '@/lib/stores/printer'
 
 import { Button } from '@/components/ui/button'
@@ -239,21 +239,31 @@ export default function FrontlinePOSPage() {
   }, [allCustomers, customerSearch])
 
   // Printer settings
-  const { btPortPath } = usePrinterStore()
+  const { btPortPath, paperWidth } = usePrinterStore()
+  const charWidth = paperWidth === '58mm' ? 32 : 48
 
-  // Auto-print to Bluetooth thermal printer if configured (fire-and-forget)
+  // Send a single Uint8Array to the Bluetooth thermal printer
+  const sendBytesToBt = useCallback(async (bytes: Uint8Array): Promise<boolean> => {
+    if (!btPortPath || typeof window === 'undefined' || !window.electronBluetooth) return false
+    let binary = ''
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
+    const result = await window.electronBluetooth.printBytes(btPortPath, btoa(binary))
+    if (!result.success) throw new Error(result.error || 'Print failed')
+    return true
+  }, [btPortPath])
+
+  // Auto-print receipt (+ delivery slip for delivery orders) to Bluetooth thermal printer
   const autoPrintBluetooth = useCallback(async (receipt: ReceiptData) => {
     if (!btPortPath || typeof window === 'undefined' || !window.electronBluetooth) return
     try {
-      const bytes = buildReceiptBytes(receipt)
-      let binary  = ''
-      for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
-      const result = await window.electronBluetooth.printBytes(btPortPath, btoa(binary))
-      if (!result.success) toast.error(`Thermal print failed: ${result.error}`)
+      await sendBytesToBt(buildReceiptBytes(receipt, charWidth))
+      if (receipt.delivery_type === 'delivery') {
+        await sendBytesToBt(buildDeliverySlipBytes(receipt, charWidth))
+      }
     } catch (err: any) {
       toast.error(`Thermal print error: ${err?.message}`)
     }
-  }, [btPortPath])
+  }, [btPortPath, charWidth, sendBytesToBt])
 
   // Get authenticated user
   const { user } = useAuthStore()
@@ -755,7 +765,7 @@ export default function FrontlinePOSPage() {
         transaction_number: result.transaction_number,
         date: new Date(result.transaction_date || Date.now()).toLocaleDateString('en-PH'),
         time: new Date(result.transaction_date || Date.now()).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' }),
-        cashier: user?.fullName || user?.email || 'Staff',
+        cashier: user?.fullName?.trim() || 'Staff',
         branch: currentBranch?.name || 'Main Branch',
         customer: {
           name: currentCustomer?.name || 'Walk-in Customer',
@@ -773,6 +783,9 @@ export default function FrontlinePOSPage() {
         })),
         subtotal: currentSubtotal,
         discount: currentTotalDiscount,
+        delivery_fee: currentDeliveryFee > 0 ? currentDeliveryFee : undefined,
+        other_fees: currentOtherFees > 0 ? currentOtherFees : undefined,
+        other_fees_notes: currentOtherFeesNotes || null,
         tax: 0,
         total: currentTotal,
         payments: currentPayments.map((p) => ({
@@ -806,7 +819,7 @@ export default function FrontlinePOSPage() {
         transaction_number: txn.transaction_number,
         date: txnDate.toLocaleDateString('en-PH'),
         time: txnDate.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' }),
-        cashier: 'Staff',
+        cashier: (txn.created_by_user as any)?.full_name?.trim() || 'Staff',
         branch: (txn.branch as any)?.name || 'Main Branch',
         customer: {
           name: (txn.customer as any)?.name || 'Walk-in Customer',
@@ -824,6 +837,9 @@ export default function FrontlinePOSPage() {
         })),
         subtotal: Number(txn.subtotal),
         discount: Number(txn.discount_amount),
+        delivery_fee: Number(txn.delivery_fee) > 0 ? Number(txn.delivery_fee) : undefined,
+        other_fees: Number(txn.other_fees) > 0 ? Number(txn.other_fees) : undefined,
+        other_fees_notes: txn.other_fees_notes || null,
         tax: Number(txn.tax_amount),
         total: Number(txn.total_amount),
         payments: (txn.payments || []).map((p: any) => ({

@@ -1,43 +1,90 @@
 /**
- * Thermal receipt printing via CUPS (USB printer-class device).
+ * Thermal receipt printing — ESC/POS builder + transport layer.
  *
- * The VOZY G80 registers on macOS as an STMicroelectronics POS80 USB printer,
- * which means the OS claims it as a USB printer-class device — not a serial
- * port.  Raw ESC/POS bytes are forwarded to a local Next.js API route
- * (/api/print) which sends them to the CUPS queue with `lp -o raw`.
- *
- * No Web Serial API, no extra server process.  The only requirement is that
- * the Next.js dev/production server is running (which it always is for the
- * app to function) and the printer is registered in macOS CUPS.
+ * The ESC/POS format exactly mirrors syd-pos-mobile/lib/escpos-mobile.ts.
+ * Transport priority (sendBytes):
+ *  1. Electron Bluetooth IPC (window.electronBluetooth) — COM port / SPP
+ *  2. Electron USB IPC (window.electronPrint) — node-usb, queue "usb:vid:pid"
+ *  3. CUPS API route (/api/print) — macOS only
  */
 
 import type { ReceiptData } from '@/components/print/receipt-template'
 
 // ---------------------------------------------------------------------------
-// ESC/POS command set
+// ESC/POS byte constants
 // ---------------------------------------------------------------------------
 
-const ESC = '\x1b'
-const GS  = '\x1d'
-const LF  = '\n'
+const ESC = 0x1b
+const GS  = 0x1d
+const LF  = 0x0a
 
 const CMD = {
-  INIT:          ESC + '@',
-  // Force PC437 (US ASCII) code table — the G80 defaults to Chinese (GB18030)
-  // after ESC @ which garbles plain-English text.
-  CHARSET_PC437: ESC + 't' + '\x00',
-  LEFT:          ESC + 'a' + '\x00',
-  CENTER:        ESC + 'a' + '\x01',
-  BOLD_ON:       ESC + 'E' + '\x01',
-  BOLD_OFF:      ESC + 'E' + '\x00',
-  DOUBLE_SIZE:   GS  + '!' + '\x11',  // 2× width + 2× height
-  NORMAL_SIZE:   GS  + '!' + '\x00',
-  FEED: (n: number) => ESC + 'd' + String.fromCharCode(n),
-  CUT:           GS  + 'V' + 'B' + '\x00',  // partial cut
+  INIT:          [ESC, 0x40],
+  CHARSET_PC437: [ESC, 0x74, 0x00], // force ASCII after reset (printer defaults to GB18030)
+  LEFT:          [ESC, 0x61, 0x00],
+  CENTER:        [ESC, 0x61, 0x01],
+  BOLD_ON:       [ESC, 0x45, 0x01],
+  BOLD_OFF:      [ESC, 0x45, 0x00],
+  DOUBLE_SIZE:   [GS,  0x21, 0x11], // double width + double height
+  NORMAL_SIZE:   [GS,  0x21, 0x00],
+  FEED:  (n: number) => [ESC, 0x64, n],
+  CUT:           [GS,  0x56, 0x42, 0x00], // partial cut
 }
 
-// 80 mm paper → 48 character column width
-const CHAR_WIDTH = 48
+// ---------------------------------------------------------------------------
+// Unicode sanitizer (matches escpos-mobile.ts exactly)
+// ---------------------------------------------------------------------------
+
+function sanitize(str: string): string {
+  return str
+    .replace(/¼/g, '1/4').replace(/½/g, '1/2').replace(/¾/g, '3/4')
+    .replace(/⅓/g, '1/3').replace(/⅔/g, '2/3')
+    .replace(/⅛/g, '1/8').replace(/⅜/g, '3/8').replace(/⅝/g, '5/8').replace(/⅞/g, '7/8')
+    .replace(/['']/g, "'").replace(/[""]/g, '"')
+    .replace(/–/g, '-').replace(/—/g, '-').replace(/…/g, '...')
+    .replace(/×/g, 'x').replace(/÷/g, '/').replace(/±/g, '+/-')
+    .replace(/°/g, ' deg').replace(/₱/g, 'PHP').replace(/€/g, 'EUR').replace(/£/g, 'GBP')
+    .replace(/[àáâãäå]/gi, (c) => c.toLowerCase() === c ? 'a' : 'A')
+    .replace(/[èéêë]/gi,   (c) => c.toLowerCase() === c ? 'e' : 'E')
+    .replace(/[ìíîï]/gi,   (c) => c.toLowerCase() === c ? 'i' : 'I')
+    .replace(/[òóôõö]/gi,  (c) => c.toLowerCase() === c ? 'o' : 'O')
+    .replace(/[ùúûü]/gi,   (c) => c.toLowerCase() === c ? 'u' : 'U')
+    .replace(/[ñ]/gi,      (c) => c.toLowerCase() === c ? 'n' : 'N')
+    .replace(/[ç]/gi,      (c) => c.toLowerCase() === c ? 'c' : 'C')
+    .replace(/[^\x00-\x7F]/g, '?')
+}
+
+function strBytes(str: string): number[] {
+  const safe = sanitize(str)
+  const out: number[] = []
+  for (let i = 0; i < safe.length; i++) out.push(safe.charCodeAt(i) & 0xff)
+  return out
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function fmt(amount: number): string {
+  return new Intl.NumberFormat('en-PH', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(amount)
+}
+
+/** Left-align + right-align two strings on the same line. */
+function lr(left: string, right: string, width: number): string {
+  const gap = width - left.length - right.length
+  if (gap < 1) return left.substring(0, width) + '\n' + ' '.repeat(width - right.length) + right
+  return left + ' '.repeat(gap) + right
+}
+
+// ---------------------------------------------------------------------------
+// Store constants (matches escpos-mobile.ts)
+// ---------------------------------------------------------------------------
+
+const STORE_ADDRESS  = 'Sitio Landing, Talakag, Bukidnon'
+const STORE_CONTACTS = '09164527225 / 09274746352'
 
 const PAYMENT_LABELS: Record<string, string> = {
   cash:          'Cash',
@@ -48,159 +95,145 @@ const PAYMENT_LABELS: Record<string, string> = {
 }
 
 // ---------------------------------------------------------------------------
-// ESC/POS receipt builder
+// ESC/POS receipt builder — identical format to escpos-mobile.ts
 // ---------------------------------------------------------------------------
 
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('en-PH', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(amount)
-}
+/**
+ * @param data   Receipt data
+ * @param width  Character width: 32 for 58mm paper, 48 for 80mm paper (default)
+ */
+export function buildReceiptBytes(data: ReceiptData, width = 48): Uint8Array {
+  const bytes: number[] = []
+  const divider     = '='.repeat(width)
+  const thinDivider = '-'.repeat(width)
 
-function leftRight(left: string, right: string, width: number): string {
-  const gap = width - left.length - right.length
-  if (gap < 1) {
-    return left.substring(0, width) + LF + ' '.repeat(width - right.length) + right
+  function cmd(...cmds: number[][]): void {
+    for (const c of cmds) bytes.push(...c)
   }
-  return left + ' '.repeat(gap) + right
-}
+  function text(str: string): void { bytes.push(...strBytes(str)) }
+  function line(str: string): void { text(str); bytes.push(LF) }
 
-// Manually center text within `width` columns by prepending spaces.
-// For DOUBLE_SIZE lines pass width/2 because each char occupies 2 columns.
-function centerPad(text: string, width: number): string {
-  const pad = Math.max(0, Math.floor((width - text.length) / 2))
-  return ' '.repeat(pad) + text
-}
-
-export function buildReceiptBytes(data: ReceiptData): Uint8Array {
-  const w           = CHAR_WIDTH
-  const divider     = '='.repeat(w)
-  const thinDivider = '-'.repeat(w)
-  let r = ''
-
-  r += CMD.INIT
-  r += CMD.CHARSET_PC437
-  r += LF.repeat(3)
+  // ── Init ──────────────────────────────────────────────────────────────────
+  cmd(CMD.INIT, CMD.CHARSET_PC437)
 
   // ── Header ────────────────────────────────────────────────────────────────
-  r += CMD.CENTER
-  r += CMD.NORMAL_SIZE
-  r += CMD.BOLD_ON + 'SYD CONSTRUCTION SUPPLIES TRADING' + LF + CMD.BOLD_OFF
-  r += 'Sitio Landing, Talakag, Bukidnon' + LF
+  cmd(CMD.CENTER, CMD.BOLD_ON, CMD.DOUBLE_SIZE)
+  line('SYD CONSTRUCTION')
+  line('SUPPLIES TRADING')
+  cmd(CMD.NORMAL_SIZE, CMD.BOLD_OFF)
+  line('Construction Materials & Hardware')
+  line(STORE_ADDRESS)
+  line(STORE_CONTACTS)
 
-  r += CMD.LEFT
-  r += divider + LF
+  // ── Divider ───────────────────────────────────────────────────────────────
+  cmd(CMD.LEFT)
+  line(divider)
 
-  // ── Transaction info ───────────────────────────────────────────────────────
-  r += leftRight('TXN#:',     data.transaction_number, w) + LF
-  r += leftRight('Date:',     data.date,               w) + LF
-  r += leftRight('Time:',     data.time,               w) + LF
-  r += leftRight('Cashier:',  data.cashier,            w) + LF
-  r += leftRight('Customer:', data.customer.name,      w) + LF
+  // ── Transaction info ──────────────────────────────────────────────────────
+  line(lr('TXN#:',     data.transaction_number,       width))
+  line(lr('Date:',     data.date,                     width))
+  line(lr('Time:',     data.time,                     width))
+  line(lr('Cashier:',  data.cashier,                  width))
+  line(lr('Customer:', data.customer.name,             width))
   if (data.customer.phone) {
-    r += leftRight('Phone:', data.customer.phone, w) + LF
+    line(lr('Phone:', data.customer.phone, width))
   }
-  r += leftRight('Type:', data.delivery_type.toUpperCase(), w) + LF
-
+  line(lr('Type:', data.delivery_type.toUpperCase(), width))
   if (data.delivery_type === 'delivery' && data.delivery_address) {
-    r += 'Deliver to:' + LF
-    r += '  ' + data.delivery_address + LF
+    line('Deliver to:')
+    line('  ' + data.delivery_address)
   }
 
-  r += thinDivider + LF
+  line(thinDivider)
 
-  // ── Items ──────────────────────────────────────────────────────────────────
-  r += CMD.BOLD_ON
-  r += leftRight('ITEM', 'AMOUNT', w) + LF
-  r += CMD.BOLD_OFF
+  // ── Items header ──────────────────────────────────────────────────────────
+  cmd(CMD.BOLD_ON)
+  line(lr('ITEM', 'AMOUNT', width))
+  cmd(CMD.BOLD_OFF)
 
+  // ── Items ─────────────────────────────────────────────────────────────────
   for (const item of data.items) {
-    const name = item.name.length > w ? item.name.substring(0, w) : item.name
-    r += name + LF
-
-    const qty = `  ${item.quantity} ${item.uom} x ${formatCurrency(item.unit_price)}`
-    r += leftRight(qty, formatCurrency(item.total), w) + LF
-
+    const name = item.name.length > width ? item.name.substring(0, width) : item.name
+    line(name)
+    const qty = `  ${item.quantity} ${item.uom} x ${fmt(item.unit_price)}`
+    line(lr(qty, fmt(item.total), width))
     if (item.discount > 0) {
-      r += leftRight('  Discount', '-' + formatCurrency(item.discount), w) + LF
+      line(lr('  Discount', '-' + fmt(item.discount), width))
     }
   }
 
-  r += thinDivider + LF
+  line(thinDivider)
 
-  // ── Totals ─────────────────────────────────────────────────────────────────
-  r += leftRight('Subtotal:', formatCurrency(data.subtotal), w) + LF
+  // ── Totals ────────────────────────────────────────────────────────────────
+  line(lr('Subtotal:', fmt(data.subtotal), width))
   if (data.discount > 0) {
-    r += leftRight('Discount:', '-' + formatCurrency(data.discount), w) + LF
+    line(lr('Discount:', '-' + fmt(data.discount), width))
+  }
+  if ((data.delivery_fee ?? 0) > 0) {
+    line(lr('Delivery Fee:', fmt(data.delivery_fee!), width))
+  }
+  if ((data.other_fees ?? 0) > 0) {
+    line(lr('Other Fees:', fmt(data.other_fees!), width))
+    if (data.other_fees_notes) {
+      line('  ' + data.other_fees_notes.substring(0, width - 2))
+    }
   }
   if (data.tax > 0) {
-    r += leftRight('Tax:', formatCurrency(data.tax), w) + LF
+    line(lr('Tax:', fmt(data.tax), width))
   }
-  r += CMD.BOLD_ON
-  r += leftRight('TOTAL:', 'PHP ' + formatCurrency(data.total), w) + LF
-  r += CMD.BOLD_OFF
+  cmd(CMD.BOLD_ON)
+  line(lr('TOTAL:', 'PHP ' + fmt(data.total), width))
+  cmd(CMD.BOLD_OFF)
 
-  r += thinDivider + LF
+  line(thinDivider)
 
-  // ── Payments ───────────────────────────────────────────────────────────────
-  r += CMD.BOLD_ON + 'PAYMENT(S):' + LF + CMD.BOLD_OFF
-
+  // ── Payments ──────────────────────────────────────────────────────────────
+  cmd(CMD.BOLD_ON)
+  line('PAYMENT(S):')
+  cmd(CMD.BOLD_OFF)
   for (const payment of data.payments) {
-    const label = PAYMENT_LABELS[payment.method] || payment.method
+    const label = PAYMENT_LABELS[payment.method] ?? payment.method
     const ref   = payment.reference ? ` #${payment.reference}` : ''
-    r += leftRight(`  ${label}${ref}`, formatCurrency(payment.amount), w) + LF
+    line(lr(`  ${label}${ref}`, fmt(payment.amount), width))
   }
-
-  r += leftRight('Amount Paid:', formatCurrency(data.amount_paid), w) + LF
-
+  line(lr('Amount Paid:', fmt(data.amount_paid), width))
   if (data.change > 0) {
-    r += CMD.BOLD_ON
-    r += leftRight('Change:', 'PHP ' + formatCurrency(data.change), w) + LF
-    r += CMD.BOLD_OFF
+    cmd(CMD.BOLD_ON)
+    line(lr('Change:', 'PHP ' + fmt(data.change), width))
+    cmd(CMD.BOLD_OFF)
   }
 
-  // ── Notes ──────────────────────────────────────────────────────────────────
+  // ── Notes ─────────────────────────────────────────────────────────────────
   if (data.notes) {
-    r += thinDivider + LF
-    r += CMD.BOLD_ON + 'Notes:' + LF + CMD.BOLD_OFF
-    r += '  ' + data.notes + LF
+    line(thinDivider)
+    cmd(CMD.BOLD_ON)
+    line('Notes:')
+    cmd(CMD.BOLD_OFF)
+    line('  ' + data.notes)
   }
 
-  r += divider + LF
+  line(divider)
 
-  // ── Footer ─────────────────────────────────────────────────────────────────
-  r += CMD.CENTER
-  r += CMD.BOLD_ON + 'Thank you for your purchase!' + LF + CMD.BOLD_OFF
-  r += 'Please keep this receipt' + LF
-  r += 'for returns/exchanges.' + LF
-  r += LF
-  r += 'This serves as your official receipt.' + LF
-  r += LF
-  r += '--- END OF RECEIPT ---' + LF
+  // ── Footer ────────────────────────────────────────────────────────────────
+  cmd(CMD.CENTER, CMD.BOLD_ON)
+  line('Thank you for your purchase!')
+  cmd(CMD.BOLD_OFF)
+  line('Please keep this receipt.')
+  bytes.push(LF)
+  line('Returns due to change of mind')
+  line('will NOT be accepted.')
+  line('Items may be exchanged only')
+  line('if in good condition.')
+  bytes.push(LF)
+  line('This serves as your official receipt.')
+  bytes.push(LF)
+  line('--- END OF RECEIPT ---')
 
-  // Feed and auto-cut
-  r += CMD.FEED(4)
-  r += CMD.CUT
+  // Feed + cut
+  cmd(CMD.FEED(4))
+  cmd(CMD.CUT)
 
-  // Convert string to binary bytes
-  const bytes = new Uint8Array(r.length)
-  for (let i = 0; i < r.length; i++) {
-    bytes[i] = r.charCodeAt(i) & 0xff
-  }
-  return bytes
-}
-
-// ---------------------------------------------------------------------------
-// Base64 helper (browser-safe for large buffers)
-// ---------------------------------------------------------------------------
-
-function toBase64(bytes: Uint8Array): string {
-  let binary = ''
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i])
-  }
-  return btoa(binary)
+  return new Uint8Array(bytes)
 }
 
 // ---------------------------------------------------------------------------
@@ -219,95 +252,157 @@ async function sendToCUPS(bytes: Uint8Array, printerQueue: string): Promise<void
   }
 }
 
+function toBase64(bytes: Uint8Array): string {
+  let binary = ''
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
+  return btoa(binary)
+}
+
 /**
  * Send ESC/POS bytes to the configured thermal printer.
- *
- * Priority:
- *  1. Electron Bluetooth IPC (window.electronBluetooth) — COM port / SPP
- *  2. Electron USB IPC (window.electronPrint) — node-usb, queue "usb:vid:pid"
- *  3. CUPS API route (/api/print) — macOS only, queue = CUPS printer name
+ * Priority: Bluetooth IPC → USB IPC → CUPS (macOS)
  */
 async function sendBytes(bytes: Uint8Array, printerQueue: string): Promise<void> {
-  // --- Branch 1: Bluetooth via serialport IPC (Electron desktop) ----------
+  // Branch 1: Bluetooth / COM port via Electron IPC
   if (typeof window !== 'undefined' && window.electronBluetooth && printerQueue) {
-    let binary = ''
-    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
-    const b64 = btoa(binary)
-    const result = await window.electronBluetooth.printBytes(printerQueue, b64)
+    const result = await window.electronBluetooth.printBytes(printerQueue, toBase64(bytes))
     if (result.success) return
     throw new Error(result.error || 'Bluetooth print failed')
   }
 
-  // --- Branch 2: USB via node-usb IPC (Electron desktop) ------------------
+  // Branch 2: USB via node-usb Electron IPC
   if (typeof window !== 'undefined' && window.electronPrint) {
     const parts = printerQueue.split(':')
     if (parts[0] === 'usb' && parts.length === 3) {
       const vendorId  = parseInt(parts[1], 10)
       const productId = parseInt(parts[2], 10)
       if (!isNaN(vendorId) && !isNaN(productId)) {
-        let binary = ''
-        for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
-        const b64    = btoa(binary)
-        const result = await window.electronPrint.printBytes(vendorId, productId, b64)
+        const result = await window.electronPrint.printBytes(vendorId, productId, toBase64(bytes))
         if (result.success) return
         throw new Error(result.error || 'USB print failed')
       }
     }
   }
 
-  // --- Branch 3: CUPS API route (macOS only) ------------------------------
+  // Branch 3: CUPS (macOS only)
   await sendToCUPS(bytes, printerQueue)
+}
+
+// ---------------------------------------------------------------------------
+// Delivery slip builder (mirrors escpos-mobile.ts buildDeliverySlipBytes)
+// ---------------------------------------------------------------------------
+
+export function buildDeliverySlipBytes(data: ReceiptData, width = 48): Uint8Array {
+  const bytes: number[] = []
+  const divider     = '='.repeat(width)
+  const thinDivider = '-'.repeat(width)
+
+  function cmd(...cmds: number[][]): void {
+    for (const c of cmds) bytes.push(...c)
+  }
+  function text(str: string): void { bytes.push(...strBytes(str)) }
+  function line(str: string): void { text(str); bytes.push(LF) }
+
+  cmd(CMD.INIT, CMD.CHARSET_PC437)
+
+  // ── Header ────────────────────────────────────────────────────────────────
+  cmd(CMD.CENTER, CMD.BOLD_ON, CMD.DOUBLE_SIZE)
+  line('DELIVERY SLIP')
+  cmd(CMD.NORMAL_SIZE, CMD.BOLD_OFF)
+  line('SYD CONSTRUCTION SUPPLIES TRADING')
+  line('Construction Materials & Hardware')
+  line(STORE_ADDRESS)
+  line(STORE_CONTACTS)
+  cmd(CMD.LEFT)
+  line(divider)
+
+  // ── Transaction reference ─────────────────────────────────────────────────
+  line(lr('TXN#:', data.transaction_number, width))
+  line(lr('Date:', data.date, width))
+  line(lr('Time:', data.time, width))
+  line(lr('Prepared by:', data.cashier, width))
+  line(thinDivider)
+
+  // ── Recipient info ────────────────────────────────────────────────────────
+  cmd(CMD.BOLD_ON)
+  line('DELIVER TO:')
+  cmd(CMD.BOLD_OFF)
+  cmd(CMD.DOUBLE_SIZE)
+  line(data.customer.name.substring(0, width))
+  cmd(CMD.NORMAL_SIZE)
+  if (data.customer.phone) {
+    line('Tel: ' + data.customer.phone)
+  }
+  if (data.delivery_address) {
+    cmd(CMD.BOLD_ON)
+    line('Address:')
+    cmd(CMD.BOLD_OFF)
+    const addr = data.delivery_address
+    for (let i = 0; i < addr.length; i += width - 2) {
+      line('  ' + addr.substring(i, i + width - 2))
+    }
+  }
+  line(thinDivider)
+
+  // ── Items ─────────────────────────────────────────────────────────────────
+  cmd(CMD.BOLD_ON)
+  line(lr('ITEM', 'QTY', width))
+  cmd(CMD.BOLD_OFF)
+  for (const item of data.items) {
+    const maxNameLen = width - 12
+    const name = item.name.length > maxNameLen ? item.name.substring(0, maxNameLen - 1) + '...' : item.name
+    line(lr(name, `${item.quantity} ${item.uom}`, width))
+  }
+  line(thinDivider)
+
+  // ── Totals ────────────────────────────────────────────────────────────────
+  if ((data.delivery_fee ?? 0) > 0) {
+    line(lr('Delivery Fee:', 'PHP ' + fmt(data.delivery_fee!), width))
+  }
+  if ((data.other_fees ?? 0) > 0) {
+    line(lr('Other Fees:', 'PHP ' + fmt(data.other_fees!), width))
+    if (data.other_fees_notes) {
+      line('  ' + data.other_fees_notes.substring(0, width - 2))
+    }
+  }
+  cmd(CMD.BOLD_ON)
+  line(lr('TOTAL AMOUNT:', 'PHP ' + fmt(data.total), width))
+  cmd(CMD.BOLD_OFF)
+  line(divider)
+
+  // ── Acknowledgement ───────────────────────────────────────────────────────
+  cmd(CMD.CENTER, CMD.BOLD_ON)
+  line('RECEIVED IN GOOD CONDITION')
+  cmd(CMD.BOLD_OFF, CMD.LEFT)
+  bytes.push(LF)
+
+  const blank = (label: string) => {
+    const fill = '_'.repeat(width - label.length - 1)
+    line(`${label} ${fill}`)
+    bytes.push(LF)
+  }
+
+  blank('Print Name:')
+  blank('Signature: ')
+  blank('Date:      ')
+  blank('Remarks:   ')
+
+  cmd(CMD.CENTER)
+  line('--- END OF DELIVERY SLIP ---')
+
+  cmd(CMD.FEED(4))
+  cmd(CMD.CUT)
+
+  return new Uint8Array(bytes)
 }
 
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
-/** Prints a receipt to the configured thermal printer. */
-export async function printUSBReceipt(
-  data: ReceiptData,
-  printerQueue: string
-): Promise<void> {
-  await sendBytes(buildReceiptBytes(data), printerQueue)
+export async function printUSBReceipt(data: ReceiptData, printerQueue: string, width = 48): Promise<void> {
+  await sendBytes(buildReceiptBytes(data, width), printerQueue)
 }
-
-/** Prints a test receipt to verify the printer is working. */
-export async function printUSBTestReceipt(printerQueue: string): Promise<void> {
-  const now = new Date()
-  const testData: ReceiptData = {
-    transaction_number: 'TXN-TEST-001',
-    date: now.toLocaleDateString('en-PH'),
-    time: now.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' }),
-    cashier: 'Test Cashier',
-    branch: 'Main Branch',
-    customer: { name: 'Test Customer', phone: '09XX-XXX-XXXX' },
-    delivery_type: 'pickup',
-    items: [
-      {
-        name: 'Test Product — 80mm QZ Tray USB Receipt',
-        quantity: 2,
-        unit_price: 150,
-        uom: 'pc',
-        discount: 0,
-        total: 300,
-      },
-    ],
-    subtotal: 300,
-    discount: 0,
-    tax: 0,
-    total: 300,
-    payments: [{ method: 'cash', amount: 300, reference: null }],
-    amount_paid: 300,
-    change: 0,
-    notes: 'VOZY G80 USB test — QZ Tray + auto-cut',
-  }
-
-  await sendBytes(buildReceiptBytes(testData), printerQueue)
-}
-
-// ---------------------------------------------------------------------------
-// Printer discovery helpers (calls GET /api/print)
-// ---------------------------------------------------------------------------
 
 export interface CupsPrinter {
   name: string

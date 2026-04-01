@@ -228,7 +228,8 @@ export async function getTransaction(id: string) {
     .select(`
       *,
       customer:customers!customer_id(id, name, phone, email, address, customer_type),
-      branch:branches!branch_id(id, name)
+      branch:branches!branch_id(id, name),
+      created_by_user:users!created_by(id, full_name)
     `)
     .eq('id', id)
     .eq('is_deleted', false)

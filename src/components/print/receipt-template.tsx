@@ -17,7 +17,7 @@ interface ReceiptPayment {
   reference?: string | null
 }
 
-interface ReceiptData {
+export interface ReceiptData {
   transaction_number: string
   date: string
   time: string
@@ -32,6 +32,9 @@ interface ReceiptData {
   items: ReceiptItem[]
   subtotal: number
   discount: number
+  delivery_fee?: number
+  other_fees?: number
+  other_fees_notes?: string | null
   tax: number
   total: number
   payments: ReceiptPayment[]

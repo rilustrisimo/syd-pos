@@ -25,7 +25,7 @@ import { ReceiptTemplate, ReceiptData } from './receipt-template'
 import { InvoiceTemplate, InvoiceData } from './invoice-template'
 import { PackingSlipTemplate, PackingSlipData } from './packing-slip-template'
 import { printElement } from '@/lib/utils/print'
-import { buildReceiptBytes } from '@/lib/utils/usb-thermal-print'
+import { buildReceiptBytes, buildDeliverySlipBytes } from '@/lib/utils/usb-thermal-print'
 import { listCupsPrinters, printUSBReceipt, type CupsPrinter } from '@/lib/utils/usb-thermal-print'
 import { usePrinterStore } from '@/lib/stores/printer'
 
@@ -96,17 +96,25 @@ export function PrintDialog({
   }
 
   // ── Bluetooth print ──────────────────────────────────────────────────────
+  const charWidth = paperWidth === '58mm' ? 32 : 48
+
+  const sendBytesToBt = async (bytes: Uint8Array) => {
+    if (!btPortPath || !window.electronBluetooth) throw new Error('No printer')
+    let binary = ''
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
+    const result = await window.electronBluetooth.printBytes(btPortPath, btoa(binary))
+    if (!result.success) throw new Error(result.error || 'Print failed')
+  }
+
   const handleBluetoothPrint = async () => {
     if (!receiptData || !btPortPath || !window.electronBluetooth) return
     setBtPrinting(true)
     setBtError(null)
     try {
-      const bytes  = buildReceiptBytes(receiptData)
-      let binary   = ''
-      for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
-      const b64    = btoa(binary)
-      const result = await window.electronBluetooth.printBytes(btPortPath, b64)
-      if (!result.success) setBtError(result.error || 'Print failed')
+      await sendBytesToBt(buildReceiptBytes(receiptData, charWidth))
+      if (receiptData.delivery_type === 'delivery') {
+        await sendBytesToBt(buildDeliverySlipBytes(receiptData, charWidth))
+      }
     } catch (err: any) {
       setBtError(err?.message || 'Print failed')
     } finally {
