@@ -837,9 +837,9 @@ export default function FrontlinePOSPage() {
         })),
         subtotal: Number(txn.subtotal),
         discount: Number(txn.discount_amount),
-        delivery_fee: Number(txn.delivery_fee) > 0 ? Number(txn.delivery_fee) : undefined,
-        other_fees: Number(txn.other_fees) > 0 ? Number(txn.other_fees) : undefined,
-        other_fees_notes: txn.other_fees_notes || null,
+        delivery_fee: Number((txn as any).delivery_fee) > 0 ? Number((txn as any).delivery_fee) : undefined,
+        other_fees: Number((txn as any).other_fees) > 0 ? Number((txn as any).other_fees) : undefined,
+        other_fees_notes: (txn as any).other_fees_notes || null,
         tax: Number(txn.tax_amount),
         total: Number(txn.total_amount),
         payments: (txn.payments || []).map((p: any) => ({

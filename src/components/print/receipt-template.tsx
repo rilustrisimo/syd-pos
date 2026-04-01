@@ -243,4 +243,4 @@ export const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptTemplateProps>(
 
 ReceiptTemplate.displayName = 'ReceiptTemplate'
 
-export type { ReceiptData, ReceiptItem, ReceiptPayment }
+export type { ReceiptItem, ReceiptPayment }
