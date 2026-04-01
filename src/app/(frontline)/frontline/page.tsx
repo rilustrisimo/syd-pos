@@ -819,7 +819,7 @@ export default function FrontlinePOSPage() {
         transaction_number: txn.transaction_number,
         date: txnDate.toLocaleDateString('en-PH'),
         time: txnDate.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' }),
-        cashier: (txn.created_by_user as any)?.full_name?.trim() || 'Staff',
+        cashier: (txn as any).created_by_user?.full_name?.trim() || 'Staff',
         branch: (txn.branch as any)?.name || 'Main Branch',
         customer: {
           name: (txn.customer as any)?.name || 'Walk-in Customer',
