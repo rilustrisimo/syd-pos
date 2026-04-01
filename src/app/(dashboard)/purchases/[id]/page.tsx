@@ -115,6 +115,7 @@ export default function PurchaseOrderDetailPage() {
   const { user } = useAuthStore()
   const poId = params.id as string
   const poTemplateRef = useRef<HTMLDivElement>(null)
+  const logoUrl = typeof window !== 'undefined' ? `${window.location.origin}/syd-logo.svg` : undefined
 
   const { data: po, isLoading, error } = usePurchaseOrder(poId)
   const receiveMutation = useReceivePOLineItems()
@@ -1095,7 +1096,7 @@ export default function PurchaseOrderDetailPage() {
 
       {/* Hidden PO Print Template */}
       <div className="hidden">
-        <POTemplate ref={poTemplateRef} data={poData} />
+        <POTemplate ref={poTemplateRef} data={poData} logoUrl={logoUrl} />
       </div>
     </div>
   )

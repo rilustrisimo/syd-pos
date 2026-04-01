@@ -31,6 +31,12 @@ const SHELL_ENV = {
 // ---------------------------------------------------------------------------
 
 export async function GET() {
+  // On Windows, CUPS is not available. USB printing is handled by Electron IPC
+  // (window.electronPrint) when running inside the desktop app.
+  if (process.platform === 'win32') {
+    return NextResponse.json({ printers: [], platform: 'win32' })
+  }
+
   try {
     const { stdout } = await execAsync('lpstat -p', { env: SHELL_ENV })
     const printers = stdout
@@ -58,6 +64,14 @@ export async function GET() {
 // ---------------------------------------------------------------------------
 
 export async function POST(request: Request) {
+  // On Windows, USB printing goes through Electron IPC — CUPS is unavailable.
+  if (process.platform === 'win32') {
+    return NextResponse.json(
+      { error: 'CUPS not available on Windows. Use Electron IPC (window.electronPrint) instead.' },
+      { status: 501 }
+    )
+  }
+
   let tmpFile: string | null = null
 
   try {

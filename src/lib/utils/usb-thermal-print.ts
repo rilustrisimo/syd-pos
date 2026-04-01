@@ -221,13 +221,31 @@ async function sendToCUPS(bytes: Uint8Array, printerQueue: string): Promise<void
 }
 
 /**
- * Print strategy:
- *  1. Try QZ Tray (localhost WebSocket) — works on any device with QZ Tray installed.
- *  2. Fall back to the Next.js CUPS API route — works only when the app is running
- *     locally on the same Mac the printer is attached to.
- *  3. If both fail, throws with a combined error message.
+ * Print strategy (tried in order):
+ *  1. Electron IPC → node-usb (when running as Windows desktop app).
+ *     printerQueue must be in "usb:{vendorId}:{productId}" format.
+ *  2. QZ Tray (localhost WebSocket) — works on any device with QZ Tray installed.
+ *  3. CUPS API route (/api/print) — works only on macOS with CUPS.
  */
 async function sendBytes(bytes: Uint8Array, printerQueue: string): Promise<void> {
+  // --- Branch 1: Electron desktop app — direct USB via IPC ----------------
+  if (typeof window !== 'undefined' && window.electronPrint) {
+    // Queue format in Electron context: "usb:{vendorId}:{productId}"
+    const parts = printerQueue.split(':')
+    if (parts[0] === 'usb' && parts.length === 3) {
+      const vendorId = parseInt(parts[1], 10)
+      const productId = parseInt(parts[2], 10)
+      if (!isNaN(vendorId) && !isNaN(productId)) {
+        // Convert Uint8Array → base64 for IPC transfer
+        const b64 = btoa(String.fromCharCode(...bytes))
+        const result = await window.electronPrint.printBytes(vendorId, productId, b64)
+        if (result.success) return
+        console.warn('[print] Electron IPC USB failed:', result.error, '— falling back to QZ Tray')
+      }
+    }
+  }
+
+  // --- Branch 2: QZ Tray --------------------------------------------------
   // Dynamic import keeps qz-tray out of the SSR bundle
   const { printWithQZ } = await import('./qz-print')
 
@@ -238,6 +256,7 @@ async function sendBytes(bytes: Uint8Array, printerQueue: string): Promise<void>
     console.warn('[print] QZ Tray unavailable, trying CUPS API route:', qzErr)
   }
 
+  // --- Branch 3: CUPS API route (macOS only) ------------------------------
   await sendToCUPS(bytes, printerQueue)
 }
 

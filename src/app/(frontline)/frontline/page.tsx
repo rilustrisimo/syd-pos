@@ -3,7 +3,8 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { usePOSStore } from '@/lib/stores/posStore'
 import { useAuthStore } from '@/lib/stores/auth'
-import { usePOSProductSearch, useCreateTransaction } from '@/hooks/useTransactions'
+import { usePOSProductSearch, useCreateTransaction, useTransactions, useUpdateTransactionDeliveryType } from '@/hooks/useTransactions'
+import { getTransaction } from '@/lib/supabase/queries/transactions'
 import { useSearchCustomers, useAllActiveCustomers, useCreateCustomer } from '@/hooks/useCustomers'
 import { useBranches } from '@/hooks/useInventory'
 import { useDiscountRules } from '@/hooks/useDiscountRules'
@@ -32,7 +33,12 @@ import {
   UserPlus,
   Percent,
   Tag,
+  History,
+  Printer,
+  Edit,
+  PackageCheck,
 } from 'lucide-react'
+import type { ReceiptData } from '@/components/print/receipt-template'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -179,6 +185,34 @@ export default function FrontlinePOSPage() {
 
   const createTransaction = useCreateTransaction()
   const createCustomer = useCreateCustomer()
+  const updateDeliveryType = useUpdateTransactionDeliveryType()
+
+  // ── History panel state ────────────────────────────────────────────────
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false)
+  const [historySearch, setHistorySearch] = useState('')
+  const [historyPage, setHistoryPage] = useState(1)
+  const [reprintReceiptData, setReprintReceiptData] = useState<ReceiptData | null>(null)
+  const [isReprintOpen, setIsReprintOpen] = useState(false)
+  const [reprintingId, setReprintingId] = useState<string | null>(null)
+  const [historyDetailTxn, setHistoryDetailTxn] = useState<any | null>(null)
+  const [isEditDeliveryOpen, setIsEditDeliveryOpen] = useState(false)
+  const [editDeliveryType, setEditDeliveryType] = useState<'pickup' | 'delivery'>('pickup')
+  const [editDeliveryAddress, setEditDeliveryAddress] = useState('')
+  const [editDeliveryPhone, setEditDeliveryPhone] = useState('')
+  const [savingDelivery, setSavingDelivery] = useState(false)
+
+  // Today's transactions for the selected branch
+  const todayStr = getTodayPH()
+  const { data: historyData, isLoading: isLoadingHistory, refetch: refetchHistory } = useTransactions({
+    branch_id: branchId || undefined,
+    search: historySearch || undefined,
+    date_from: todayStr,
+    date_to: todayStr,
+    page: historyPage,
+    limit: 20,
+  })
+  const historyTransactions = historyData?.transactions || []
+  const historyTotalPages = historyData?.totalPages || 1
 
   // Walk-in Customer from database (hardcoded to avoid API calls)
   const WALK_IN_CUSTOMER = {
@@ -206,6 +240,7 @@ export default function FrontlinePOSPage() {
   const { user } = useAuthStore()
   const [isPrintOpen, setIsPrintOpen] = useState(false)
   const [pendingInvoice, setPendingInvoice] = useState<InvoiceData | null>(null)
+  const [pendingReceipt, setPendingReceipt] = useState<ReceiptData | null>(null)
 
   // Set mounted state and initialize date (client-side only to avoid hydration errors)
   useEffect(() => {
@@ -697,12 +732,136 @@ export default function FrontlinePOSPage() {
         notes: currentNotes || null,
         prepared_by: user?.fullName || user?.email || 'Staff',
       }
+      const receiptData: ReceiptData = {
+        transaction_number: result.transaction_number,
+        date: new Date(result.transaction_date || Date.now()).toLocaleDateString('en-PH'),
+        time: new Date(result.transaction_date || Date.now()).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' }),
+        cashier: user?.fullName || user?.email || 'Staff',
+        branch: currentBranch?.name || 'Main Branch',
+        customer: {
+          name: currentCustomer?.name || 'Walk-in Customer',
+          phone: currentCustomer?.phone || null,
+        },
+        delivery_type: currentDeliveryType,
+        delivery_address: currentDeliveryAddress || null,
+        items: currentItems.map((item) => ({
+          name: item.product_name,
+          quantity: item.quantity,
+          uom: item.uom_name,
+          unit_price: item.unit_price,
+          discount: item.discount_amount,
+          total: Math.round(item.quantity * item.unit_price * 100) / 100 - item.discount_amount,
+        })),
+        subtotal: currentSubtotal,
+        discount: currentTotalDiscount,
+        tax: 0,
+        total: currentTotal,
+        payments: currentPayments.map((p) => ({
+          method: p.payment_method,
+          amount: p.amount,
+          reference: p.reference_number,
+        })),
+        amount_paid: currentTotalPaid,
+        change: Math.max(0, currentTotalPaid - currentTotal),
+        notes: currentNotes || null,
+      }
+      setPendingReceipt(receiptData)
       setPendingInvoice(invoiceData)
       setIsPrintOpen(true)
     } catch (error: any) {
       toast.error(error.message || 'Failed to complete transaction')
     }
   }
+
+  // ── History handlers ───────────────────────────────────────────────────
+
+  const handleReprintTransaction = async (txnId: string) => {
+    setReprintingId(txnId)
+    const toastId = toast.loading('Loading transaction…')
+    try {
+      const txn = await getTransaction(txnId)
+      const txnDate = new Date(txn.transaction_date)
+      const receipt: ReceiptData = {
+        transaction_number: txn.transaction_number,
+        date: txnDate.toLocaleDateString('en-PH'),
+        time: txnDate.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' }),
+        cashier: 'Staff',
+        branch: (txn.branch as any)?.name || 'Main Branch',
+        customer: {
+          name: (txn.customer as any)?.name || 'Walk-in Customer',
+          phone: (txn.customer as any)?.phone || null,
+        },
+        delivery_type: txn.delivery_type,
+        delivery_address: txn.delivery_address,
+        items: (txn.lines || []).map((line: any) => ({
+          name: line.product?.name || 'Product',
+          quantity: Number(line.quantity),
+          unit_price: Number(line.unit_price),
+          uom: line.uom?.abbreviation || line.uom?.code || line.uom?.name || 'pc',
+          discount: Number(line.discount_amount) || 0,
+          total: Number(line.line_total) || Number(line.quantity) * Number(line.unit_price) - (Number(line.discount_amount) || 0),
+        })),
+        subtotal: Number(txn.subtotal),
+        discount: Number(txn.discount_amount),
+        tax: Number(txn.tax_amount),
+        total: Number(txn.total_amount),
+        payments: (txn.payments || []).map((p: any) => ({
+          method: p.payment_method,
+          amount: Number(p.amount),
+          reference: p.reference_number,
+        })),
+        amount_paid: Number(txn.amount_paid),
+        change: Math.max(0, Number(txn.amount_paid) - Number(txn.total_amount)),
+        notes: txn.notes,
+      }
+      toast.dismiss(toastId)
+      setReprintReceiptData(receipt)
+      setIsReprintOpen(true)
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to load transaction', { id: toastId })
+    } finally {
+      setReprintingId(null)
+    }
+  }
+
+  const handleOpenEditDelivery = async (txnId: string) => {
+    const toastId = toast.loading('Loading…')
+    try {
+      const txn = await getTransaction(txnId)
+      setHistoryDetailTxn(txn)
+      setEditDeliveryType(txn.delivery_type)
+      setEditDeliveryAddress(txn.delivery_address || '')
+      setEditDeliveryPhone(txn.delivery_phone || '')
+      toast.dismiss(toastId)
+      setIsEditDeliveryOpen(true)
+    } catch {
+      toast.error('Failed to load transaction', { id: toastId })
+    }
+  }
+
+  const handleSaveDeliveryType = async () => {
+    if (!historyDetailTxn) return
+    setSavingDelivery(true)
+    const toastId = toast.loading('Saving…')
+    try {
+      await updateDeliveryType.mutateAsync({
+        transactionId: historyDetailTxn.id,
+        deliveryType: editDeliveryType,
+        deliveryAddress: editDeliveryType === 'delivery' ? editDeliveryAddress : null,
+        deliveryPhone: editDeliveryType === 'delivery' ? editDeliveryPhone : null,
+      })
+      toast.success('Delivery type updated', { id: toastId })
+      setIsEditDeliveryOpen(false)
+      setHistoryDetailTxn(null)
+      refetchHistory()
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to update', { id: toastId })
+    } finally {
+      setSavingDelivery(false)
+    }
+  }
+
+  // ───────────────────────────────────────────────────────────────────────
 
   const subtotal = getSubtotal()
   const totalDiscount = getTotalDiscount()
@@ -715,7 +874,7 @@ export default function FrontlinePOSPage() {
     <div className="h-full flex flex-col lg:flex-row gap-4">
       {/* Left Panel - Product Search & List */}
       <div className="flex-1 flex flex-col min-h-0">
-        {/* Branch & Customer Selection */}
+        {/* Branch & Customer Selection + History */}
         <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 mb-4">
           <Select value={branchId || ''} onValueChange={setBranchId}>
             <SelectTrigger className="w-full sm:w-[200px]">
@@ -812,6 +971,15 @@ export default function FrontlinePOSPage() {
               </Command>
             </PopoverContent>
           </Popover>
+
+          <Button
+            variant="outline"
+            className="sm:w-auto shrink-0"
+            onClick={() => setIsHistoryOpen(true)}
+          >
+            <History className="mr-2 h-4 w-4" />
+            History
+          </Button>
         </div>
 
         {/* Product Search */}
@@ -1491,14 +1659,240 @@ export default function FrontlinePOSPage() {
         </DialogContent>
       </Dialog>
 
-      {/* A4 Print Dialog */}
+      {/* Post-checkout Print Dialog */}
       <PrintDialog
         open={isPrintOpen}
         onOpenChange={setIsPrintOpen}
-        receiptData={null}
+        receiptData={pendingReceipt}
         invoiceData={pendingInvoice}
-        onComplete={() => setPendingInvoice(null)}
+        onComplete={() => { setPendingReceipt(null); setPendingInvoice(null) }}
       />
+
+      {/* History Reprint Dialog */}
+      <PrintDialog
+        open={isReprintOpen}
+        onOpenChange={(open) => {
+          setIsReprintOpen(open)
+          if (!open) setReprintReceiptData(null)
+        }}
+        receiptData={reprintReceiptData}
+        invoiceData={null}
+      />
+
+      {/* ── History Sheet ─────────────────────────────────────────────────── */}
+      <Sheet open={isHistoryOpen} onOpenChange={setIsHistoryOpen}>
+        <SheetContent side="right" className="w-full sm:max-w-2xl flex flex-col p-0">
+          <div className="flex items-center justify-between px-6 py-4 border-b">
+            <SheetTitle className="text-lg font-semibold flex items-center gap-2">
+              <History className="h-5 w-5" />
+              Today&apos;s Transactions
+            </SheetTitle>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => { refetchHistory() }}
+              title="Refresh"
+            >
+              <Receipt className="h-4 w-4" />
+            </Button>
+          </div>
+
+          {/* Search */}
+          <div className="px-6 py-3 border-b">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search by TXN# or customer…"
+                className="pl-8 h-9"
+                value={historySearch}
+                onChange={(e) => { setHistorySearch(e.target.value); setHistoryPage(1) }}
+              />
+            </div>
+          </div>
+
+          {/* Transaction list */}
+          <div className="flex-1 overflow-y-auto">
+            {isLoadingHistory ? (
+              <div className="flex items-center justify-center py-16">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : historyTransactions.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+                <Receipt className="h-10 w-10 mb-3 opacity-30" />
+                <p className="text-sm">No transactions found for today</p>
+              </div>
+            ) : (
+              <div className="divide-y">
+                {historyTransactions.map((txn: any) => {
+                  const txnDate = new Date(txn.transaction_date)
+                  const time = txnDate.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })
+                  const isReprinting = reprintingId === txn.id
+                  return (
+                    <div key={txn.id} className="px-6 py-4 hover:bg-muted/40 transition-colors">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-mono text-sm font-semibold">{txn.transaction_number}</span>
+                            <Badge
+                              variant={txn.delivery_type === 'delivery' ? 'secondary' : 'outline'}
+                              className="text-xs"
+                            >
+                              {txn.delivery_type === 'delivery' ? (
+                                <><Truck className="mr-1 h-3 w-3" />Delivery</>
+                              ) : (
+                                <><Package className="mr-1 h-3 w-3" />Pickup</>
+                              )}
+                            </Badge>
+                            <Badge
+                              variant={
+                                txn.payment_status === 'paid' ? 'default'
+                                  : txn.payment_status === 'partial' ? 'secondary'
+                                    : 'destructive'
+                              }
+                              className="text-xs"
+                            >
+                              {txn.payment_status}
+                            </Badge>
+                          </div>
+                          <div className="text-sm text-muted-foreground mt-0.5">
+                            {(txn.customer as any)?.name || 'Walk-in Customer'}
+                            <span className="mx-1.5">·</span>
+                            {time}
+                          </div>
+                          {txn.delivery_type === 'delivery' && txn.delivery_address && (
+                            <div className="text-xs text-muted-foreground mt-0.5 truncate">
+                              {txn.delivery_address}
+                            </div>
+                          )}
+                        </div>
+                        <div className="text-right shrink-0">
+                          <div className="font-semibold text-sm">{formatCurrency(txn.total_amount)}</div>
+                          <div className="flex items-center gap-1 mt-1.5">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 px-2 text-xs"
+                              onClick={() => handleReprintTransaction(txn.id)}
+                              disabled={isReprinting}
+                            >
+                              {isReprinting
+                                ? <Loader2 className="h-3 w-3 animate-spin" />
+                                : <Printer className="h-3 w-3" />
+                              }
+                              <span className="ml-1">Print</span>
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 px-2 text-xs"
+                              onClick={() => handleOpenEditDelivery(txn.id)}
+                            >
+                              <Edit className="h-3 w-3" />
+                              <span className="ml-1">Delivery</span>
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Pagination */}
+          {historyTotalPages > 1 && (
+            <div className="flex items-center justify-between px-6 py-3 border-t text-sm">
+              <span className="text-muted-foreground">Page {historyPage} of {historyTotalPages}</span>
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" onClick={() => setHistoryPage(p => Math.max(1, p - 1))} disabled={historyPage === 1}>
+                  Prev
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => setHistoryPage(p => Math.min(historyTotalPages, p + 1))} disabled={historyPage === historyTotalPages}>
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
+
+      {/* ── Edit Delivery Type Dialog ─────────────────────────────────────── */}
+      <Dialog open={isEditDeliveryOpen} onOpenChange={(open) => {
+        setIsEditDeliveryOpen(open)
+        if (!open) setHistoryDetailTxn(null)
+      }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Truck className="h-5 w-5" />
+              Edit Delivery Type
+            </DialogTitle>
+            <DialogDescription>
+              {historyDetailTxn?.transaction_number} — change pickup/delivery and update address.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label>Type</Label>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant={editDeliveryType === 'pickup' ? 'default' : 'outline'}
+                  className="flex-1"
+                  onClick={() => setEditDeliveryType('pickup')}
+                >
+                  <Package className="mr-2 h-4 w-4" />
+                  Pickup
+                </Button>
+                <Button
+                  type="button"
+                  variant={editDeliveryType === 'delivery' ? 'default' : 'outline'}
+                  className="flex-1"
+                  onClick={() => setEditDeliveryType('delivery')}
+                >
+                  <Truck className="mr-2 h-4 w-4" />
+                  Delivery
+                </Button>
+              </div>
+            </div>
+
+            {editDeliveryType === 'delivery' && (
+              <>
+                <div className="space-y-1.5">
+                  <Label htmlFor="edit-addr">Delivery Address</Label>
+                  <Input
+                    id="edit-addr"
+                    placeholder="Full delivery address"
+                    value={editDeliveryAddress}
+                    onChange={(e) => setEditDeliveryAddress(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="edit-phone">Contact Phone</Label>
+                  <Input
+                    id="edit-phone"
+                    placeholder="09XX-XXX-XXXX"
+                    value={editDeliveryPhone}
+                    onChange={(e) => setEditDeliveryPhone(e.target.value)}
+                  />
+                </div>
+              </>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsEditDeliveryOpen(false)} disabled={savingDelivery}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveDeliveryType} disabled={savingDelivery}>
+              {savingDelivery ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PackageCheck className="mr-2 h-4 w-4" />}
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Unit Selector Dialog */}
       <Dialog open={isUnitSelectorOpen} onOpenChange={(open) => {
