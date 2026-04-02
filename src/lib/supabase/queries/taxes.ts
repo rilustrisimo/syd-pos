@@ -121,45 +121,60 @@ export async function getQuarterlyTaxData(
   const supabase = createClient()
   const { from, to } = quarterBounds(year, quarter)
 
-  // Gross sales
-  const { data: sales } = await supabase
+  // Transactions + lines in one query — same approach as getPLReport
+  const { data: txnData } = await supabase
     .from('transactions')
-    .select('total_amount')
+    .select(`
+      transaction_type,
+      delivery_fee,
+      other_fees,
+      discount_amount,
+      subtotal,
+      lines:transaction_lines(
+        quantity,
+        unit_price,
+        cogs_per_unit,
+        line_total,
+        discount_amount
+      )
+    `)
     .eq('branch_id', branchId)
-    .eq('transaction_type', 'sale')
+    .in('transaction_type', ['sale', 'return'])
     .eq('is_deleted', false)
     .gte('transaction_date', from)
     .lte('transaction_date', to)
 
-  // Returns
-  const { data: returns } = await supabase
-    .from('transactions')
-    .select('total_amount')
-    .eq('branch_id', branchId)
-    .eq('transaction_type', 'return')
-    .eq('is_deleted', false)
-    .gte('transaction_date', from)
-    .lte('transaction_date', to)
+  let grossSales = 0
+  let returnsAmt = 0
+  let cogs       = 0
 
-  // COGS from transaction lines
-  const { data: txnIds } = await supabase
-    .from('transactions')
-    .select('id')
-    .eq('branch_id', branchId)
-    .eq('transaction_type', 'sale')
-    .eq('is_deleted', false)
-    .gte('transaction_date', from)
-    .lte('transaction_date', to)
+  for (const txn of (txnData as any[]) ?? []) {
+    const isReturn   = txn.transaction_type === 'return'
+    const sign       = isReturn ? -1 : 1
+    const subtotal   = txn.subtotal || 0
+    const deliveryFee        = txn.delivery_fee || 0
+    const otherFees          = txn.other_fees || 0
+    const txnDiscount        = txn.discount_amount || 0
 
-  let cogs = 0
-  if (txnIds && txnIds.length > 0) {
-    const ids = txnIds.map((t: any) => t.id)
-    const { data: lines } = await supabase
-      .from('transaction_lines')
-      .select('quantity, cogs_per_unit')
-      .in('transaction_id', ids)
-    cogs = (lines ?? []).reduce((sum: number, l: any) =>
-      sum + Number(l.quantity) * Number(l.cogs_per_unit || 0), 0)
+    let txnRevenue = 0
+    let txnCogs    = 0
+
+    for (const line of txn.lines || []) {
+      const lineTotal   = line.line_total || 0
+      const lineRatio   = subtotal > 0 ? lineTotal / subtotal : 0
+      txnRevenue += lineTotal
+        + deliveryFee  * lineRatio
+        + otherFees    * lineRatio
+        - txnDiscount  * lineRatio
+      txnCogs += (line.quantity || 0) * (line.cogs_per_unit || 0)
+    }
+
+    if (isReturn) {
+      returnsAmt += txnRevenue
+    } else {
+      grossSales += txnRevenue
+    }
+    cogs += sign * txnCogs
   }
 
   // Operating expenses
@@ -171,9 +186,7 @@ export async function getQuarterlyTaxData(
     .gte('expense_date', from)
     .lte('expense_date', to)
 
-  const grossSales = (sales ?? []).reduce((s: number, t: any) => s + Number(t.total_amount), 0)
-  const returnsAmt = (returns ?? []).reduce((s: number, t: any) => s + Number(t.total_amount), 0)
-  const expenses   = (expenseData ?? []).reduce((s: number, e: any) => s + Number(e.amount), 0)
+  const expenses = (expenseData ?? []).reduce((s: number, e: any) => s + Number(e.amount), 0)
 
   return {
     grossSales,
