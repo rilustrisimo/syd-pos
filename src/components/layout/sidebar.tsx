@@ -31,6 +31,7 @@ import {
   FileWarning,
   Banknote,
   CalendarClock,
+  FileCheck2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
@@ -78,6 +79,7 @@ const navigation = [
       { name: 'Cash Flow', href: '/liabilities/cashflow', icon: CalendarClock },
     ],
   },
+  { name: 'Taxes', href: '/taxes', icon: FileCheck2 },
   {
     name: 'Reports',
     href: '/reports',

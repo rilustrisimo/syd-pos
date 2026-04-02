@@ -432,6 +432,44 @@ export interface NotificationSettingsRow {
   updated_at: string
 }
 
+// ── Tax Module ─────────────────────────────────────────────────────────────────
+
+export type TaxRegime = '8_flat' | 'graduated_osd' | 'graduated_itemized' | 'comparison'
+export type TaxType = '2551q' | '1701q' | '1701a' | '0605' | 'lbt' | 'mayors_permit' | 'barangay_clearance'
+
+export interface TaxSettingsRow {
+  id: string
+  branch_id: string
+  bir_tin: string | null
+  tax_regime: TaxRegime
+  lbt_rate: number
+  mayors_permit_amount: number
+  barangay_clearance_amount: number
+  bir_registration_amount: number
+  notify_days_before: number[]
+  created_at: string
+  updated_at: string
+}
+
+export interface TaxPaymentRow {
+  id: string
+  branch_id: string
+  payment_number: string
+  tax_type: TaxType
+  period_year: number
+  period_quarter: number | null
+  amount_due: number
+  amount_paid: number
+  payment_date: string
+  reference_number: string | null
+  notes: string | null
+  is_deleted: boolean
+  deleted_at: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
 // Database interface for Supabase
 export interface Database {
   public: {
