@@ -1026,7 +1026,7 @@ export default function FrontlinePOSPage() {
         </div>
 
         {/* Product Search */}
-        <Card className="flex-1 flex flex-col">
+        <Card className="flex-1 flex flex-col min-h-0">
           <CardHeader className="pb-3">
             <div className="relative">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
