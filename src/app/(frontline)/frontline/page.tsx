@@ -1040,7 +1040,7 @@ export default function FrontlinePOSPage() {
               />
             </div>
           </CardHeader>
-          <CardContent className="flex-1 overflow-hidden">
+          <CardContent className="flex-1 overflow-hidden min-h-0">
             <ScrollArea className="h-full">
               {isSearchingProducts ? (
                 <div className="flex items-center justify-center py-8">
