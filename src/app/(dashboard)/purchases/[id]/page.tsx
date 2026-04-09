@@ -77,13 +77,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Label } from '@/components/ui/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { TrendingUp, TrendingDown, Minus, CheckCheck, RotateCcw } from 'lucide-react'
 
 const statusConfig: Record<POStatus, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline'; icon: typeof FileText; color: string }> = {
   draft: { label: 'Draft', variant: 'outline', icon: FileText, color: 'text-gray-500' },
@@ -924,117 +918,172 @@ export default function PurchaseOrderDetailPage() {
         open={isPriceReviewOpen}
         onOpenChange={(open) => {
           setIsPriceReviewOpen(open)
-          if (!open) {
-            setPriceReviewItems([])
-          }
+          if (!open) setPriceReviewItems([])
         }}
       >
-        <DialogContent className="w-full max-w-5xl">
-          <DialogHeader>
+        <DialogContent className="w-full max-w-4xl max-h-[90vh] flex flex-col">
+          <DialogHeader className="shrink-0">
             <DialogTitle>Review Pricing Changes</DialogTitle>
             <DialogDescription>
-              Approve, retain, or customize pricing per item before applying updates.
+              {priceReviewItems.length} item{priceReviewItems.length !== 1 ? 's' : ''} have proposed price changes. Choose how to update each selling price.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
+
+          {priceReviewItems.length > 0 && (
+            <div className="shrink-0 flex items-center gap-2 px-1">
+              <span className="text-xs text-muted-foreground mr-1">Bulk:</span>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs gap-1"
+                onClick={() => setPriceReviewItems(priceReviewItems.map(i => ({ ...i, action: 'accept' as PriceReviewAction })))}
+              >
+                <CheckCheck className="h-3 w-3" /> Accept All
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs gap-1"
+                onClick={() => setPriceReviewItems(priceReviewItems.map(i => ({ ...i, action: 'retain' as PriceReviewAction })))}
+              >
+                <RotateCcw className="h-3 w-3" /> Retain All
+              </Button>
+            </div>
+          )}
+
+          <div className="flex-1 overflow-y-auto min-h-0">
             {priceReviewItems.length === 0 ? (
-              <div className="text-sm text-muted-foreground">No price changes to review.</div>
+              <div className="text-sm text-muted-foreground py-8 text-center">No price changes to review.</div>
             ) : (
-              <div className="border rounded-lg">
+              <div className="border rounded-lg overflow-hidden">
                 <Table>
                   <TableHeader>
-                    <TableRow>
-                      <TableHead>Product</TableHead>
-                      <TableHead className="text-right">Current</TableHead>
-                      <TableHead className="text-right">Proposed</TableHead>
-                      <TableHead>Action</TableHead>
-                      <TableHead>Custom</TableHead>
+                    <TableRow className="bg-muted/50">
+                      <TableHead className="w-[35%]">Product</TableHead>
+                      <TableHead className="text-right w-[12%]">Current</TableHead>
+                      <TableHead className="text-right w-[12%]">Proposed</TableHead>
+                      <TableHead className="text-right w-[10%]">Change</TableHead>
+                      <TableHead className="w-[31%]">Decision</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {priceReviewItems.map((item, index) => {
-                      const isIncrease = item.proposedPrice > item.currentPrice
+                      const diff = item.proposedPrice - item.currentPrice
+                      const pct = item.currentPrice > 0 ? (diff / item.currentPrice) * 100 : 0
+                      const isIncrease = diff > 0
+                      const isSame = diff === 0
+
+                      // resolve final price for preview
+                      let finalPrice = item.proposedPrice
+                      if (item.action === 'retain') finalPrice = item.currentPrice
+                      else if (item.action === 'custom_price') finalPrice = parseNumber(item.customPrice)
+                      else if (item.action === 'custom_markup') finalPrice = calculateSellingPrice(item.cogs, parseNumber(item.customMarkup))
+
                       return (
-                      <TableRow key={item.lineId}>
-                        <TableCell>
-                          <div className="font-medium">{item.productName}</div>
-                          <div className="text-xs text-muted-foreground">
-                            COGS: {formatCurrency(item.cogs)}
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-right font-mono">
-                          {formatCurrency(item.currentPrice)}
-                        </TableCell>
-                        <TableCell className={`text-right font-mono ${isIncrease ? 'text-green-600' : 'text-amber-600'}`}>
-                          {formatCurrency(item.proposedPrice)}
-                        </TableCell>
-                        <TableCell>
-                          <Select
-                            value={item.action}
-                            onValueChange={(value) =>
-                              updateReviewItem(index, { action: value as PriceReviewAction })
-                            }
-                          >
-                            <SelectTrigger className="w-[170px]">
-                              <SelectValue placeholder="Select" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="accept">Accept proposed</SelectItem>
-                              <SelectItem value="retain">Retain current</SelectItem>
-                              <SelectItem value="custom_price">Custom price</SelectItem>
-                              <SelectItem value="custom_markup">Custom markup</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </TableCell>
-                        <TableCell>
-                          {item.action === 'custom_price' && (
-                            <div className="space-y-1">
-                              <Input
-                                type="number"
-                                step="0.01"
-                                value={item.customPrice}
-                                onChange={(e) => updateReviewItem(index, { customPrice: e.target.value })}
-                              />
-                              <div className="text-xs text-muted-foreground">
-                                Markup: {calculateMarkupPercentage(item.cogs, parseNumber(item.customPrice)).toFixed(2)}%
-                              </div>
+                        <TableRow key={item.lineId} className={item.action === 'retain' ? 'opacity-60' : ''}>
+                          <TableCell>
+                            <div className="font-medium text-sm">{item.productName}</div>
+                            <div className="text-xs text-muted-foreground">
+                              COGS: {formatCurrency(item.cogs)}
+                              {finalPrice > 0 && (
+                                <span className="ml-2 text-foreground/70">
+                                  → Final: <span className="font-semibold">{formatCurrency(finalPrice)}</span>
+                                  {item.cogs > 0 && <span className="ml-1">({calculateMarkupPercentage(item.cogs, finalPrice).toFixed(1)}% markup)</span>}
+                                </span>
+                              )}
                             </div>
-                          )}
-                          {item.action === 'custom_markup' && (
-                            <div className="space-y-1">
-                              <div className="flex items-center gap-2">
-                                <Input
-                                  type="number"
-                                  step="0.01"
-                                  value={item.customMarkup}
-                                  onChange={(e) => updateReviewItem(index, { customMarkup: e.target.value })}
-                                />
-                                <span className="text-xs text-muted-foreground">%</span>
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-sm">
+                            {formatCurrency(item.currentPrice)}
+                          </TableCell>
+                          <TableCell className={`text-right font-mono text-sm font-medium ${isIncrease ? 'text-green-600' : isSame ? 'text-muted-foreground' : 'text-amber-600'}`}>
+                            {formatCurrency(item.proposedPrice)}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {isSame ? (
+                              <span className="inline-flex items-center gap-0.5 text-xs text-muted-foreground"><Minus className="h-3 w-3" /> —</span>
+                            ) : isIncrease ? (
+                              <span className="inline-flex items-center gap-0.5 text-xs text-green-600 font-medium">
+                                <TrendingUp className="h-3 w-3" />+{pct.toFixed(1)}%
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-0.5 text-xs text-amber-600 font-medium">
+                                <TrendingDown className="h-3 w-3" />{pct.toFixed(1)}%
+                              </span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <div className="space-y-2">
+                              {/* Action buttons */}
+                              <div className="flex gap-1 flex-wrap">
+                                {(['accept', 'retain', 'custom_price', 'custom_markup'] as PriceReviewAction[]).map((action) => {
+                                  const labels: Record<PriceReviewAction, string> = {
+                                    accept: 'Accept',
+                                    retain: 'Retain',
+                                    custom_price: 'Custom ₱',
+                                    custom_markup: 'Custom %',
+                                  }
+                                  return (
+                                    <button
+                                      key={action}
+                                      onClick={() => updateReviewItem(index, { action })}
+                                      className={`px-2 py-0.5 rounded text-xs border transition-colors ${
+                                        item.action === action
+                                          ? action === 'accept'
+                                            ? 'bg-green-600 border-green-600 text-white'
+                                            : action === 'retain'
+                                            ? 'bg-muted border-border text-foreground'
+                                            : 'bg-primary border-primary text-primary-foreground'
+                                          : 'border-border text-muted-foreground hover:border-foreground hover:text-foreground'
+                                      }`}
+                                    >
+                                      {labels[action]}
+                                    </button>
+                                  )
+                                })}
                               </div>
-                              <div className="text-xs text-muted-foreground">
-                                Price: {formatCurrency(calculateSellingPrice(item.cogs, parseNumber(item.customMarkup)))}
-                              </div>
+                              {/* Custom inputs inline */}
+                              {item.action === 'custom_price' && (
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs text-muted-foreground">₱</span>
+                                  <Input
+                                    type="number"
+                                    step="0.01"
+                                    className="h-7 w-28 text-sm"
+                                    value={item.customPrice}
+                                    onChange={(e) => updateReviewItem(index, { customPrice: e.target.value })}
+                                  />
+                                </div>
+                              )}
+                              {item.action === 'custom_markup' && (
+                                <div className="flex items-center gap-2">
+                                  <Input
+                                    type="number"
+                                    step="0.01"
+                                    className="h-7 w-20 text-sm"
+                                    value={item.customMarkup}
+                                    onChange={(e) => updateReviewItem(index, { customMarkup: e.target.value })}
+                                  />
+                                  <span className="text-xs text-muted-foreground">% markup</span>
+                                </div>
+                              )}
                             </div>
-                          )}
-                          {item.action !== 'custom_price' && item.action !== 'custom_markup' && (
-                            <span className="text-xs text-muted-foreground">—</span>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    )})}
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
                   </TableBody>
                 </Table>
               </div>
             )}
           </div>
-          <DialogFooter>
+
+          <DialogFooter className="shrink-0 border-t pt-4">
             <Button variant="outline" onClick={() => setIsPriceReviewOpen(false)}>
               Cancel
             </Button>
             <Button onClick={handleApplyPriceReview} disabled={isApplyingPriceReview}>
-              {isApplyingPriceReview && (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              )}
+              {isApplyingPriceReview && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Apply Pricing Updates
             </Button>
           </DialogFooter>
