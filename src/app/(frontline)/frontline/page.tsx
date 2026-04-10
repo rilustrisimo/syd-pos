@@ -113,6 +113,7 @@ export default function FrontlinePOSPage() {
   const [customerSearch, setCustomerSearch] = useState('')
   const [isCustomerOpen, setIsCustomerOpen] = useState(false)
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false)
+  const [deliveryFeeConfirmed, setDeliveryFeeConfirmed] = useState(false)
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>('cash')
   const [paymentAmount, setPaymentAmount] = useState('')
   const [paymentReference, setPaymentReference] = useState('')
@@ -583,7 +584,7 @@ export default function FrontlinePOSPage() {
     setPaymentReference('')
   }, [paymentAmount, selectedPaymentMethod, paymentReference, customer, addPayment, wouldExceedCreditLimit, getAvailableCredit, getCreditPaymentTotal])
 
-  // Sync discountInput when checkout modal opens
+  // Sync discountInput when checkout modal opens; reset delivery fee confirmation
   useEffect(() => {
     if (isCheckoutOpen) {
       if (discountType === 'fixed' && discountAmount > 0) {
@@ -591,6 +592,7 @@ export default function FrontlinePOSPage() {
       } else if (discountType === 'percentage' && discountPercentage > 0) {
         setDiscountInput(discountPercentage.toString())
       }
+      setDeliveryFeeConfirmed(false)
     }
   }, [isCheckoutOpen]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -625,9 +627,25 @@ export default function FrontlinePOSPage() {
       return
     }
 
-    if (deliveryType === 'delivery' && !deliveryAddress) {
-      toast.error('Please enter delivery address')
-      return
+    if (deliveryType === 'delivery') {
+      const resolvedPhone = deliveryPhone.trim() || customer?.phone?.trim() || ''
+      const resolvedAddress = deliveryAddress.trim()
+      if (!resolvedAddress && !resolvedPhone) {
+        toast.error('Delivery requires an address and contact number. Please fill in the Delivery Details.')
+        return
+      }
+      if (!resolvedAddress) {
+        toast.error('Please enter a delivery address.')
+        return
+      }
+      if (!resolvedPhone) {
+        toast.error('Please enter a contact phone number for delivery.')
+        return
+      }
+      if (!deliveryFeeConfirmed) {
+        toast.error('Please confirm the delivery fee (enter 0 if none).')
+        return
+      }
     }
 
     if (wouldExceedCreditLimit()) {
@@ -769,7 +787,7 @@ export default function FrontlinePOSPage() {
         branch: currentBranch?.name || 'Main Branch',
         customer: {
           name: currentCustomer?.name || 'Walk-in Customer',
-          phone: currentCustomer?.phone || null,
+          phone: currentDeliveryPhone?.trim() || currentCustomer?.phone || null,
         },
         delivery_type: currentDeliveryType,
         delivery_address: currentDeliveryAddress || null,
@@ -1511,15 +1529,58 @@ export default function FrontlinePOSPage() {
             {/* Delivery Details */}
             {deliveryType === 'delivery' && (
               <div className="space-y-3 bg-blue-50 rounded-lg p-4 border border-blue-200">
-                <h3 className="font-semibold">Delivery Details</h3>
-                <Input placeholder="Delivery Address" value={deliveryAddress}
-                  onChange={(e) => setDeliveryAddress(e.target.value)} className="h-12" />
-                <Input placeholder="Contact Phone" value={deliveryPhone}
-                  onChange={(e) => setDeliveryPhone(e.target.value)} className="h-12" />
-                <div className="space-y-2">
-                  <Label>Delivery Fee</Label>
-                  <Input type="number" step="0.01" placeholder="0.00" value={deliveryFee || ''}
-                    onChange={(e) => setDeliveryFee(Number(e.target.value) || 0)} className="h-12" />
+                <h3 className="font-semibold">Delivery Details <span className="text-red-500 text-sm font-normal">* required</span></h3>
+                <div className="space-y-1">
+                  <Input
+                    placeholder="Delivery Address *"
+                    value={deliveryAddress}
+                    onChange={(e) => setDeliveryAddress(e.target.value)}
+                    className={`h-12 ${!deliveryAddress.trim() ? 'border-red-300 bg-red-50' : ''}`}
+                  />
+                  {!deliveryAddress.trim() && (
+                    <p className="text-xs text-red-500">Address is required for delivery</p>
+                  )}
+                </div>
+                <div className="space-y-1">
+                  <Input
+                    placeholder={customer?.phone ? `Contact Phone (default: ${customer.phone})` : 'Contact Phone *'}
+                    value={deliveryPhone}
+                    onChange={(e) => setDeliveryPhone(e.target.value)}
+                    className={`h-12 ${!deliveryPhone.trim() && !customer?.phone ? 'border-red-300 bg-red-50' : ''}`}
+                  />
+                  {!deliveryPhone.trim() && customer?.phone && (
+                    <p className="text-xs text-blue-600">Will use customer&apos;s phone: {customer.phone}</p>
+                  )}
+                  {!deliveryPhone.trim() && !customer?.phone && (
+                    <p className="text-xs text-red-500">Contact number is required for delivery</p>
+                  )}
+                </div>
+                <div className="space-y-1">
+                  <Label>Delivery Fee <span className="text-red-500">*</span> <span className="text-xs text-muted-foreground font-normal">(enter 0 if free)</span></Label>
+                  <div className="flex gap-2">
+                    <Input
+                      type="number"
+                      step="0.01"
+                      placeholder="0.00"
+                      value={deliveryFee === 0 && !deliveryFeeConfirmed ? '' : deliveryFee}
+                      onChange={(e) => {
+                        setDeliveryFee(Number(e.target.value) || 0)
+                        setDeliveryFeeConfirmed(false)
+                      }}
+                      className={`h-12 flex-1 ${!deliveryFeeConfirmed ? 'border-amber-400' : 'border-green-400'}`}
+                    />
+                    <Button
+                      type="button"
+                      variant={deliveryFeeConfirmed ? 'default' : 'outline'}
+                      className={`h-12 px-4 shrink-0 ${deliveryFeeConfirmed ? 'bg-green-600 hover:bg-green-700 text-white' : 'border-amber-400 text-amber-700'}`}
+                      onClick={() => setDeliveryFeeConfirmed(true)}
+                    >
+                      {deliveryFeeConfirmed ? '✓ Confirmed' : 'Confirm'}
+                    </Button>
+                  </div>
+                  {!deliveryFeeConfirmed && (
+                    <p className="text-xs text-amber-600">Please confirm the delivery fee before proceeding</p>
+                  )}
                 </div>
               </div>
             )}
