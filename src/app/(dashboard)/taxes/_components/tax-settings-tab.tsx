@@ -113,7 +113,7 @@ export function TaxSettingsTab({ branchId }: Props) {
         <CardContent className="space-y-3">
           <div>
             <Label>Local Business Tax Rate (%)</Label>
-            <Input className="mt-1" type="number" step="0.01" placeholder="1.00"
+            <Input className="mt-1" step="0.01" placeholder="1.00"
               value={form.lbt_rate}
               onChange={e => setForm(f => ({ ...f, lbt_rate: e.target.value }))} />
             <p className="text-xs text-muted-foreground mt-1">

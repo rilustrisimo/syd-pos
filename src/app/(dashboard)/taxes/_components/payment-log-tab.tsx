@@ -206,13 +206,13 @@ export function PaymentLogTab({ branchId, year }: Props) {
               </div>
               <div>
                 <Label>Estimated Amount Due</Label>
-                <Input className="mt-1" type="number" placeholder="0.00"
+                <Input className="mt-1" placeholder="0.00"
                   value={form.amount_due}
                   onChange={e => setForm(f => ({ ...f, amount_due: e.target.value }))} />
               </div>
               <div>
                 <Label>Amount Paid <span className="text-destructive">*</span></Label>
-                <Input className="mt-1" type="number" placeholder="0.00"
+                <Input className="mt-1" placeholder="0.00"
                   value={form.amount_paid}
                   onChange={e => setForm(f => ({ ...f, amount_paid: e.target.value }))} />
               </div>

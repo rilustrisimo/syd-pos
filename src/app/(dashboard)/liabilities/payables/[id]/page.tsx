@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { NumericInput } from '@/components/ui/numeric-input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import {
@@ -332,7 +333,7 @@ export default function PayableDetailPage({ params }: { params: Promise<{ id: st
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Amount (₱) *</Label>
-                  <Input type="number" min="0.01" step="0.01" value={paymentForm.amount} onChange={e => setPaymentForm(f => ({ ...f, amount: e.target.value }))} required />
+                  <NumericInput min="0.01" step="0.01" value={paymentForm.amount} onChange={e => setPaymentForm(f => ({ ...f, amount: e.target.value }))} required />
                 </div>
                 <div className="space-y-2">
                   <Label>Payment Date *</Label>

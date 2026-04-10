@@ -44,6 +44,7 @@ import { usePrinterStore } from '@/lib/stores/printer'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { NumericInput } from '@/components/ui/numeric-input'
 import { PrintDialog } from '@/components/print/print-dialog'
 import type { InvoiceData } from '@/components/print/invoice-template'
 import {
@@ -1200,7 +1201,7 @@ export default function FrontlinePOSPage() {
                           onClick={() => updateItemQuantity(item.id, item.quantity - 1)}>
                           <Minus className="h-3 w-3" />
                         </Button>
-                        <Input type="number" value={item.quantity}
+                        <NumericInput value={item.quantity}
                           onChange={(e) => updateItemQuantity(item.id, parseFloat(e.target.value) || 1)}
                           className="w-16 h-7 text-center" min="0.01" step="1" />
                         <Button variant="outline" size="icon" className="h-7 w-7"
@@ -1304,7 +1305,7 @@ export default function FrontlinePOSPage() {
                           onClick={() => updateItemQuantity(item.id, item.quantity - 1)}>
                           <Minus className="h-3 w-3" />
                         </Button>
-                        <Input type="number" value={item.quantity}
+                        <NumericInput value={item.quantity}
                           onChange={(e) => updateItemQuantity(item.id, parseFloat(e.target.value) || 1)}
                           className="w-16 h-7 text-center" min="0.01" step="1" />
                         <Button variant="outline" size="icon" className="h-7 w-7"
@@ -1590,7 +1591,7 @@ export default function FrontlinePOSPage() {
               <h3 className="font-semibold">Additional Fees (optional)</h3>
               <div className="space-y-2">
                 <Label>Fee Amount</Label>
-                <Input type="number" step="0.01" placeholder="0.00" value={otherFees || ''}
+                <NumericInput step="0.01" placeholder="0.00" value={otherFees || ''}
                   onChange={(e) => setOtherFees(Number(e.target.value) || 0)} className="h-12" />
               </div>
               <div className="space-y-2">
@@ -1642,7 +1643,7 @@ export default function FrontlinePOSPage() {
               <div className="space-y-3">
                 <Label className="text-base">Payment Amount</Label>
                 <div className="flex gap-3">
-                  <Input type="number" placeholder="0.00" value={paymentAmount}
+                  <NumericInput placeholder="0.00" value={paymentAmount}
                     onChange={(e) => setPaymentAmount(e.target.value)}
                     min="0" step="0.01" className="flex-1 h-12 text-lg" />
                   <Button onClick={handleAddPayment} className="h-12 px-6 text-base">

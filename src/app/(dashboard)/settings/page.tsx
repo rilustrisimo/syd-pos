@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
+import { NumericInput } from '@/components/ui/numeric-input'
 import {
   Select,
   SelectContent,
@@ -145,19 +146,19 @@ function DiscountRulesCard() {
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs">Markup Min (%)</Label>
-                  <Input type="number" min="0" placeholder="0" value={form.markup_min} onChange={(e) => setForm({ ...form, markup_min: e.target.value })} />
+                  <NumericInput min="0" placeholder="0" value={form.markup_min} onChange={(e) => setForm({ ...form, markup_min: e.target.value })} />
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs">Markup Max (% or blank = ∞)</Label>
-                  <Input type="number" min="0" placeholder="∞" value={form.markup_max} onChange={(e) => setForm({ ...form, markup_max: e.target.value })} />
+                  <NumericInput min="0" placeholder="∞" value={form.markup_max} onChange={(e) => setForm({ ...form, markup_max: e.target.value })} />
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs">Discount (%)</Label>
-                  <Input type="number" min="0" max="100" step="0.01" placeholder="e.g. 2" value={form.discount_percentage} onChange={(e) => setForm({ ...form, discount_percentage: e.target.value })} />
+                  <NumericInput min="0" max="100" step="0.01" placeholder="e.g. 2" value={form.discount_percentage} onChange={(e) => setForm({ ...form, discount_percentage: e.target.value })} />
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs">Sort Order</Label>
-                  <Input type="number" min="0" placeholder="0" value={form.sort_order} onChange={(e) => setForm({ ...form, sort_order: e.target.value })} />
+                  <NumericInput min="0" placeholder="0" value={form.sort_order} onChange={(e) => setForm({ ...form, sort_order: e.target.value })} />
                 </div>
               </div>
               <div className="flex gap-2 justify-end">
@@ -193,10 +194,10 @@ function DiscountRulesCard() {
                     editingId === rule.id ? (
                       <TableRow key={rule.id}>
                         <TableCell><Input value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} className="h-8" /></TableCell>
-                        <TableCell><Input type="number" value={editForm.markup_min} onChange={(e) => setEditForm({ ...editForm, markup_min: e.target.value })} className="h-8 w-20 ml-auto" /></TableCell>
-                        <TableCell><Input type="number" value={editForm.markup_max} placeholder="∞" onChange={(e) => setEditForm({ ...editForm, markup_max: e.target.value })} className="h-8 w-20 ml-auto" /></TableCell>
-                        <TableCell><Input type="number" value={editForm.discount_percentage} onChange={(e) => setEditForm({ ...editForm, discount_percentage: e.target.value })} className="h-8 w-20 ml-auto" /></TableCell>
-                        <TableCell><Input type="number" value={editForm.sort_order} onChange={(e) => setEditForm({ ...editForm, sort_order: e.target.value })} className="h-8 w-16 ml-auto" /></TableCell>
+                        <TableCell><NumericInput value={editForm.markup_min} onChange={(e) => setEditForm({ ...editForm, markup_min: e.target.value })} className="h-8 w-20 ml-auto" /></TableCell>
+                        <TableCell><NumericInput value={editForm.markup_max} placeholder="∞" onChange={(e) => setEditForm({ ...editForm, markup_max: e.target.value })} className="h-8 w-20 ml-auto" /></TableCell>
+                        <TableCell><NumericInput value={editForm.discount_percentage} onChange={(e) => setEditForm({ ...editForm, discount_percentage: e.target.value })} className="h-8 w-20 ml-auto" /></TableCell>
+                        <TableCell><NumericInput value={editForm.sort_order} onChange={(e) => setEditForm({ ...editForm, sort_order: e.target.value })} className="h-8 w-16 ml-auto" /></TableCell>
                         <TableCell>
                           <div className="flex gap-1 justify-end">
                             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleEditSave(rule.id)} disabled={updateRule.isPending}>

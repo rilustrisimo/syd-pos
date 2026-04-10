@@ -261,7 +261,7 @@ export default function DemandForecastPage() {
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={stockoutChartData} layout="vertical">
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis type="number" label={{ value: 'Days', position: 'insideBottom', offset: -5 }} />
+                <XAxis label={{ value: 'Days', position: 'insideBottom', offset: -5 }} />
                 <YAxis dataKey="name" type="category" width={140} />
                 <Tooltip formatter={(value) => [`${value} days`, 'Days to Stockout']} />
                 <Bar dataKey="days" radius={[0, 4, 4, 0]}>

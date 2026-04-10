@@ -237,7 +237,7 @@ export default function SupplierHistoryPage() {
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={chartData} layout="vertical">
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis type="number" tickFormatter={(v) => `₱${(v / 1000).toFixed(0)}k`} />
+                <XAxis tickFormatter={(v) => `₱${(v / 1000).toFixed(0)}k`} />
                 <YAxis dataKey="name" type="category" width={120} />
                 <Tooltip formatter={(value) => formatCurrency(value as number)} />
                 <Bar dataKey="spent" fill="#3b82f6" radius={[0, 4, 4, 0]} />

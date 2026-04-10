@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { NumericInput } from '@/components/ui/numeric-input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import {
@@ -313,11 +314,11 @@ export default function LoansPage() {
                 </div>
                 <div className="space-y-2">
                   <Label>Principal Amount (₱) *</Label>
-                  <Input type="number" min="1" step="0.01" placeholder="500000" value={createForm.principal_amount} onChange={e => setCreateForm(f => ({ ...f, principal_amount: e.target.value }))} required />
+                  <NumericInput min="1" step="0.01" placeholder="500000" value={createForm.principal_amount} onChange={e => setCreateForm(f => ({ ...f, principal_amount: e.target.value }))} required />
                 </div>
                 <div className="space-y-2">
                   <Label>Monthly Interest Rate (%) *</Label>
-                  <Input type="number" min="0" step="0.01" placeholder="0.42" value={createForm.interest_rate_monthly} onChange={e => setCreateForm(f => ({ ...f, interest_rate_monthly: e.target.value }))} required />
+                  <NumericInput min="0" step="0.01" placeholder="0.42" value={createForm.interest_rate_monthly} onChange={e => setCreateForm(f => ({ ...f, interest_rate_monthly: e.target.value }))} required />
                   <p className="text-xs text-muted-foreground">e.g., 0.42 for 0.42% per month</p>
                 </div>
                 <div className="col-span-2 space-y-2">
@@ -342,7 +343,7 @@ export default function LoansPage() {
                 </div>
                 <div className="space-y-2">
                   <Label>Term (months) *</Label>
-                  <Input type="number" min="1" max="360" step="1" value={createForm.term_months} onChange={e => setCreateForm(f => ({ ...f, term_months: e.target.value }))} required />
+                  <NumericInput min="1" max="360" step="1" value={createForm.term_months} onChange={e => setCreateForm(f => ({ ...f, term_months: e.target.value }))} required />
                 </div>
                 <div className="space-y-2">
                   <Label>Start Date *</Label>
