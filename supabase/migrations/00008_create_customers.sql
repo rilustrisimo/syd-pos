@@ -70,6 +70,7 @@ CREATE TRIGGER update_customers_updated_at
     BEFORE UPDATE ON customers
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- Insert a default walk-in customer
-INSERT INTO customers (name, customer_type, is_active)
-VALUES ('Walk-in Customer', 'cash', TRUE);
+-- Insert the canonical walk-in customer with a fixed ID so re-runs are idempotent
+INSERT INTO customers (id, name, customer_type, is_active)
+VALUES ('446961e1-fcce-40bb-9f5a-3ea10cf976ea', 'Walk-in Customer', 'cash', TRUE)
+ON CONFLICT (id) DO NOTHING;
