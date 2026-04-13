@@ -529,13 +529,12 @@ export async function getAutoReorderSuggestions(branchId?: string): Promise<Reor
       branch_id,
       product_id,
       product:products(
-        id, code, name, reorder_point, reorder_quantity,
+        id, code, name, reorder_point, reorder_quantity, is_active,
         category:product_categories(name),
         base_uom:units_of_measure!products_base_uom_id_fkey(id, code, name)
       ),
       branch:branches(id, name)
     `)
-    .eq('product:products.is_active', true)
 
   if (branchId) inventoryQuery = inventoryQuery.eq('branch_id', branchId)
 

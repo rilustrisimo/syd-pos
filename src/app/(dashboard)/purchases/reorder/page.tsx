@@ -61,10 +61,12 @@ export default function ReorderPage() {
   const router = useRouter()
   const { user } = useAuthStore()
   const { data: branches = [] } = useBranches()
-  const [branchId, setBranchId] = useState<string>('')
-  const [activeSupplierKey, setActiveSupplierKey] = useState<string>('') // 'supplier_id' or 'NO_HISTORY'
+  const [branchId, setBranchId] = useState<string>('all')
+  const [activeSupplierKey, setActiveSupplierKey] = useState<string>('')
 
-  const { data: suggestions = [], isLoading, refetch } = useAutoReorderSuggestions(branchId || undefined)
+  const effectiveBranchId = branchId !== 'all' ? branchId : undefined // 'supplier_id' or 'NO_HISTORY'
+
+  const { data: suggestions = [], isLoading, refetch } = useAutoReorderSuggestions(branchId !== 'all' ? branchId : undefined)
   const createPO = useCreatePurchaseOrder()
 
   // Local per-product state
@@ -263,7 +265,7 @@ export default function ReorderPage() {
               <SelectValue placeholder="All Branches" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">All Branches</SelectItem>
+              <SelectItem value="all">All Branches</SelectItem>
               {(branches as any[]).map((b: any) => (
                 <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
               ))}
