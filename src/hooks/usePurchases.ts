@@ -16,6 +16,7 @@ import {
   cancelPurchaseOrder,
   getPOStats,
   getProductPurchaseHistory,
+  getAutoReorderSuggestions,
 } from '@/lib/supabase/queries/purchases'
 import type { InsertTables, UpdateTables, POStatus } from '@/types/database'
 
@@ -228,5 +229,12 @@ export function useDeletePurchaseOrder() {
       queryClient.invalidateQueries({ queryKey: ['purchase-orders'] })
       queryClient.invalidateQueries({ queryKey: ['po-stats'] })
     },
+  })
+}
+
+export function useAutoReorderSuggestions(branchId?: string) {
+  return useQuery({
+    queryKey: ['auto-reorder-suggestions', branchId],
+    queryFn: () => getAutoReorderSuggestions(branchId),
   })
 }

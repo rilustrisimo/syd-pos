@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useBranches, useLowStockAlerts } from '@/hooks/useInventory'
 import type { Branch } from '@/lib/supabase/queries/inventory'
 import { formatCurrency } from '@/lib/utils/formatting'
-import { ArrowLeft, Loader2, AlertTriangle, ShoppingCart, Package } from 'lucide-react'
+import { ArrowLeft, Loader2, AlertTriangle, ShoppingCart, Package, RefreshCcw } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -249,10 +249,16 @@ export default function LowStockAlertsPage() {
             <CardDescription>Take action to restock low inventory items</CardDescription>
           </CardHeader>
           <CardContent className="flex gap-3">
+            <Link href="/purchases/reorder">
+              <Button className="gap-2">
+                <RefreshCcw className="h-4 w-4" />
+                Auto-Reorder
+              </Button>
+            </Link>
             <Link href="/purchases/new">
-              <Button>
+              <Button variant="outline">
                 <ShoppingCart className="mr-2 h-4 w-4" />
-                Create Purchase Order
+                Create Manual PO
               </Button>
             </Link>
             <Link href="/inventory/adjust">

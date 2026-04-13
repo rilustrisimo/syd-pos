@@ -19,6 +19,7 @@ import {
   XCircle,
   AlertCircle,
   Loader2,
+  RefreshCcw,
   Eye,
   MoreHorizontal,
   FileText,
@@ -147,12 +148,20 @@ export default function PurchasesPage() {
             Create and manage purchase orders from suppliers
           </p>
         </div>
-        <Link href="/purchases/new">
-          <Button>
-            <Plus className="mr-2 h-4 w-4" />
-            New Purchase Order
-          </Button>
-        </Link>
+        <div className="flex gap-2">
+          <Link href="/purchases/reorder">
+            <Button variant="outline" className="gap-2">
+              <RefreshCcw className="h-4 w-4" />
+              Reorder from Low Stock
+            </Button>
+          </Link>
+          <Link href="/purchases/new">
+            <Button>
+              <Plus className="mr-2 h-4 w-4" />
+              New Purchase Order
+            </Button>
+          </Link>
+        </div>
       </div>
 
       {/* Stats Cards */}

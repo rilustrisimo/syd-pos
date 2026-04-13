@@ -492,6 +492,140 @@ export async function getProductPurchaseHistory(productId: string) {
     })
 }
 
+// ── Auto-Reorder: combine low stock alerts with historical supplier pricing ───
+
+export interface SupplierPriceOption {
+  supplier_id: string
+  supplier_name: string
+  best_unit_cost: number
+  last_po_date: string
+  is_cheapest: boolean
+}
+
+export interface ReorderSuggestion {
+  product_id: string
+  product_code: string
+  product_name: string
+  category: string
+  branch_id: string
+  branch_name: string
+  quantity_on_hand: number
+  reorder_point: number
+  suggested_quantity: number
+  base_uom: { id: string; code: string; name: string }
+  suppliers: SupplierPriceOption[]
+  selected_supplier_id: string
+  no_history: boolean
+}
+
+export async function getAutoReorderSuggestions(branchId?: string): Promise<ReorderSuggestion[]> {
+  const supabase = getClient()
+
+  // Step 1: get low stock items (quantity_on_hand <= reorder_point)
+  let inventoryQuery = supabase
+    .from('branch_inventory')
+    .select(`
+      quantity_on_hand,
+      branch_id,
+      product_id,
+      product:products(
+        id, code, name, reorder_point, reorder_quantity,
+        category:product_categories(name),
+        base_uom:units_of_measure!products_base_uom_id_fkey(id, code, name)
+      ),
+      branch:branches(id, name)
+    `)
+    .eq('product:products.is_active', true)
+
+  if (branchId) inventoryQuery = inventoryQuery.eq('branch_id', branchId)
+
+  const { data: inventoryData, error: invError } = await inventoryQuery
+  if (invError) throw invError
+
+  const lowStockItems = (inventoryData || []).filter((item: any) =>
+    item.product && Number(item.quantity_on_hand) <= Number(item.product.reorder_point ?? 0)
+  )
+
+  if (lowStockItems.length === 0) return []
+
+  const productIds = [...new Set(lowStockItems.map((i: any) => i.product_id))]
+
+  // Step 2: get all received PO lines for those products
+  const { data: poLines, error: poError } = await supabase
+    .from('purchase_order_lines')
+    .select(`
+      product_id,
+      unit_cost,
+      uom:units_of_measure(id, code, name),
+      purchase_order:purchase_orders!purchase_order_lines_po_id_fkey(
+        po_date, status, is_deleted,
+        supplier:suppliers(id, name)
+      )
+    `)
+    .in('product_id', productIds)
+
+  if (poError) throw poError
+
+  // Filter to only received/partially_received, non-deleted POs
+  const validLines = (poLines || []).filter((line: any) =>
+    !line.purchase_order?.is_deleted &&
+    ['received', 'partially_received'].includes(line.purchase_order?.status)
+  )
+
+  // Step 3: build per-product supplier price map
+  const supplierMap: Record<string, Record<string, { best_unit_cost: number; last_po_date: string; supplier_name: string }>> = {}
+
+  for (const line of validLines) {
+    const pid = (line as any).product_id
+    const po = (line as any).purchase_order
+    // Supabase may return supplier as object or array depending on join type
+    const supplierRaw = po?.supplier
+    const supplier = Array.isArray(supplierRaw) ? supplierRaw[0] : supplierRaw
+    if (!supplier || !pid) continue
+
+    const sid = supplier.id
+    const cost = Number((line as any).unit_cost)
+    const date = po?.po_date ?? ''
+
+    if (!supplierMap[pid]) supplierMap[pid] = {}
+
+    const existing = supplierMap[pid][sid]
+    if (!existing || cost < existing.best_unit_cost || (cost === existing.best_unit_cost && date > existing.last_po_date)) {
+      supplierMap[pid][sid] = { best_unit_cost: cost, last_po_date: date, supplier_name: supplier.name }
+    }
+  }
+
+  // Step 4: assemble suggestions
+  return lowStockItems.map((item: any) => {
+    const product = item.product
+    const branch = item.branch
+    const pid = item.product_id
+    const priceOptions = supplierMap[pid] ?? {}
+
+    const supplierList: SupplierPriceOption[] = Object.entries(priceOptions)
+      .map(([sid, info]) => ({ supplier_id: sid, supplier_name: info.supplier_name, best_unit_cost: info.best_unit_cost, last_po_date: info.last_po_date, is_cheapest: false }))
+      .sort((a, b) => a.best_unit_cost - b.best_unit_cost)
+
+    if (supplierList.length > 0) supplierList[0].is_cheapest = true
+
+    return {
+      product_id: pid,
+      product_code: product?.code ?? '',
+      product_name: product?.name ?? '',
+      category: product?.category?.name ?? 'Uncategorized',
+      branch_id: item.branch_id,
+      branch_name: branch?.name ?? '',
+      quantity_on_hand: Number(item.quantity_on_hand),
+      reorder_point: Number(product?.reorder_point ?? 0),
+      suggested_quantity: Number(product?.reorder_quantity ?? 1),
+      base_uom: product?.base_uom ?? { id: '', code: 'pc', name: 'Piece' },
+      suppliers: supplierList,
+      selected_supplier_id: supplierList[0]?.supplier_id ?? '',
+      no_history: supplierList.length === 0,
+    } as ReorderSuggestion
+  })
+}
+
 // Get PO summary stats
 export async function getPOStats(params?: { branchId?: string }) {
   const supabase = getClient()
