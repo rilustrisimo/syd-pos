@@ -13,7 +13,7 @@ import { toast } from 'sonner'
 import {
   ArrowLeft, PackagePlus, AlertTriangle, Loader2,
   ShoppingCart, CheckCircle2, ChevronRight, RefreshCw,
-  TrendingDown, CircleSlash, History,
+  TrendingDown, CircleSlash, History, Check,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -154,6 +154,12 @@ export default function ReorderPage() {
     })
   }
 
+  // ── Create POs ────────────────────────────────────────────────────────────
+
+  const [isCreating, setIsCreating] = useState(false)
+  const [creatingSupplier, setCreatingSupplier] = useState<string>('')
+  const [createdSuppliers, setCreatedSuppliers] = useState<Set<string>>(new Set())
+
   // ── Grand total & PO count ─────────────────────────────────────────────────
 
   const { grandTotal, poCount } = useMemo(() => {
@@ -161,6 +167,7 @@ export default function ReorderPage() {
     let pos = 0
     for (const group of supplierGroups) {
       if (group.supplier_id === 'NO_HISTORY') continue
+      if (createdSuppliers.has(group.supplier_id)) continue
       const selected = group.items.filter(s => mergedStates[s.product_id]?.selected)
       if (selected.length > 0) {
         pos++
@@ -168,21 +175,86 @@ export default function ReorderPage() {
       }
     }
     return { grandTotal: total, poCount: pos }
-  }, [supplierGroups, mergedStates])
+  }, [supplierGroups, mergedStates, createdSuppliers])
 
-  // ── Create POs ────────────────────────────────────────────────────────────
+  function resolveBranch(): string | null {
+    if (branchId !== 'all') return branchId
+    return (branches as any[])[0]?.id ?? null
+  }
 
-  const [isCreating, setIsCreating] = useState(false)
+  async function handleCreatePOForSupplier(supplierId: string) {
+    if (!user?.id) { toast.error('Not authenticated'); return }
+    const group = supplierGroups.find(g => g.supplier_id === supplierId)
+    if (!group || supplierId === 'NO_HISTORY') return
 
-  async function handleCreatePOs() {
+    const selectedItems = group.items.filter(s => mergedStates[s.product_id]?.selected)
+    if (selectedItems.length === 0) { toast.error('No items selected for this supplier'); return }
+
+    const branchTarget = resolveBranch()
+    if (!branchTarget) { toast.error('Please select a branch before creating a PO'); return }
+
+    for (const s of selectedItems) {
+      const st = mergedStates[s.product_id]
+      if (!st?.unit_cost || st.unit_cost <= 0) {
+        toast.error(`Enter a unit cost for "${s.product_name}" before creating PO`)
+        return
+      }
+    }
+
+    const today = new Date().toISOString().split('T')[0]
+    setCreatingSupplier(supplierId)
+
+    try {
+      const lines = selectedItems.map(s => {
+        const st = mergedStates[s.product_id]
+        return {
+          product_id: s.product_id,
+          variant_id: null,
+          uom_id: s.base_uom.id,
+          quantity_ordered: st.quantity,
+          quantity_received: 0,
+          unit_cost: st.unit_cost,
+          notes: null,
+        }
+      })
+
+      await createPO.mutateAsync({
+        po: {
+          supplier_id: supplierId,
+          branch_id: branchTarget,
+          po_date: today,
+          status: 'draft' as const,
+          notes: 'Auto-generated from low stock reorder',
+          total_amount: 0,
+          expected_delivery_date: null,
+          actual_delivery_date: null,
+          delivery_charge: 0,
+          created_by: user.id,
+        } as any,
+        lines: lines as any,
+      })
+
+      setCreatedSuppliers(prev => new Set([...prev, supplierId]))
+      toast.success(`PO created for ${group.supplier_name}`)
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to create PO')
+    } finally {
+      setCreatingSupplier('')
+    }
+  }
+
+  async function handleCreateAllPOs() {
     if (!user?.id) { toast.error('Not authenticated'); return }
 
     const today = new Date().toISOString().split('T')[0]
-    const toCreate = supplierGroups.filter(g => g.supplier_id !== 'NO_HISTORY' && supplierSelectedCount(g.supplier_id) > 0)
+    const toCreate = supplierGroups.filter(g =>
+      g.supplier_id !== 'NO_HISTORY' &&
+      !createdSuppliers.has(g.supplier_id) &&
+      supplierSelectedCount(g.supplier_id) > 0
+    )
 
     if (toCreate.length === 0) { toast.error('No items selected'); return }
 
-    // Validate: no-history items that are selected must have a cost entered
     for (const group of toCreate) {
       for (const s of group.items) {
         const st = mergedStates[s.product_id]
@@ -193,11 +265,13 @@ export default function ReorderPage() {
       }
     }
 
+    const branchTarget = resolveBranch()
+    if (!branchTarget) { toast.error('Please select a branch before creating POs'); return }
+
     setIsCreating(true)
     const toastId = toast.loading(`Creating ${toCreate.length} purchase order${toCreate.length > 1 ? 's' : ''}…`)
 
     try {
-      const branchTarget = branchId || (branches as any[])[0]?.id
       let created = 0
 
       for (const group of toCreate) {
@@ -206,9 +280,12 @@ export default function ReorderPage() {
           const st = mergedStates[s.product_id]
           return {
             product_id: s.product_id,
+            variant_id: null,
             uom_id: s.base_uom.id,
             quantity_ordered: st.quantity,
+            quantity_received: 0,
             unit_cost: st.unit_cost,
+            notes: null,
           }
         })
 
@@ -227,6 +304,7 @@ export default function ReorderPage() {
           } as any,
           lines: lines as any,
         })
+        setCreatedSuppliers(prev => new Set([...prev, group.supplier_id]))
         created++
       }
 
@@ -277,12 +355,12 @@ export default function ReorderPage() {
           </Button>
 
           <Button
-            onClick={handleCreatePOs}
-            disabled={poCount === 0 || isCreating}
+            onClick={handleCreateAllPOs}
+            disabled={poCount === 0 || isCreating || !!creatingSupplier}
             className="gap-2"
           >
             {isCreating ? <Loader2 className="h-4 w-4 animate-spin" /> : <PackagePlus className="h-4 w-4" />}
-            Create {poCount > 0 ? poCount : ''} PO{poCount !== 1 ? 's' : ''}
+            Create All {poCount > 0 ? `(${poCount})` : ''} PO{poCount !== 1 ? 's' : ''}
             {grandTotal > 0 && <span className="ml-1 opacity-75">· {formatCurrency(grandTotal)}</span>}
           </Button>
         </div>
@@ -308,6 +386,7 @@ export default function ReorderPage() {
               const selCount = supplierSelectedCount(group.supplier_id)
               const total = supplierTotal(group.supplier_id)
               const isActive = group.supplier_id === effectiveActiveKey
+              const isDone = createdSuppliers.has(group.supplier_id)
 
               return (
                 <button
@@ -315,12 +394,16 @@ export default function ReorderPage() {
                   onClick={() => setActiveSupplierKey(group.supplier_id)}
                   className={cn(
                     'w-full text-left rounded-lg border p-3 transition-colors',
-                    isActive ? 'border-primary bg-primary/5' : 'border-border hover:border-muted-foreground/50',
-                    isNoHistory && 'border-amber-300 bg-amber-50'
+                    isDone
+                      ? 'border-green-300 bg-green-50'
+                      : isActive
+                        ? 'border-primary bg-primary/5'
+                        : 'border-border hover:border-muted-foreground/50',
+                    isNoHistory && !isDone && 'border-amber-300 bg-amber-50'
                   )}
                 >
                   <div className="flex items-center justify-between mb-1">
-                    <span className="font-medium text-sm truncate flex-1 mr-2">
+                    <span className={cn('font-medium text-sm truncate flex-1 mr-2', isDone && 'text-green-700')}>
                       {isNoHistory ? (
                         <span className="flex items-center gap-1.5 text-amber-700">
                           <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
@@ -328,12 +411,18 @@ export default function ReorderPage() {
                         </span>
                       ) : group.supplier_name}
                     </span>
-                    <ChevronRight className={cn('h-4 w-4 text-muted-foreground shrink-0 transition-transform', isActive && 'text-primary rotate-90')} />
+                    {isDone
+                      ? <Check className="h-4 w-4 text-green-600 shrink-0" />
+                      : <ChevronRight className={cn('h-4 w-4 text-muted-foreground shrink-0 transition-transform', isActive && 'text-primary rotate-90')} />
+                    }
                   </div>
                   <div className="flex items-center justify-between text-xs text-muted-foreground">
-                    <span>{group.items.length} product{group.items.length !== 1 ? 's' : ''} · {selCount} selected</span>
+                    {isDone
+                      ? <span className="text-green-600 font-medium">PO created</span>
+                      : <span>{group.items.length} product{group.items.length !== 1 ? 's' : ''} · {selCount} selected</span>
+                    }
                   </div>
-                  {!isNoHistory && total > 0 && (
+                  {!isNoHistory && !isDone && total > 0 && (
                     <div className="mt-1 text-xs font-semibold text-foreground">
                       Est. {formatCurrency(total)}
                     </div>
@@ -525,8 +614,32 @@ export default function ReorderPage() {
                         {supplierSelectedCount(activeGroup.supplier_id)} of {activeGroup.items.length} items selected
                       </span>
                       <div className="flex items-center gap-4">
-                        <span className="text-sm text-muted-foreground">Supplier Total:</span>
-                        <span className="text-lg font-bold">{formatCurrency(supplierTotal(activeGroup.supplier_id))}</span>
+                        <div className="text-right">
+                          <p className="text-xs text-muted-foreground">Supplier Total</p>
+                          <p className="text-lg font-bold">{formatCurrency(supplierTotal(activeGroup.supplier_id))}</p>
+                        </div>
+                        {createdSuppliers.has(activeGroup.supplier_id) ? (
+                          <Button variant="outline" disabled className="gap-2 border-green-300 text-green-700">
+                            <Check className="h-4 w-4" />
+                            PO Created
+                          </Button>
+                        ) : (
+                          <Button
+                            onClick={() => handleCreatePOForSupplier(activeGroup.supplier_id)}
+                            disabled={
+                              supplierSelectedCount(activeGroup.supplier_id) === 0 ||
+                              isCreating ||
+                              creatingSupplier === activeGroup.supplier_id
+                            }
+                            className="gap-2"
+                          >
+                            {creatingSupplier === activeGroup.supplier_id
+                              ? <Loader2 className="h-4 w-4 animate-spin" />
+                              : <PackagePlus className="h-4 w-4" />
+                            }
+                            Create PO for {activeGroup.supplier_name}
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </>
