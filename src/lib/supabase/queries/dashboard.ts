@@ -147,38 +147,39 @@ export async function getDashboardStats(): Promise<DashboardStats> {
 // Get sales trend for the last N days
 export async function getSalesTrend(days: number = 30): Promise<SalesTrend[]> {
   const supabase = createClient()
-  const startDate = new Date()
+  const today = getTodayPH()
+  const startDate = new Date(`${today}T00:00:00+08:00`)
   startDate.setDate(startDate.getDate() - days)
 
   const { data, error } = await supabase
     .from('transactions')
-    .select('transaction_date, total_amount')
-    .eq('transaction_type', 'sale')
+    .select('transaction_date, total_amount, transaction_type')
+    .in('transaction_type', ['sale', 'return'])
     .eq('is_deleted', false)
     .gte('transaction_date', startDate.toISOString())
     .order('transaction_date', { ascending: true })
 
   if (error) throw error
 
-  // Group by date
+  // Group by Philippine date (UTC+8)
   const dateMap = new Map<string, { sales: number; transactions: number }>()
 
-  // Initialize all dates with 0
+  // Initialize all dates with 0 using PH timezone
   for (let i = 0; i <= days; i++) {
-    const date = new Date()
-    date.setDate(date.getDate() - (days - i))
-    const dateStr = date.toISOString().split('T')[0]
+    const d = new Date(`${today}T00:00:00+08:00`)
+    d.setDate(d.getDate() - (days - i))
+    const dateStr = new Date(d.getTime() + (8 * 60 * 60 * 1000)).toISOString().split('T')[0]
     dateMap.set(dateStr, { sales: 0, transactions: 0 })
   }
 
-  // Fill in actual data - convert UTC timestamp to Philippine timezone
+  // Fill in actual data — deduct returns from their date bucket
   for (const txn of (data as any[]) || []) {
-    const phDate = new Date(txn.transaction_date)
-    const phDateStr = new Date(phDate.getTime() + (8 * 60 * 60 * 1000)).toISOString().split('T')[0]
+    const phDateStr = new Date(new Date(txn.transaction_date).getTime() + (8 * 60 * 60 * 1000)).toISOString().split('T')[0]
     const existing = dateMap.get(phDateStr) || { sales: 0, transactions: 0 }
+    const amount = txn.transaction_type === 'return' ? -txn.total_amount : txn.total_amount
     dateMap.set(phDateStr, {
-      sales: existing.sales + txn.total_amount,
-      transactions: existing.transactions + 1
+      sales: existing.sales + amount,
+      transactions: existing.transactions + (txn.transaction_type === 'sale' ? 1 : 0)
     })
   }
 
@@ -249,8 +250,8 @@ export async function getHourlySales(): Promise<HourlySales[]> {
 
   const { data, error } = await supabase
     .from('transactions')
-    .select('created_at, total_amount')
-    .eq('transaction_type', 'sale')
+    .select('transaction_date, total_amount, transaction_type')
+    .in('transaction_type', ['sale', 'return'])
     .eq('is_deleted', false)
     .gte('transaction_date', todayStart)
     .lte('transaction_date', todayEnd)
@@ -263,11 +264,12 @@ export async function getHourlySales(): Promise<HourlySales[]> {
     hourlyData.push({ hour: h, sales: 0, transactions: 0 })
   }
 
-  // Fill in actual data
+  // Fill in actual data — use PH local hour, deduct returns
   for (const txn of (data as any[]) || []) {
-    const hour = new Date(txn.created_at).getHours()
-    hourlyData[hour].sales += txn.total_amount
-    hourlyData[hour].transactions += 1
+    const phHour = new Date(new Date(txn.transaction_date).getTime() + (8 * 60 * 60 * 1000)).getUTCHours()
+    const amount = txn.transaction_type === 'return' ? -txn.total_amount : txn.total_amount
+    hourlyData[phHour].sales += amount
+    if (txn.transaction_type === 'sale') hourlyData[phHour].transactions += 1
   }
 
   // Return only business hours (6am - 10pm)
