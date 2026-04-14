@@ -248,3 +248,49 @@ export function useDeleteExpenseCategory() {
     },
   })
 }
+
+// ── Export helper (no pagination) ──────────────────────────────────────────────
+
+export interface ExpenseExportRow {
+  expense_number: string
+  date: string
+  category: string
+  description: string
+  paid_to: string
+  reference_number: string
+  branch: string
+  amount: number
+}
+
+export async function getAllExpenses(filters: Pick<ExpenseFilters, 'date_from' | 'date_to' | 'category_id'>): Promise<ExpenseExportRow[]> {
+  const supabase = createClient()
+
+  let query = supabase
+    .from('expenses')
+    .select(EXPENSE_SELECT)
+    .eq('is_deleted', false)
+
+  if (filters.date_from) {
+    query = query.gte('expense_date', `${filters.date_from}T00:00:00+08:00`)
+  }
+  if (filters.date_to) {
+    query = query.lte('expense_date', `${filters.date_to}T23:59:59+08:00`)
+  }
+  if (filters.category_id) {
+    query = query.eq('category_id', filters.category_id)
+  }
+
+  const { data, error } = await query.order('expense_date', { ascending: true })
+  if (error) throw new Error(`Failed to fetch expenses for export: ${error.message}`)
+
+  return ((data as any[]) || []).map(e => ({
+    expense_number: e.expense_number || '',
+    date: e.expense_date?.split('T')[0] ?? '',
+    category: e.category?.name || 'Uncategorized',
+    description: e.description || '',
+    paid_to: e.paid_to || '',
+    reference_number: e.reference_number || '',
+    branch: e.branch?.name || '',
+    amount: Number(e.amount ?? 0),
+  }))
+}

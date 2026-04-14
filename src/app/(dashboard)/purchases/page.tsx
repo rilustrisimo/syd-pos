@@ -3,6 +3,8 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { usePurchaseOrders, usePOStats, useCancelPurchaseOrder, useDeletePurchaseOrder } from '@/hooks/usePurchases'
+import { getPurchaseOrders } from '@/lib/supabase/queries/purchases'
+import { downloadCSV } from '@/lib/utils/export'
 import { useAuthStore } from '@/lib/stores/auth'
 import { useSuppliers } from '@/hooks/useSuppliers'
 import { useBranches } from '@/hooks/useInventory'
@@ -24,6 +26,7 @@ import {
   MoreHorizontal,
   FileText,
   Trash2,
+  Download,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -84,6 +87,38 @@ export default function PurchasesPage() {
   const [currentPage, setCurrentPage] = useState(1)
   const [cancellingPO, setCancellingPO] = useState<string | null>(null)
   const [deletingPO, setDeletingPO] = useState<string | null>(null)
+  const [isExporting, setIsExporting] = useState(false)
+
+  const handleExportCSV = async () => {
+    setIsExporting(true)
+    try {
+      const result = await getPurchaseOrders({
+        search: searchQuery || undefined,
+        supplierId: selectedSupplier || undefined,
+        status: selectedStatus as POStatus || undefined,
+        limit: 9999,
+      })
+      const pos = result.data
+      if (!pos.length) { toast.info('No purchase orders to export for the selected filters'); return }
+      const rows = pos.map(po => ({
+        po_number: po.po_number,
+        date: po.po_date,
+        supplier: (po.supplier as any)?.name ?? '',
+        branch: (po.branch as any)?.name ?? '',
+        status: po.status,
+        expected_delivery: po.expected_delivery_date ?? '',
+        delivery_charge: Number(po.delivery_charge ?? 0),
+        total_amount: Number(po.total_amount ?? 0),
+        notes: po.notes ?? '',
+      }))
+      downloadCSV(rows, `purchases_${new Date().toISOString().split('T')[0]}.csv`)
+      toast.success(`Exported ${rows.length} purchase order${rows.length !== 1 ? 's' : ''}`)
+    } catch (err: any) {
+      toast.error(err.message || 'Export failed')
+    } finally {
+      setIsExporting(false)
+    }
+  }
 
   const { data: purchasesData, isLoading } = usePurchaseOrders({
     search: searchQuery || undefined,
@@ -149,6 +184,10 @@ export default function PurchasesPage() {
           </p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" onClick={handleExportCSV} disabled={isExporting}>
+            {isExporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+            Export CSV
+          </Button>
           <Link href="/purchases/reorder">
             <Button variant="outline" className="gap-2">
               <RefreshCcw className="h-4 w-4" />

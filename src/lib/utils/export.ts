@@ -1,6 +1,30 @@
 import type { Product } from '@/lib/supabase/queries/products'
 import { format } from 'date-fns'
 
+/**
+ * Generic CSV download — works with any flat array of objects.
+ * Adds a UTF-8 BOM so Excel opens it correctly without encoding issues.
+ */
+export function downloadCSV(rows: Record<string, string | number | null | undefined>[], filename: string) {
+  if (rows.length === 0) return
+  const headers = Object.keys(rows[0])
+  const escape = (v: string) =>
+    v.includes(',') || v.includes('"') || v.includes('\n')
+      ? `"${v.replace(/"/g, '""')}"` : v
+  const csvContent = [
+    headers.join(','),
+    ...rows.map(row => headers.map(h => escape(String(row[h] ?? ''))).join(','))
+  ].join('\n')
+  const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' })
+  const link = document.createElement('a')
+  link.href = URL.createObjectURL(blob)
+  link.download = filename
+  link.style.visibility = 'hidden'
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+}
+
 export type ExportColumn = {
   id: string
   label: string

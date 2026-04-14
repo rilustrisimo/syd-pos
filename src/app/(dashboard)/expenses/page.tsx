@@ -7,8 +7,10 @@ import {
   useCreateExpense,
   useUpdateExpense,
   useDeleteExpense,
+  getAllExpenses,
 } from '@/hooks/useExpenses'
 import type { Expense, ExpenseFilters } from '@/hooks/useExpenses'
+import { downloadCSV } from '@/lib/utils/export'
 import { useAuthStore } from '@/lib/stores/auth'
 import { useBranches } from '@/hooks/useInventory'
 import { formatCurrency, formatDate } from '@/lib/utils/formatting'
@@ -23,6 +25,7 @@ import {
   Receipt,
   Loader2,
   CalendarDays,
+  Download,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -141,6 +144,28 @@ export default function ExpensesPage() {
   // Derive the branch_id: use user's branch or fallback to first branch
   const branchId = user?.branchId ?? branches[0]?.id ?? ''
 
+  const [isExporting, setIsExporting] = useState(false)
+
+  const handleExportCSV = async () => {
+    setIsExporting(true)
+    try {
+      const rows = await getAllExpenses({
+        date_from: dateFrom || undefined,
+        date_to: dateTo || undefined,
+        category_id: categoryFilter !== 'all' ? categoryFilter : undefined,
+      })
+      if (rows.length === 0) { toast.info('No expenses to export for the selected filters'); return }
+      const from = dateFrom || 'all'
+      const to = dateTo || 'all'
+      downloadCSV(rows as any[], `expenses_${from}_${to}.csv`)
+      toast.success(`Exported ${rows.length} expense${rows.length !== 1 ? 's' : ''}`)
+    } catch (err: any) {
+      toast.error(err.message || 'Export failed')
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
   const handleOpenCreate = () => {
     setEditingExpense(null)
     setFormData(getInitialFormData())
@@ -232,10 +257,16 @@ export default function ExpensesPage() {
             Track operational expenses for P&amp;L reporting
           </p>
         </div>
-        <Button onClick={handleOpenCreate}>
-          <Plus className="mr-2 h-4 w-4" />
-          Add Expense
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={handleExportCSV} disabled={isExporting}>
+            {isExporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+            Export CSV
+          </Button>
+          <Button onClick={handleOpenCreate}>
+            <Plus className="mr-2 h-4 w-4" />
+            Add Expense
+          </Button>
+        </div>
       </div>
 
       {/* Expenses List */}

@@ -23,7 +23,17 @@ import {
   Loader2,
   Calendar,
   BarChart3,
+  Download,
+  ChevronDown,
 } from 'lucide-react'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { downloadCSV } from '@/lib/utils/export'
+import { toast } from 'sonner'
 import {
   ResponsiveContainer,
   AreaChart,
@@ -191,6 +201,34 @@ export default function PLReportPage() {
   const isProfit = (report?.net_profit ?? 0) >= 0
   const isGrossProfit = (report?.gross_profit ?? 0) >= 0
 
+  const [isExporting, setIsExporting] = useState(false)
+
+  const handleExportDaily = () => {
+    if (!report?.daily_trend?.length) { toast.info('No daily data to export'); return }
+    const rows = report.daily_trend.map(d => ({
+      date: d.date,
+      revenue: d.revenue,
+      gross_profit: d.gross_profit,
+      total_expenses: d.expenses,
+      net_profit: d.net_profit,
+    }))
+    downloadCSV(rows as any[], `pl_daily_${dateFrom}_${dateTo}.csv`)
+    toast.success(`Exported ${rows.length} days`)
+  }
+
+  const handleExportByCategory = () => {
+    if (!report?.expenses_by_category?.length) { toast.info('No expense category data to export'); return }
+    const totalExp = report.total_expenses || 1
+    const rows = report.expenses_by_category.map(c => ({
+      category: c.category_name,
+      amount: c.total_amount,
+      transaction_count: c.count,
+      pct_of_expenses: Number(((c.total_amount / totalExp) * 100).toFixed(2)),
+    }))
+    downloadCSV(rows as any[], `pl_expenses_by_category_${dateFrom}_${dateTo}.csv`)
+    toast.success(`Exported ${rows.length} categories`)
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -201,9 +239,28 @@ export default function PLReportPage() {
             Revenue, costs, expenses, and net profit for the selected period
           </p>
         </div>
-        {isFetching && !isLoading && (
-          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-        )}
+        <div className="flex items-center gap-2">
+          {isFetching && !isLoading && (
+            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" disabled={isLoading || !report} className="gap-1">
+                <Download className="h-4 w-4" />
+                Export
+                <ChevronDown className="h-3 w-3" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={handleExportDaily}>
+                Daily Breakdown CSV
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleExportByCategory}>
+                Expenses by Category CSV
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
 
       {/* Date Range */}

@@ -37,9 +37,13 @@ import {
   Percent,
   Copy,
   CheckCheck,
+  Download,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils/formatting'
 import { getTodayPH } from '@/lib/utils/datetime'
+import { getTransactionsList } from '@/lib/supabase/queries/dashboard'
+import { downloadCSV } from '@/lib/utils/export'
+import { toast } from 'sonner'
 import {
   ResponsiveContainer,
   AreaChart,
@@ -231,6 +235,21 @@ function SummaryCard({
 export default function SalesReportPage() {
   const [activeTab, setActiveTab] = useState<'overview' | 'product' | 'category'>('overview')
   const [copied, setCopied] = useState(false)
+  const [isExporting, setIsExporting] = useState(false)
+
+  const handleExportCSV = async () => {
+    setIsExporting(true)
+    try {
+      const rows = await getTransactionsList(dateFrom, dateTo)
+      if (rows.length === 0) { toast.info('No transactions to export for the selected period'); return }
+      downloadCSV(rows as any[], `sales_${dateFrom}_${dateTo}.csv`)
+      toast.success(`Exported ${rows.length} transaction${rows.length !== 1 ? 's' : ''}`)
+    } catch (err: any) {
+      toast.error(err.message || 'Export failed')
+    } finally {
+      setIsExporting(false)
+    }
+  }
 
   // Default to this month
   const [selectedPreset, setSelectedPreset] = useState<string>('this_month')
@@ -394,6 +413,10 @@ export default function SalesReportPage() {
           </p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={handleExportCSV} disabled={isExporting}>
+            {isExporting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
+            Export CSV
+          </Button>
           <Button variant="outline" size="sm" onClick={handleCopy} disabled={isLoading || !productData?.length}>
             {copied ? (
               <><CheckCheck className="h-4 w-4 mr-2 text-green-600" />Copied!</>

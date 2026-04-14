@@ -1287,3 +1287,67 @@ export async function getPLReport(dateFrom: string, dateTo: string): Promise<PLR
     daily_trend: dailyTrend,
   }
 }
+
+// ============================================
+// EXPORT QUERIES
+// ============================================
+
+export interface TransactionExportRow {
+  transaction_number: string
+  date: string
+  type: string
+  customer: string
+  subtotal: number
+  discount: number
+  delivery_fee: number
+  other_fees: number
+  total: number
+  payment_status: string
+}
+
+// Fetch all transactions in a date range for CSV export (per-transaction detail)
+export async function getTransactionsList(dateFrom: string, dateTo: string): Promise<TransactionExportRow[]> {
+  const supabase = createClient()
+  const start = new Date(`${dateFrom}T00:00:00+08:00`).toISOString()
+  const end = new Date(`${dateTo}T23:59:59.999+08:00`).toISOString()
+
+  const { data, error } = await supabase
+    .from('transactions')
+    .select(`
+      transaction_number,
+      transaction_date,
+      transaction_type,
+      subtotal,
+      discount_amount,
+      delivery_fee,
+      other_fees,
+      total_amount,
+      payment_status,
+      customer:customers(name)
+    `)
+    .in('transaction_type', ['sale', 'return'])
+    .eq('is_deleted', false)
+    .gte('transaction_date', start)
+    .lte('transaction_date', end)
+    .order('transaction_date', { ascending: true })
+
+  if (error) throw error
+
+  return ((data as any[]) || []).map(t => {
+    const phDate = new Date(new Date(t.transaction_date).getTime() + 8 * 60 * 60 * 1000)
+    const customerRaw = t.customer
+    const customerName = Array.isArray(customerRaw) ? customerRaw[0]?.name : customerRaw?.name
+    return {
+      transaction_number: t.transaction_number,
+      date: phDate.toISOString().split('T')[0],
+      type: t.transaction_type,
+      customer: customerName || 'Walk-in',
+      subtotal: Number(t.subtotal ?? 0),
+      discount: Number(t.discount_amount ?? 0),
+      delivery_fee: Number(t.delivery_fee ?? 0),
+      other_fees: Number(t.other_fees ?? 0),
+      total: Number(t.total_amount ?? 0),
+      payment_status: t.payment_status,
+    }
+  })
+}
