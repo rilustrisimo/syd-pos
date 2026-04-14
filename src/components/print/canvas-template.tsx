@@ -70,6 +70,10 @@ const GRAY400 = '#9ca3af'
 const GRAY600 = '#4b5563'
 const GRAY700 = '#374151'
 
+// ── Store info (matches thermal receipt format) ──────────────────────────────
+const STORE_ADDRESS  = 'Sitio Landing, Talakag, Bukidnon'
+const STORE_CONTACTS = '09164527225 / 09274746352'
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 interface CanvasTemplateProps {
@@ -134,11 +138,11 @@ export const CanvasTemplate = forwardRef<HTMLDivElement, CanvasTemplateProps>(
               <div style={{ fontSize: '13px', fontWeight: '700', color: GRAY700, letterSpacing: '0.8px', marginTop: '1px' }}>
                 SUPPLIES TRADING
               </div>
-              {data.branch.phone && (
-                <div style={{ fontSize: '10px', color: GRAY600, lineHeight: 1.7, marginTop: '5px' }}>
-                  <div>Contact: {data.branch.phone}</div>
-                </div>
-              )}
+              <div style={{ fontSize: '9.5px', color: GRAY600, lineHeight: 1.7, marginTop: '5px' }}>
+                <div>Construction Materials & Hardware</div>
+                <div style={{ marginTop: '2px' }}>{STORE_ADDRESS}</div>
+                <div style={{ marginTop: '2px' }}>{STORE_CONTACTS}</div>
+              </div>
             </div>
           </div>
 
