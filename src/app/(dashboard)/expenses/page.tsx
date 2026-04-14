@@ -153,6 +153,7 @@ export default function ExpensesPage() {
         date_from: dateFrom || undefined,
         date_to: dateTo || undefined,
         category_id: categoryFilter !== 'all' ? categoryFilter : undefined,
+        search: searchQuery || undefined,
       })
       if (rows.length === 0) { toast.info('No expenses to export for the selected filters'); return }
       const from = dateFrom || 'all'

@@ -262,7 +262,7 @@ export interface ExpenseExportRow {
   amount: number
 }
 
-export async function getAllExpenses(filters: Pick<ExpenseFilters, 'date_from' | 'date_to' | 'category_id'>): Promise<ExpenseExportRow[]> {
+export async function getAllExpenses(filters: Pick<ExpenseFilters, 'date_from' | 'date_to' | 'category_id' | 'search'>): Promise<ExpenseExportRow[]> {
   const supabase = createClient()
 
   let query = supabase
@@ -278,6 +278,11 @@ export async function getAllExpenses(filters: Pick<ExpenseFilters, 'date_from' |
   }
   if (filters.category_id) {
     query = query.eq('category_id', filters.category_id)
+  }
+  if (filters.search) {
+    query = query.or(
+      `description.ilike.%${filters.search}%,paid_to.ilike.%${filters.search}%,reference_number.ilike.%${filters.search}%,expense_number.ilike.%${filters.search}%`
+    )
   }
 
   const { data, error } = await query.order('expense_date', { ascending: true })
