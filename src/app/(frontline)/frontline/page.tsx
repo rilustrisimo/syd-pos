@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { usePOSStore } from '@/lib/stores/posStore'
 import { useAuthStore } from '@/lib/stores/auth'
 import { usePOSProductSearch, useCreateTransaction, useTransactions, useUpdateTransactionDeliveryType } from '@/hooks/useTransactions'
-import { getTransaction } from '@/lib/supabase/queries/transactions'
+import { getTransaction, getCustomerDeliveryPhones } from '@/lib/supabase/queries/transactions'
 import { useSearchCustomers, useAllActiveCustomers, useCreateCustomer } from '@/hooks/useCustomers'
 import { useBranches } from '@/hooks/useInventory'
 import { useDiscountRules } from '@/hooks/useDiscountRules'
@@ -206,6 +206,8 @@ export default function FrontlinePOSPage() {
   const [editDeliveryAddress, setEditDeliveryAddress] = useState('')
   const [editDeliveryPhone, setEditDeliveryPhone] = useState('')
   const [savingDelivery, setSavingDelivery] = useState(false)
+  const [deliveryPhoneHistory, setDeliveryPhoneHistory] = useState<string[]>([])
+  const [deliveryPhoneHistoryLoading, setDeliveryPhoneHistoryLoading] = useState(false)
 
   const { data: historyData, isLoading: isLoadingHistory, refetch: refetchHistory } = useTransactions({
     branch_id: branchId || undefined,
@@ -227,6 +229,36 @@ export default function FrontlinePOSPage() {
     credit_limit: 0,
     outstanding_balance: 0,
   }
+
+  // Load delivery phone history when customer or delivery type changes
+  useEffect(() => {
+    if (deliveryType !== 'delivery' || !customer?.id || customer.id === WALK_IN_CUSTOMER.id) {
+      setDeliveryPhoneHistory([])
+      return
+    }
+    setDeliveryPhoneHistoryLoading(true)
+    getCustomerDeliveryPhones(customer.id)
+      .then(setDeliveryPhoneHistory)
+      .catch(() => setDeliveryPhoneHistory([]))
+      .finally(() => setDeliveryPhoneHistoryLoading(false))
+  }, [customer?.id, deliveryType])
+
+  // Quick-pick phone numbers: customer primary + up to 5 recent delivery phones
+  const quickPickNumbers = useMemo(() => {
+    const seen = new Set<string>()
+    const result: { number: string; label: string }[] = []
+    if (customer?.phone && customer.id !== WALK_IN_CUSTOMER.id) {
+      seen.add(customer.phone)
+      result.push({ number: customer.phone, label: 'Primary' })
+    }
+    for (const p of deliveryPhoneHistory) {
+      if (!seen.has(p) && result.length < 6) {
+        seen.add(p)
+        result.push({ number: p, label: 'Recent' })
+      }
+    }
+    return result
+  }, [customer?.phone, customer?.id, deliveryPhoneHistory])
 
   // Filter customers based on search
   const filteredCustomers = useMemo(() => {
@@ -481,9 +513,13 @@ export default function FrontlinePOSPage() {
       credit_limit: cust.credit_limit || 0,
       outstanding_balance: cust.outstanding_balance || 0,
     })
+    // Auto-fill delivery phone with customer's primary phone if delivery is active and field is empty
+    if (deliveryType === 'delivery' && !deliveryPhone && cust.phone) {
+      setDeliveryPhone(cust.phone)
+    }
     setIsCustomerOpen(false)
     setCustomerSearch('')
-  }, [setCustomer])
+  }, [setCustomer, deliveryType, deliveryPhone, setDeliveryPhone])
 
   // Handle new customer creation
   const handleCreateCustomer = useCallback(async () => {
@@ -629,18 +665,12 @@ export default function FrontlinePOSPage() {
     }
 
     if (deliveryType === 'delivery') {
-      const resolvedPhone = deliveryPhone.trim() || customer?.phone?.trim() || ''
-      const resolvedAddress = deliveryAddress.trim()
-      if (!resolvedAddress && !resolvedPhone) {
-        toast.error('Delivery requires an address and contact number. Please fill in the Delivery Details.')
-        return
-      }
-      if (!resolvedAddress) {
+      if (!deliveryAddress.trim()) {
         toast.error('Please enter a delivery address.')
         return
       }
-      if (!resolvedPhone) {
-        toast.error('Please enter a contact phone number for delivery.')
+      if (!deliveryPhone.trim()) {
+        toast.error('Contact number is required for delivery orders.')
         return
       }
       if (!deliveryFeeConfirmed) {
@@ -684,7 +714,7 @@ export default function FrontlinePOSPage() {
           transaction_type: 'sale',
           delivery_type: deliveryType,
           delivery_address: deliveryAddress || null,
-          delivery_phone: deliveryPhone || null,
+          delivery_phone: deliveryPhone.trim() || null,
           delivery_fee: deliveryFee || 0,
           other_fees: otherFees || 0,
           other_fees_notes: otherFeesNotes || null,
@@ -842,7 +872,7 @@ export default function FrontlinePOSPage() {
         branch: (txn.branch as any)?.name || 'Main Branch',
         customer: {
           name: (txn.customer as any)?.name || 'Walk-in Customer',
-          phone: (txn.customer as any)?.phone || null,
+          phone: txn.delivery_phone || (txn.customer as any)?.phone || null,
         },
         delivery_type: txn.delivery_type,
         delivery_address: txn.delivery_address,
@@ -1543,16 +1573,37 @@ export default function FrontlinePOSPage() {
                   )}
                 </div>
                 <div className="space-y-1">
+                  {/* Quick-pick chips */}
+                  {quickPickNumbers.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mb-1">
+                      {deliveryPhoneHistoryLoading && (
+                        <Loader2 className="h-3 w-3 animate-spin text-muted-foreground self-center" />
+                      )}
+                      {quickPickNumbers.map(({ number, label }) => (
+                        <button
+                          key={number}
+                          type="button"
+                          onClick={() => setDeliveryPhone(number)}
+                          className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium border transition-colors ${
+                            deliveryPhone === number
+                              ? 'bg-blue-600 text-white border-blue-600'
+                              : 'bg-white text-blue-700 border-blue-300 hover:bg-blue-50'
+                          }`}
+                        >
+                          {label === 'Primary' && <span>★</span>}
+                          {number}
+                          {label === 'Primary' && <span className="opacity-70 text-[10px]">Primary</span>}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   <Input
-                    placeholder={customer?.phone ? `Contact Phone (default: ${customer.phone})` : 'Contact Phone *'}
+                    placeholder="Contact Phone *"
                     value={deliveryPhone}
                     onChange={(e) => setDeliveryPhone(e.target.value)}
-                    className={`h-12 ${!deliveryPhone.trim() && !customer?.phone ? 'border-red-300 bg-red-50' : ''}`}
+                    className={`h-12 ${!deliveryPhone.trim() ? 'border-red-300 bg-red-50' : 'border-green-400'}`}
                   />
-                  {!deliveryPhone.trim() && customer?.phone && (
-                    <p className="text-xs text-blue-600">Will use customer&apos;s phone: {customer.phone}</p>
-                  )}
-                  {!deliveryPhone.trim() && !customer?.phone && (
+                  {!deliveryPhone.trim() && (
                     <p className="text-xs text-red-500">Contact number is required for delivery</p>
                   )}
                 </div>

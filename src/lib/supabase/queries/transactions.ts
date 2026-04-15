@@ -1188,3 +1188,33 @@ export async function updateTransactionDeliveryType(
 
   return data
 }
+
+// Get recent unique delivery phones used by a customer (for quick-pick UI)
+export async function getCustomerDeliveryPhones(customerId: string): Promise<string[]> {
+  const supabase = createClient()
+
+  const { data, error } = await supabase
+    .from('transactions')
+    .select('delivery_phone')
+    .eq('customer_id', customerId)
+    .eq('delivery_type', 'delivery')
+    .not('delivery_phone', 'is', null)
+    .eq('is_deleted', false)
+    .order('transaction_date', { ascending: false })
+    .limit(20)
+
+  if (error) throw error
+
+  // Deduplicate, keep order (most recent first), return up to 5
+  const seen = new Set<string>()
+  const result: string[] = []
+  for (const row of (data as any[]) || []) {
+    const phone = row.delivery_phone?.trim()
+    if (phone && !seen.has(phone)) {
+      seen.add(phone)
+      result.push(phone)
+      if (result.length >= 5) break
+    }
+  }
+  return result
+}
