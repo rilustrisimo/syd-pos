@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo } from 'react'
+import Link from 'next/link'
 import { useTransactions, useTransaction, useCreateReturn, useSoftDeleteTransaction } from '@/hooks/useTransactions'
 import { getTransaction, getReturnsForTransaction } from '@/lib/supabase/queries/transactions'
 import { useBranches } from '@/hooks/useInventory'
@@ -468,7 +469,12 @@ export default function ReturnsPage() {
                     {transactions.map((txn: any) => (
                       <TableRow key={txn.id}>
                         <TableCell className="font-mono text-sm">
-                          {txn.transaction_number}
+                          <Link
+                            href={`/pos/transactions/${txn.id}`}
+                            className="hover:underline hover:text-primary"
+                          >
+                            {txn.transaction_number}
+                          </Link>
                         </TableCell>
                         <TableCell>
                           <div>{formatDate(txn.transaction_date)}</div>
@@ -477,7 +483,16 @@ export default function ReturnsPage() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          {txn.customer?.name || 'Walk-in Customer'}
+                          {txn.customer?.id ? (
+                            <Link
+                              href={`/customers/${txn.customer.id}`}
+                              className="hover:underline hover:text-primary"
+                            >
+                              {txn.customer.name || 'Walk-in Customer'}
+                            </Link>
+                          ) : (
+                            <span className="text-muted-foreground">Walk-in Customer</span>
+                          )}
                         </TableCell>
                         <TableCell>
                           {txn.lines && txn.lines.length > 0 ? (

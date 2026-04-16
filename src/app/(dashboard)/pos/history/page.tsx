@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef } from 'react'
+import Link from 'next/link'
 import { useTransactions, useSoftDeleteTransaction, useUpdateTransactionDeliveryType } from '@/hooks/useTransactions'
 import { getTransaction } from '@/lib/supabase/queries/transactions'
 import { printElement } from '@/lib/utils/print'
@@ -402,9 +403,12 @@ export default function TransactionHistoryPage() {
                             ) : (
                               <ShoppingCart className="h-4 w-4 text-blue-600" />
                             )}
-                            <span className={isReturn ? 'text-orange-700 font-semibold' : ''}>
+                            <Link
+                              href={`/pos/transactions/${txn.id}`}
+                              className={`hover:underline hover:text-primary font-mono text-sm ${isReturn ? 'text-orange-700 font-semibold' : ''}`}
+                            >
                               {txn.transaction_number}
-                            </span>
+                            </Link>
                           </div>
                           {isReturn && txn.notes && (
                             <div className="text-xs text-orange-600 mt-1 flex items-center gap-1">
@@ -435,7 +439,16 @@ export default function TransactionHistoryPage() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          {txn.customer?.name || 'Walk-in Customer'}
+                          {txn.customer?.id ? (
+                            <Link
+                              href={`/customers/${txn.customer.id}`}
+                              className="hover:underline hover:text-primary"
+                            >
+                              {txn.customer.name || 'Walk-in Customer'}
+                            </Link>
+                          ) : (
+                            <span className="text-muted-foreground">Walk-in Customer</span>
+                          )}
                         </TableCell>
                         <TableCell>
                           <Badge 
