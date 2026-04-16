@@ -223,6 +223,132 @@ export async function deleteCustomer(id: string) {
   return true
 }
 
+// ── Per-customer analytics ────────────────────────────────────────────────────
+
+export interface CustomerPurchaseStats {
+  total_orders: number
+  total_sales_amount: number
+  total_returns_count: number
+  total_returns_amount: number
+  net_revenue: number
+  total_discount: number
+  total_delivery_fees: number
+  total_other_fees: number
+  average_order_value: number
+  first_purchase_date: string | null
+  last_purchase_date: string | null
+}
+
+export async function getCustomerPurchaseStats(customerId: string): Promise<CustomerPurchaseStats> {
+  const supabase = createClient()
+
+  const { data, error } = await supabase
+    .from('transactions')
+    .select('transaction_type, total_amount, discount_amount, delivery_fee, other_fees, transaction_date')
+    .eq('customer_id', customerId)
+    .eq('is_deleted', false)
+    .order('transaction_date', { ascending: true })
+
+  if (error) throw error
+
+  const rows = (data as any[]) || []
+  const sales = rows.filter(r => r.transaction_type === 'sale')
+  const returns = rows.filter(r => r.transaction_type === 'return')
+
+  const total_sales_amount = sales.reduce((s, r) => s + Number(r.total_amount || 0), 0)
+  const total_returns_amount = returns.reduce((s, r) => s + Number(r.total_amount || 0), 0)
+  const net_revenue = total_sales_amount - total_returns_amount
+  const total_orders = sales.length
+
+  const saleDates = sales.map(r => r.transaction_date).filter(Boolean)
+
+  return {
+    total_orders,
+    total_sales_amount,
+    total_returns_count: returns.length,
+    total_returns_amount,
+    net_revenue,
+    total_discount: sales.reduce((s, r) => s + Number(r.discount_amount || 0), 0),
+    total_delivery_fees: sales.reduce((s, r) => s + Number(r.delivery_fee || 0), 0),
+    total_other_fees: sales.reduce((s, r) => s + Number(r.other_fees || 0), 0),
+    average_order_value: total_orders > 0 ? net_revenue / total_orders : 0,
+    first_purchase_date: saleDates.length > 0 ? saleDates[0] : null,
+    last_purchase_date: saleDates.length > 0 ? saleDates[saleDates.length - 1] : null,
+  }
+}
+
+export interface CustomerTopItem {
+  product_id: string
+  product_name: string
+  product_code: string
+  total_quantity: number
+  total_amount: number
+  order_count: number
+}
+
+export async function getCustomerTopItems(customerId: string): Promise<CustomerTopItem[]> {
+  const supabase = createClient()
+
+  // Fetch lines joined to transactions (filter in JS to avoid embedded filter 400s)
+  const { data, error } = await supabase
+    .from('transaction_lines')
+    .select(`
+      product_id,
+      quantity,
+      line_total,
+      transaction_id,
+      transaction:transactions!transaction_id(customer_id, transaction_type, is_deleted),
+      product:products!product_id(id, name, code)
+    `)
+    .limit(1000)
+
+  if (error) throw error
+
+  const rows = (data as any[]) || []
+
+  // Filter to this customer's sales only
+  const filtered = rows.filter(r =>
+    r.transaction?.customer_id === customerId &&
+    r.transaction?.transaction_type === 'sale' &&
+    !r.transaction?.is_deleted
+  )
+
+  // Aggregate by product_id
+  const map = new Map<string, CustomerTopItem>()
+  const txnsSeen = new Map<string, Set<string>>() // product_id → set of transaction_ids
+
+  for (const row of filtered) {
+    const pid = row.product_id
+    if (!pid) continue
+    if (!map.has(pid)) {
+      map.set(pid, {
+        product_id: pid,
+        product_name: row.product?.name || 'Unknown',
+        product_code: row.product?.code || '',
+        total_quantity: 0,
+        total_amount: 0,
+        order_count: 0,
+      })
+      txnsSeen.set(pid, new Set())
+    }
+    const entry = map.get(pid)!
+    entry.total_quantity += Number(row.quantity || 0)
+    entry.total_amount += Number(row.line_total || 0)
+    txnsSeen.get(pid)!.add(row.transaction_id)
+  }
+
+  // Set order_count from distinct transaction_ids
+  for (const [pid, entry] of map) {
+    entry.order_count = txnsSeen.get(pid)!.size
+  }
+
+  return Array.from(map.values())
+    .sort((a, b) => b.total_amount - a.total_amount)
+    .slice(0, 10)
+}
+
+// ── Global customer statistics (for list page) ────────────────────────────────
+
 // Get customer statistics
 export async function getCustomerStats() {
   const supabase = createClient()

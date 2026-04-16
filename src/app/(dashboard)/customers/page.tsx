@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import {
   useCustomers,
   useCustomerStats,
@@ -24,6 +25,7 @@ import {
   Wallet,
   Building,
   User,
+  Eye,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -368,7 +370,14 @@ export default function CustomersPage() {
                   <TableBody>
                     {customers.map((customer) => (
                       <TableRow key={customer.id}>
-                        <TableCell className="font-medium">{customer.name}</TableCell>
+                        <TableCell className="font-medium">
+                          <Link
+                            href={`/customers/${customer.id}`}
+                            className="hover:underline hover:text-primary"
+                          >
+                            {customer.name}
+                          </Link>
+                        </TableCell>
                         <TableCell>
                           <div className="space-y-1">
                             {customer.phone && (
@@ -418,6 +427,12 @@ export default function CustomersPage() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
+                              <DropdownMenuItem asChild>
+                                <Link href={`/customers/${customer.id}`}>
+                                  <Eye className="mr-2 h-4 w-4" />
+                                  View
+                                </Link>
+                              </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => handleOpenEdit(customer)}>
                                 <Pencil className="mr-2 h-4 w-4" />
                                 Edit

@@ -221,10 +221,6 @@ export const CanvasTemplate = forwardRef<HTMLDivElement, CanvasTemplateProps>(
                   <td style={{ padding: '5px 10px', color: GRAY600, fontSize: '9.5px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Prepared by</td>
                   <td style={{ padding: '5px 10px', textAlign: 'right', fontWeight: '600', fontSize: '10px' }}>{data.prepared_by}</td>
                 </tr>
-                <tr style={{ backgroundColor: '#fffde7' }}>
-                  <td style={{ padding: '5px 10px', color: '#7c5c00', fontSize: '9.5px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Valid for</td>
-                  <td style={{ padding: '5px 10px', textAlign: 'right', fontWeight: '800', fontSize: '10px', color: '#7c5c00' }}>7 days</td>
-                </tr>
               </tbody>
             </table>
           </div>
@@ -335,8 +331,8 @@ export const CanvasTemplate = forwardRef<HTMLDivElement, CanvasTemplateProps>(
               Price Quotation Only — Not a Sales Receipt
             </div>
             <div style={{ fontSize: '9.5px', color: '#78350f', marginTop: '2px', lineHeight: 1.5 }}>
-              This document is for reference purposes only. Prices quoted are subject to change without prior notice.
-              Availability of items may vary at time of purchase. This quotation is valid for 7 days from the date issued.
+              This document is for reference purposes only. Prices stated herein are subject to change at any time without prior notice.
+              Prices are only held upon full payment — items collected on a later date will be released at the paid amount.
             </div>
           </div>
         </div>

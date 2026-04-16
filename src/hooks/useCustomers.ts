@@ -10,6 +10,8 @@ import {
   updateCustomer,
   deleteCustomer,
   getCustomerStats,
+  getCustomerPurchaseStats,
+  getCustomerTopItems,
   CustomerFilters,
   CustomerInput
 } from '@/lib/supabase/queries/customers'
@@ -24,6 +26,8 @@ export const customerKeys = {
   search: (query: string) => [...customerKeys.all, 'search', query] as const,
   allActive: () => [...customerKeys.all, 'all-active'] as const,
   stats: () => [...customerKeys.all, 'stats'] as const,
+  purchaseStats: (id: string) => [...customerKeys.all, 'purchase-stats', id] as const,
+  topItems: (id: string) => [...customerKeys.all, 'top-items', id] as const,
 }
 
 // Hook to get customers with filters
@@ -70,6 +74,26 @@ export function useCustomerStats() {
     queryKey: customerKeys.stats(),
     queryFn: getCustomerStats,
     staleTime: 60000, // 1 minute
+  })
+}
+
+// Hook to get per-customer purchase stats
+export function useCustomerPurchaseStats(id: string) {
+  return useQuery({
+    queryKey: customerKeys.purchaseStats(id),
+    queryFn: () => getCustomerPurchaseStats(id),
+    staleTime: 1000 * 60,
+    enabled: !!id,
+  })
+}
+
+// Hook to get per-customer top purchased items
+export function useCustomerTopItems(id: string) {
+  return useQuery({
+    queryKey: customerKeys.topItems(id),
+    queryFn: () => getCustomerTopItems(id),
+    staleTime: 1000 * 60,
+    enabled: !!id,
   })
 }
 
