@@ -402,6 +402,7 @@ function TagTransactionDialog({ referrerId, defaultRate, open, onClose }: {
     transaction_type: 'sale',
     date_from: dateFrom || undefined,
     date_to: dateTo || undefined,
+    untagged_only: true,
     page,
     limit: 8,
   })

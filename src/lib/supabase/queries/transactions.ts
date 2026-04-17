@@ -141,6 +141,7 @@ export interface TransactionFilters {
   date_to?: string
   search?: string          // searches transaction_number
   customer_name?: string   // separate customer name search (resolved to IDs)
+  untagged_only?: boolean  // exclude transactions already linked to a referrer
   page?: number
   limit?: number
 }
@@ -225,6 +226,10 @@ export async function getTransactions(filters: TransactionFilters = {}) {
 
   if (rest.search) {
     query = query.or(`transaction_number.ilike.%${rest.search}%`)
+  }
+
+  if (rest.untagged_only) {
+    query = query.is('referrer_id', null)
   }
 
   // Pagination - sort by transaction date (sale date) instead of creation date
