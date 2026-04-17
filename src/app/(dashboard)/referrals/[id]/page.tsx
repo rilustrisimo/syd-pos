@@ -33,6 +33,7 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -364,6 +365,8 @@ function TagTransactionDialog({ referrerId, defaultRate, open, onClose }: {
   const tagMutation = useTagTransactionReferrer()
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
   const [page, setPage] = useState(1)
   const [selectedTxn, setSelectedTxn] = useState<any | null>(null)
   const [rate, setRate] = useState(defaultRate.toString())
@@ -382,15 +385,23 @@ function TagTransactionDialog({ referrerId, defaultRate, open, onClose }: {
     if (open) {
       setSearch('')
       setDebouncedSearch('')
+      setDateFrom('')
+      setDateTo('')
       setPage(1)
       setSelectedTxn(null)
       setRate(defaultRate.toString())
     }
   }, [open, defaultRate])
 
+  // Route search: TXN-prefixed → transaction number, otherwise → customer name
+  const isTxnSearch = debouncedSearch.toUpperCase().startsWith('TXN')
+
   const { data: txnData, isLoading } = useTransactions({
-    search: debouncedSearch || undefined,
+    search: isTxnSearch ? debouncedSearch : undefined,
+    customer_name: !isTxnSearch && debouncedSearch ? debouncedSearch : undefined,
     transaction_type: 'sale',
+    date_from: dateFrom || undefined,
+    date_to: dateTo || undefined,
     page,
     limit: 8,
   })
@@ -428,16 +439,39 @@ function TagTransactionDialog({ referrerId, defaultRate, open, onClose }: {
         </DialogHeader>
 
         <div className="flex flex-col gap-4 flex-1 min-h-0">
-          {/* Search */}
-          <div className="relative">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              className="pl-8"
-              placeholder="Search by transaction number or customer name..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              autoFocus
-            />
+          {/* Search + date filters */}
+          <div className="space-y-2">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                className="pl-8"
+                placeholder="Search by transaction # (TXN-…) or customer name..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                autoFocus
+              />
+            </div>
+            <div className="flex gap-2 items-center">
+              <Label className="text-xs text-muted-foreground shrink-0">Date range</Label>
+              <Input
+                type="date"
+                className="h-8 text-sm"
+                value={dateFrom}
+                onChange={(e) => { setDateFrom(e.target.value); setPage(1) }}
+              />
+              <span className="text-muted-foreground text-sm">–</span>
+              <Input
+                type="date"
+                className="h-8 text-sm"
+                value={dateTo}
+                onChange={(e) => { setDateTo(e.target.value); setPage(1) }}
+              />
+              {(dateFrom || dateTo) && (
+                <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground" onClick={() => { setDateFrom(''); setDateTo(''); setPage(1) }} title="Clear dates">
+                  <X className="h-3 w-3" />
+                </Button>
+              )}
+            </div>
           </div>
 
           {/* Transaction list */}
@@ -448,7 +482,7 @@ function TagTransactionDialog({ referrerId, defaultRate, open, onClose }: {
               </div>
             ) : transactions.length === 0 ? (
               <div className="flex items-center justify-center h-32 text-muted-foreground text-sm">
-                {debouncedSearch ? `No transactions found for "${debouncedSearch}"` : 'No sales found'}
+                {debouncedSearch || dateFrom || dateTo ? 'No transactions match the current filters' : 'No sales found'}
               </div>
             ) : (
               <Table>

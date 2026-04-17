@@ -139,7 +139,8 @@ export interface TransactionFilters {
   transaction_type?: string
   date_from?: string
   date_to?: string
-  search?: string
+  search?: string          // searches transaction_number
+  customer_name?: string   // separate customer name search (resolved to IDs)
   page?: number
   limit?: number
 }
@@ -165,6 +166,20 @@ export async function getTransactions(filters: TransactionFilters = {}) {
   const { page = 1, limit = 20, ...rest } = filters
   const offset = (page - 1) * limit
 
+  // Resolve customer_name to a list of customer IDs before building the main query
+  let customerIdFilter: string[] | null = null
+  if (rest.customer_name?.trim()) {
+    const { data: customers } = await supabase
+      .from('customers')
+      .select('id')
+      .ilike('name', `%${rest.customer_name.trim()}%`)
+    customerIdFilter = (customers || []).map((c: any) => c.id)
+    // If no customers match, no transactions can match — return early
+    if (customerIdFilter.length === 0) {
+      return { transactions: [] as Transaction[], total: 0, page, limit, totalPages: 0 }
+    }
+  }
+
   let query = supabase
     .from('transactions')
     .select(`
@@ -182,6 +197,10 @@ export async function getTransactions(filters: TransactionFilters = {}) {
 
   if (rest.customer_id) {
     query = query.eq('customer_id', rest.customer_id)
+  }
+
+  if (customerIdFilter) {
+    query = query.in('customer_id', customerIdFilter)
   }
 
   if (rest.referrer_id) {
