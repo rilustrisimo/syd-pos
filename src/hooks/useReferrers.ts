@@ -1,6 +1,7 @@
 'use client'
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { transactionKeys } from '@/hooks/useTransactions'
 import {
   getReferrers,
   getReferrer,
@@ -158,6 +159,9 @@ export function useTagTransactionReferrer() {
     onSuccess: (_, { referrerId }) => {
       queryClient.invalidateQueries({ queryKey: referrerKeys.commissions(referrerId) })
       queryClient.invalidateQueries({ queryKey: referrerKeys.stats(referrerId) })
+      queryClient.invalidateQueries({ queryKey: referrerKeys.globalStats() })
+      // Invalidate transaction lists so tagged transactions disappear from the picker immediately
+      queryClient.invalidateQueries({ queryKey: transactionKeys.lists() })
     },
   })
 }
