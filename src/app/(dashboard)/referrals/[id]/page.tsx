@@ -1,6 +1,6 @@
 'use client'
 
-import { use, useState, useRef } from 'react'
+import { use, useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
@@ -29,6 +29,10 @@ import {
   Plus,
   ExternalLink,
   Tag,
+  Search,
+  Check,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -358,13 +362,45 @@ function TagTransactionDialog({ referrerId, defaultRate, open, onClose }: {
   onClose: () => void
 }) {
   const tagMutation = useTagTransactionReferrer()
-  const [transactionId, setTransactionId] = useState('')
+  const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [page, setPage] = useState(1)
+  const [selectedTxn, setSelectedTxn] = useState<any | null>(null)
   const [rate, setRate] = useState(defaultRate.toString())
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!transactionId.trim()) {
-      toast.error('Enter a transaction ID')
+  // Debounce search input
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setDebouncedSearch(search)
+      setPage(1)
+    }, 350)
+    return () => clearTimeout(t)
+  }, [search])
+
+  // Reset when dialog opens
+  useEffect(() => {
+    if (open) {
+      setSearch('')
+      setDebouncedSearch('')
+      setPage(1)
+      setSelectedTxn(null)
+      setRate(defaultRate.toString())
+    }
+  }, [open, defaultRate])
+
+  const { data: txnData, isLoading } = useTransactions({
+    search: debouncedSearch || undefined,
+    transaction_type: 'sale',
+    page,
+    limit: 8,
+  })
+
+  const transactions = txnData?.transactions || []
+  const totalPages = txnData?.totalPages || 1
+
+  const handleTag = async () => {
+    if (!selectedTxn) {
+      toast.error('Select a transaction first')
       return
     }
     const commissionRate = parseFloat(rate)
@@ -373,9 +409,8 @@ function TagTransactionDialog({ referrerId, defaultRate, open, onClose }: {
       return
     }
     try {
-      await tagMutation.mutateAsync({ transactionId: transactionId.trim(), referrerId, commissionRate })
-      toast.success('Transaction tagged to referrer')
-      setTransactionId('')
+      await tagMutation.mutateAsync({ transactionId: selectedTxn.id, referrerId, commissionRate })
+      toast.success(`Transaction ${selectedTxn.transaction_number} tagged`)
       onClose()
     } catch (e: any) {
       toast.error(e.message || 'Failed to tag transaction')
@@ -384,42 +419,151 @@ function TagTransactionDialog({ referrerId, defaultRate, open, onClose }: {
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-sm">
+      <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
         <DialogHeader>
-          <DialogTitle>Tag Transaction</DialogTitle>
+          <DialogTitle>Tag Historical Transaction</DialogTitle>
           <DialogDescription>
-            Retroactively link a historical transaction to this referrer
+            Search POS history and link a sale to this referrer. A commission row will be created automatically.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-1">
-            <Label>Transaction ID *</Label>
+
+        <div className="flex flex-col gap-4 flex-1 min-h-0">
+          {/* Search */}
+          <div className="relative">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
-              value={transactionId}
-              onChange={(e) => setTransactionId(e.target.value)}
-              placeholder="Paste transaction UUID"
-              required
+              className="pl-8"
+              placeholder="Search by transaction number or customer name..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              autoFocus
             />
           </div>
-          <div className="space-y-1">
-            <Label>Commission Rate (%)</Label>
-            <Input
-              type="number"
-              value={rate}
-              onChange={(e) => setRate(e.target.value)}
-              min="0"
-              max="100"
-              step="0.01"
-            />
+
+          {/* Transaction list */}
+          <div className="border rounded-lg overflow-hidden flex-1 min-h-0">
+            {isLoading ? (
+              <div className="flex items-center justify-center h-32">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : transactions.length === 0 ? (
+              <div className="flex items-center justify-center h-32 text-muted-foreground text-sm">
+                {debouncedSearch ? `No transactions found for "${debouncedSearch}"` : 'No sales found'}
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-8"></TableHead>
+                    <TableHead>Transaction #</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Customer</TableHead>
+                    <TableHead className="text-right">Total</TableHead>
+                    <TableHead>Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {transactions.map((txn: any) => {
+                    const isSelected = selectedTxn?.id === txn.id
+                    return (
+                      <TableRow
+                        key={txn.id}
+                        className={`cursor-pointer transition-colors ${isSelected ? 'bg-primary/10 hover:bg-primary/15' : 'hover:bg-muted/50'}`}
+                        onClick={() => setSelectedTxn(isSelected ? null : txn)}
+                      >
+                        <TableCell>
+                          {isSelected && <Check className="h-4 w-4 text-primary" />}
+                        </TableCell>
+                        <TableCell className="font-mono text-sm font-medium">
+                          {txn.transaction_number}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {formatDate(txn.transaction_date)}
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          {txn.customer?.name || <span className="text-muted-foreground">Walk-in</span>}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-sm">
+                          {formatCurrency(txn.total_amount)}
+                        </TableCell>
+                        <TableCell>
+                          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize ${
+                            txn.payment_status === 'paid'
+                              ? 'bg-green-100 text-green-800'
+                              : txn.payment_status === 'partial'
+                              ? 'bg-yellow-100 text-yellow-800'
+                              : 'bg-red-100 text-red-800'
+                          }`}>
+                            {txn.payment_status}
+                          </span>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
+                </TableBody>
+              </Table>
+            )}
           </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
-            <Button type="submit" disabled={tagMutation.isPending}>
-              {tagMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Tag Transaction
-            </Button>
-          </DialogFooter>
-        </form>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between text-sm text-muted-foreground">
+              <span>Page {page} of {totalPages}</span>
+              <div className="flex gap-1">
+                <Button variant="outline" size="icon" className="h-7 w-7" disabled={page === 1} onClick={() => setPage(p => p - 1)}>
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Button variant="outline" size="icon" className="h-7 w-7" disabled={page === totalPages} onClick={() => setPage(p => p + 1)}>
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Selected + rate */}
+          {selectedTxn && (
+            <div className="rounded-lg border bg-primary/5 border-primary/20 p-3 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold">{selectedTxn.transaction_number}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {selectedTxn.customer?.name || 'Walk-in'} · {formatCurrency(selectedTxn.total_amount)} · <span className="capitalize">{selectedTxn.payment_status}</span>
+                  </p>
+                </div>
+                <Badge variant="outline" className="text-primary border-primary/30">Selected</Badge>
+              </div>
+              <div className="flex items-center gap-2">
+                <Label className="text-sm shrink-0">Commission Rate (%)</Label>
+                <Input
+                  type="number"
+                  value={rate}
+                  onChange={(e) => setRate(e.target.value)}
+                  className="w-24"
+                  min="0"
+                  max="100"
+                  step="0.01"
+                />
+                {selectedTxn.payment_status === 'paid' && (
+                  <p className="text-xs text-muted-foreground">
+                    = {formatCurrency(selectedTxn.total_amount * (parseFloat(rate) || 0) / 100)} commission (earned immediately)
+                  </p>
+                )}
+                {selectedTxn.payment_status !== 'paid' && (
+                  <p className="text-xs text-muted-foreground">Commission will be earned when fully paid.</p>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <DialogFooter className="pt-2 border-t">
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button onClick={handleTag} disabled={!selectedTxn || tagMutation.isPending}>
+            {tagMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            <Tag className="mr-2 h-4 w-4" />
+            Tag to Referrer
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )
