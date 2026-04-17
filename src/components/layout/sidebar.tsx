@@ -32,6 +32,7 @@ import {
   Banknote,
   CalendarClock,
   FileCheck2,
+  Handshake,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
@@ -58,6 +59,7 @@ const navigation = [
   { name: 'Inventory', href: '/inventory', icon: Boxes },
   { name: 'Purchases', href: '/purchases', icon: ClipboardList },
   { name: 'Customers', href: '/customers', icon: Users },
+  { name: 'Referrals', href: '/referrals', icon: Handshake },
   { name: 'Suppliers', href: '/suppliers', icon: Truck },
   {
     name: 'Expenses',

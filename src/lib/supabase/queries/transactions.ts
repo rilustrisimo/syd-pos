@@ -109,6 +109,8 @@ export interface TransactionInput {
   tax_amount?: number
   notes?: string | null
   transaction_date?: string | null
+  referrer_id?: string | null
+  commission_rate?: number | null
 }
 
 export interface TransactionLineInput {
@@ -132,6 +134,7 @@ export interface PaymentInput {
 export interface TransactionFilters {
   branch_id?: string
   customer_id?: string
+  referrer_id?: string
   payment_status?: string
   transaction_type?: string
   date_from?: string
@@ -179,6 +182,10 @@ export async function getTransactions(filters: TransactionFilters = {}) {
 
   if (rest.customer_id) {
     query = query.eq('customer_id', rest.customer_id)
+  }
+
+  if (rest.referrer_id) {
+    query = query.eq('referrer_id', rest.referrer_id)
   }
 
   if (rest.payment_status) {
@@ -356,6 +363,30 @@ export async function createTransaction(
   const creditPayment = payments.find(p => p.payment_method === 'credit')
   if (creditPayment) {
     await updateCustomerBalance(input.customer_id, creditPayment.amount)
+  }
+
+  // Tag referrer if provided
+  if (input.referrer_id && input.commission_rate != null) {
+    await supabase
+      .from('transactions')
+      .update({ referrer_id: input.referrer_id, commission_rate: input.commission_rate } as any)
+      .eq('id', data.id)
+
+    // Create commission row — if already paid at checkout, mark earned immediately
+    const commissionAmount = paymentStatus === 'paid'
+      ? totalAmount * input.commission_rate / 100
+      : 0
+    await supabase
+      .from('referrer_commissions')
+      .insert({
+        referrer_id: input.referrer_id,
+        transaction_id: data.id,
+        commission_rate: input.commission_rate,
+        sale_amount: paymentStatus === 'paid' ? totalAmount : 0,
+        commission_amount: commissionAmount,
+        status: paymentStatus === 'paid' ? 'earned' : 'pending',
+        earned_at: paymentStatus === 'paid' ? new Date().toISOString() : null,
+      } as any)
   }
 
   // Return the created transaction
@@ -779,6 +810,31 @@ export async function createReturnTransaction(
 
   const returnId = (data as any)?.id
   if (!returnId) throw new Error('create_return_transaction_atomic returned no id')
+
+  // Commission reversal: if original sale had an earned commission, create a reversal row
+  if (input.original_transaction_id) {
+    const { data: origComm } = await supabase
+      .from('referrer_commissions')
+      .select('referrer_id, commission_rate, status')
+      .eq('transaction_id', input.original_transaction_id)
+      .maybeSingle()
+
+    if (origComm && (origComm as any).status === 'earned') {
+      const c = origComm as any
+      const reversalAmount = subtotal * Number(c.commission_rate) / 100
+      await supabase
+        .from('referrer_commissions')
+        .insert({
+          referrer_id: c.referrer_id,
+          transaction_id: returnId,
+          commission_rate: c.commission_rate,
+          sale_amount: subtotal,
+          commission_amount: reversalAmount,
+          status: 'reversed',
+          earned_at: new Date().toISOString(),
+        } as any)
+    }
+  }
 
   return getTransaction(returnId)
 }

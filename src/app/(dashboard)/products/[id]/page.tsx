@@ -1,6 +1,6 @@
 'use client'
 
-import { use } from 'react'
+import { use, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
@@ -32,6 +32,10 @@ import {
   AlertCircle,
   TrendingDown,
   Power,
+  ChevronLeft,
+  ChevronRight,
+  Filter,
+  X,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -39,6 +43,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
   Table,
   TableBody,
@@ -62,6 +68,24 @@ export default function ProductDetailPage({ params }: ProductDetailPageProps) {
   const deleteProduct = useDeleteProduct()
   const activateProduct = useActivateProduct()
 
+  // Pagination and filtering state for Purchase History
+  const [purchasePage, setPurchasePage] = useState(1)
+  const [purchaseStartDate, setPurchaseStartDate] = useState('')
+  const [purchaseEndDate, setPurchaseEndDate] = useState('')
+  const purchaseItemsPerPage = 10
+
+  // Pagination and filtering state for Sales History
+  const [salesPage, setSalesPage] = useState(1)
+  const [salesStartDate, setSalesStartDate] = useState('')
+  const [salesEndDate, setSalesEndDate] = useState('')
+  const salesItemsPerPage = 10
+
+  // Pagination and filtering state for Inventory Movements
+  const [movementsPage, setMovementsPage] = useState(1)
+  const [movementsStartDate, setMovementsStartDate] = useState('')
+  const [movementsEndDate, setMovementsEndDate] = useState('')
+  const movementsItemsPerPage = 10
+
   const handleActivate = async () => {
     if (!product) return
     try {
@@ -75,6 +99,76 @@ export default function ProductDetailPage({ params }: ProductDetailPageProps) {
   const { data: branchInventory = [], isLoading: inventoryLoading } = useProductInventory(id)
   const { data: movementsResult, isLoading: movementsLoading } = useInventoryMovements({ productId: id, limit: 200 })
   const allMovements: any[] = movementsResult?.data ?? []
+
+  // Filter and paginate Purchase History
+  const filteredPurchaseHistory = useMemo(() => {
+    let filtered = purchaseHistory as any[]
+    if (purchaseStartDate || purchaseEndDate) {
+      filtered = filtered.filter((line) => {
+        const po = line.purchase_order
+        if (!po) return false
+        const poDate = new Date(po.po_date)
+        if (purchaseStartDate && poDate < new Date(purchaseStartDate)) return false
+        if (purchaseEndDate && poDate > new Date(purchaseEndDate)) return false
+        return true
+      })
+    }
+    return filtered
+  }, [purchaseHistory, purchaseStartDate, purchaseEndDate])
+
+  const paginatedPurchaseHistory = useMemo(() => {
+    const start = (purchasePage - 1) * purchaseItemsPerPage
+    const end = start + purchaseItemsPerPage
+    return filteredPurchaseHistory.slice(start, end)
+  }, [filteredPurchaseHistory, purchasePage])
+
+  const purchaseTotalPages = Math.ceil(filteredPurchaseHistory.length / purchaseItemsPerPage)
+
+  // Filter and paginate Sales History
+  const filteredSalesHistory = useMemo(() => {
+    let filtered = salesHistory as any[]
+    if (salesStartDate || salesEndDate) {
+      filtered = filtered.filter((line) => {
+        const txn = line.transaction
+        if (!txn) return false
+        const txnDate = new Date(txn.transaction_date)
+        if (salesStartDate && txnDate < new Date(salesStartDate)) return false
+        if (salesEndDate && txnDate > new Date(salesEndDate)) return false
+        return true
+      })
+    }
+    return filtered
+  }, [salesHistory, salesStartDate, salesEndDate])
+
+  const paginatedSalesHistory = useMemo(() => {
+    const start = (salesPage - 1) * salesItemsPerPage
+    const end = start + salesItemsPerPage
+    return filteredSalesHistory.slice(start, end)
+  }, [filteredSalesHistory, salesPage])
+
+  const salesTotalPages = Math.ceil(filteredSalesHistory.length / salesItemsPerPage)
+
+  // Filter and paginate Inventory Movements
+  const filteredMovements = useMemo(() => {
+    let filtered = allMovements
+    if (movementsStartDate || movementsEndDate) {
+      filtered = filtered.filter((movement) => {
+        const movementDate = new Date(movement.created_at)
+        if (movementsStartDate && movementDate < new Date(movementsStartDate)) return false
+        if (movementsEndDate && movementDate > new Date(movementsEndDate)) return false
+        return true
+      })
+    }
+    return filtered
+  }, [allMovements, movementsStartDate, movementsEndDate])
+
+  const paginatedMovements = useMemo(() => {
+    const start = (movementsPage - 1) * movementsItemsPerPage
+    const end = start + movementsItemsPerPage
+    return filteredMovements.slice(start, end)
+  }, [filteredMovements, movementsPage])
+
+  const movementsTotalPages = Math.ceil(filteredMovements.length / movementsItemsPerPage)
 
   const handleDelete = async () => {
     if (!product) return
@@ -583,88 +677,169 @@ export default function ProductDetailPage({ params }: ProductDetailPageProps) {
           <CardDescription>
             All purchase orders that included this product
           </CardDescription>
+          
+          {/* Date Filters */}
+          <div className="flex flex-wrap gap-3 pt-4">
+            <div className="flex items-center gap-2">
+              <Filter className="h-4 w-4 text-muted-foreground" />
+              <Label htmlFor="purchase-start" className="text-sm">From:</Label>
+              <Input
+                id="purchase-start"
+                type="date"
+                value={purchaseStartDate}
+                onChange={(e) => {
+                  setPurchaseStartDate(e.target.value)
+                  setPurchasePage(1)
+                }}
+                className="w-[150px]"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <Label htmlFor="purchase-end" className="text-sm">To:</Label>
+              <Input
+                id="purchase-end"
+                type="date"
+                value={purchaseEndDate}
+                onChange={(e) => {
+                  setPurchaseEndDate(e.target.value)
+                  setPurchasePage(1)
+                }}
+                className="w-[150px]"
+              />
+            </div>
+            {(purchaseStartDate || purchaseEndDate) && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setPurchaseStartDate('')
+                  setPurchaseEndDate('')
+                  setPurchasePage(1)
+                }}
+              >
+                <X className="h-4 w-4 mr-1" />
+                Clear
+              </Button>
+            )}
+            <div className="ml-auto text-sm text-muted-foreground">
+              Showing {paginatedPurchaseHistory.length} of {filteredPurchaseHistory.length} records
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           {historyLoading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
-          ) : purchaseHistory.length === 0 ? (
+          ) : filteredPurchaseHistory.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground text-sm">
-              No purchase orders found for this product.
+              {purchaseStartDate || purchaseEndDate 
+                ? 'No purchase orders found for the selected date range.'
+                : 'No purchase orders found for this product.'}
             </div>
           ) : (
-            <div className="border rounded-lg">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>PO Number</TableHead>
-                    <TableHead>Supplier</TableHead>
-                    <TableHead>Branch</TableHead>
-                    <TableHead className="text-right">Qty Ordered</TableHead>
-                    <TableHead className="text-right">Qty Received</TableHead>
-                    <TableHead className="text-right">Unit Cost</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="w-[40px]"></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {(purchaseHistory as any[]).map((line) => {
-                    const po = line.purchase_order
-                    if (!po) return null
-                    return (
-                      <TableRow key={line.id}>
-                        <TableCell className="whitespace-nowrap">
-                          {new Date(po.po_date).toLocaleDateString('en-PH', {
-                            year: 'numeric',
-                            month: 'short',
-                            day: 'numeric',
-                          })}
-                        </TableCell>
-                        <TableCell className="font-mono text-sm">{po.po_number}</TableCell>
-                        <TableCell>{po.supplier?.name ?? '—'}</TableCell>
-                        <TableCell>{po.branch?.name ?? '—'}</TableCell>
-                        <TableCell className="text-right font-mono">
-                          {Number(line.quantity_ordered).toLocaleString()} {line.uom?.code}
-                        </TableCell>
-                        <TableCell className="text-right font-mono">
-                          <span className={cn(
-                            Number(line.quantity_received) >= Number(line.quantity_ordered)
-                              ? 'text-green-600'
-                              : Number(line.quantity_received) > 0
-                              ? 'text-amber-600'
-                              : 'text-muted-foreground'
-                          )}>
-                            {Number(line.quantity_received).toLocaleString()} {line.uom?.code}
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-right font-mono">
-                          {formatCurrency(line.unit_cost)}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={
-                            po.status === 'received' ? 'default' :
-                            po.status === 'partially_received' ? 'secondary' :
-                            po.status === 'cancelled' ? 'destructive' :
-                            'outline'
-                          } className="capitalize text-xs">
-                            {po.status.replace('_', ' ')}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Link href={`/purchases/${po.id}`}>
-                            <Button variant="ghost" size="icon" className="h-7 w-7">
-                              <ExternalLink className="h-3.5 w-3.5" />
-                            </Button>
-                          </Link>
-                        </TableCell>
-                      </TableRow>
-                    )
-                  })}
-                </TableBody>
-              </Table>
-            </div>
+            <>
+              <div className="border rounded-lg">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date</TableHead>
+                      <TableHead>PO Number</TableHead>
+                      <TableHead>Supplier</TableHead>
+                      <TableHead>Branch</TableHead>
+                      <TableHead className="text-right">Qty Ordered</TableHead>
+                      <TableHead className="text-right">Qty Received</TableHead>
+                      <TableHead className="text-right">Unit Cost</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="w-[40px]"></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {paginatedPurchaseHistory.map((line) => {
+                      const po = line.purchase_order
+                      if (!po) return null
+                      return (
+                        <TableRow key={line.id}>
+                          <TableCell className="whitespace-nowrap">
+                            {new Date(po.po_date).toLocaleDateString('en-PH', {
+                              year: 'numeric',
+                              month: 'short',
+                              day: 'numeric',
+                            })}
+                          </TableCell>
+                          <TableCell className="font-mono text-sm">{po.po_number}</TableCell>
+                          <TableCell>{po.supplier?.name ?? '—'}</TableCell>
+                          <TableCell>{po.branch?.name ?? '—'}</TableCell>
+                          <TableCell className="text-right font-mono">
+                            {Number(line.quantity_ordered).toLocaleString()} {line.uom?.code}
+                          </TableCell>
+                          <TableCell className="text-right font-mono">
+                            <span className={cn(
+                              Number(line.quantity_received) >= Number(line.quantity_ordered)
+                                ? 'text-green-600'
+                                : Number(line.quantity_received) > 0
+                                ? 'text-amber-600'
+                                : 'text-muted-foreground'
+                            )}>
+                              {Number(line.quantity_received).toLocaleString()} {line.uom?.code}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-right font-mono">
+                            {formatCurrency(line.unit_cost)}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={
+                              po.status === 'received' ? 'default' :
+                              po.status === 'partially_received' ? 'secondary' :
+                              po.status === 'cancelled' ? 'destructive' :
+                              'outline'
+                            } className="capitalize text-xs">
+                              {po.status.replace('_', ' ')}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Link href={`/purchases/${po.id}`}>
+                              <Button variant="ghost" size="icon" className="h-7 w-7">
+                                <ExternalLink className="h-3.5 w-3.5" />
+                              </Button>
+                            </Link>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+              
+              {/* Pagination Controls */}
+              {purchaseTotalPages > 1 && (
+                <div className="flex items-center justify-between mt-4">
+                  <div className="text-sm text-muted-foreground">
+                    Page {purchasePage} of {purchaseTotalPages}
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPurchasePage(p => Math.max(1, p - 1))}
+                      disabled={purchasePage === 1}
+                    >
+                      <ChevronLeft className="h-4 w-4 mr-1" />
+                      Previous
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPurchasePage(p => Math.min(purchaseTotalPages, p + 1))}
+                      disabled={purchasePage === purchaseTotalPages}
+                    >
+                      Next
+                      <ChevronRight className="h-4 w-4 ml-1" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </CardContent>
       </Card>
@@ -679,75 +854,156 @@ export default function ProductDetailPage({ params }: ProductDetailPageProps) {
           <CardDescription>
             All sales transactions that included this product
           </CardDescription>
+          
+          {/* Date Filters */}
+          <div className="flex flex-wrap gap-3 pt-4">
+            <div className="flex items-center gap-2">
+              <Filter className="h-4 w-4 text-muted-foreground" />
+              <Label htmlFor="sales-start" className="text-sm">From:</Label>
+              <Input
+                id="sales-start"
+                type="date"
+                value={salesStartDate}
+                onChange={(e) => {
+                  setSalesStartDate(e.target.value)
+                  setSalesPage(1)
+                }}
+                className="w-[150px]"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <Label htmlFor="sales-end" className="text-sm">To:</Label>
+              <Input
+                id="sales-end"
+                type="date"
+                value={salesEndDate}
+                onChange={(e) => {
+                  setSalesEndDate(e.target.value)
+                  setSalesPage(1)
+                }}
+                className="w-[150px]"
+              />
+            </div>
+            {(salesStartDate || salesEndDate) && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setSalesStartDate('')
+                  setSalesEndDate('')
+                  setSalesPage(1)
+                }}
+              >
+                <X className="h-4 w-4 mr-1" />
+                Clear
+              </Button>
+            )}
+            <div className="ml-auto text-sm text-muted-foreground">
+              Showing {paginatedSalesHistory.length} of {filteredSalesHistory.length} records
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           {salesLoading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
-          ) : salesHistory.length === 0 ? (
+          ) : filteredSalesHistory.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground text-sm">
-              No sales found for this product.
+              {salesStartDate || salesEndDate 
+                ? 'No sales found for the selected date range.'
+                : 'No sales found for this product.'}
             </div>
           ) : (
-            <div className="border rounded-lg">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Receipt #</TableHead>
-                    <TableHead>Customer</TableHead>
-                    <TableHead>Branch</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead className="text-right">Quantity</TableHead>
-                    <TableHead className="text-right">Unit Price</TableHead>
-                    <TableHead className="text-right">Line Total</TableHead>
-                    <TableHead className="w-[40px]"></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {(salesHistory as any[]).map((line) => {
-                    const txn = line.transaction
-                    if (!txn) return null
-                    return (
-                      <TableRow key={line.id}>
-                        <TableCell className="whitespace-nowrap">
-                          {new Date(txn.transaction_date).toLocaleDateString('en-PH', {
-                            year: 'numeric',
-                            month: 'short',
-                            day: 'numeric',
-                          })}
-                        </TableCell>
-                        <TableCell className="font-mono text-sm">{txn.transaction_number}</TableCell>
-                        <TableCell>{txn.customer?.name ?? '—'}</TableCell>
-                        <TableCell>{txn.branch?.name ?? '—'}</TableCell>
-                        <TableCell>
-                          <Badge variant={txn.transaction_type === 'sale' ? 'default' : 'secondary'} className="capitalize text-xs">
-                            {txn.transaction_type}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-right font-mono">
-                          {Number(line.quantity).toLocaleString()} {line.uom?.code}
-                        </TableCell>
-                        <TableCell className="text-right font-mono">
-                          {formatCurrency(line.unit_price)}
-                        </TableCell>
-                        <TableCell className="text-right font-mono font-medium">
-                          {formatCurrency(line.line_total)}
-                        </TableCell>
-                        <TableCell>
-                          <Link href={`/pos/history?txn=${txn.id}`}>
-                            <Button variant="ghost" size="icon" className="h-7 w-7">
-                              <ExternalLink className="h-3.5 w-3.5" />
-                            </Button>
-                          </Link>
-                        </TableCell>
-                      </TableRow>
-                    )
-                  })}
-                </TableBody>
-              </Table>
-            </div>
+            <>
+              <div className="border rounded-lg">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Receipt #</TableHead>
+                      <TableHead>Customer</TableHead>
+                      <TableHead>Branch</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead className="text-right">Quantity</TableHead>
+                      <TableHead className="text-right">Unit Price</TableHead>
+                      <TableHead className="text-right">Line Total</TableHead>
+                      <TableHead className="w-[40px]"></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {paginatedSalesHistory.map((line) => {
+                      const txn = line.transaction
+                      if (!txn) return null
+                      return (
+                        <TableRow key={line.id}>
+                          <TableCell className="whitespace-nowrap">
+                            {new Date(txn.transaction_date).toLocaleDateString('en-PH', {
+                              year: 'numeric',
+                              month: 'short',
+                              day: 'numeric',
+                            })}
+                          </TableCell>
+                          <TableCell className="font-mono text-sm">{txn.transaction_number}</TableCell>
+                          <TableCell>{txn.customer?.name ?? '—'}</TableCell>
+                          <TableCell>{txn.branch?.name ?? '—'}</TableCell>
+                          <TableCell>
+                            <Badge variant={txn.transaction_type === 'sale' ? 'default' : 'secondary'} className="capitalize text-xs">
+                              {txn.transaction_type}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right font-mono">
+                            {Number(line.quantity).toLocaleString()} {line.uom?.code}
+                          </TableCell>
+                          <TableCell className="text-right font-mono">
+                            {formatCurrency(line.unit_price)}
+                          </TableCell>
+                          <TableCell className="text-right font-mono font-medium">
+                            {formatCurrency(line.line_total)}
+                          </TableCell>
+                          <TableCell>
+                            <Link href={`/pos/history?txn=${txn.id}`}>
+                              <Button variant="ghost" size="icon" className="h-7 w-7">
+                                <ExternalLink className="h-3.5 w-3.5" />
+                              </Button>
+                            </Link>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+              
+              {/* Pagination Controls */}
+              {salesTotalPages > 1 && (
+                <div className="flex items-center justify-between mt-4">
+                  <div className="text-sm text-muted-foreground">
+                    Page {salesPage} of {salesTotalPages}
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setSalesPage(p => Math.max(1, p - 1))}
+                      disabled={salesPage === 1}
+                    >
+                      <ChevronLeft className="h-4 w-4 mr-1" />
+                      Previous
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setSalesPage(p => Math.min(salesTotalPages, p + 1))}
+                      disabled={salesPage === salesTotalPages}
+                    >
+                      Next
+                      <ChevronRight className="h-4 w-4 ml-1" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </CardContent>
       </Card>
@@ -760,104 +1016,177 @@ export default function ProductDetailPage({ params }: ProductDetailPageProps) {
             Inventory Movement History
           </CardTitle>
           <CardDescription>
-            Complete audit trail: purchases, sales, returns, and manual adjustments (most recent 200)
+            Complete audit trail: purchases, sales, returns, and manual adjustments
           </CardDescription>
+          
+          {/* Date Filters */}
+          <div className="flex flex-wrap gap-3 pt-4">
+            <div className="flex items-center gap-2">
+              <Filter className="h-4 w-4 text-muted-foreground" />
+              <Label htmlFor="movements-start" className="text-sm">From:</Label>
+              <Input
+                id="movements-start"
+                type="date"
+                value={movementsStartDate}
+                onChange={(e) => {
+                  setMovementsStartDate(e.target.value)
+                  setMovementsPage(1)
+                }}
+                className="w-[150px]"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <Label htmlFor="movements-end" className="text-sm">To:</Label>
+              <Input
+                id="movements-end"
+                type="date"
+                value={movementsEndDate}
+                onChange={(e) => {
+                  setMovementsEndDate(e.target.value)
+                  setMovementsPage(1)
+                }}
+                className="w-[150px]"
+              />
+            </div>
+            {(movementsStartDate || movementsEndDate) && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setMovementsStartDate('')
+                  setMovementsEndDate('')
+                  setMovementsPage(1)
+                }}
+              >
+                <X className="h-4 w-4 mr-1" />
+                Clear
+              </Button>
+            )}
+            <div className="ml-auto text-sm text-muted-foreground">
+              Showing {paginatedMovements.length} of {filteredMovements.length} records
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           {movementsLoading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
-          ) : allMovements.length === 0 ? (
+          ) : filteredMovements.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground text-sm">
-              No inventory movements recorded for this product.
+              {movementsStartDate || movementsEndDate
+                ? 'No inventory movements found for the selected date range.'
+                : 'No inventory movements recorded for this product.'}
             </div>
           ) : (
-            <div className="border rounded-lg overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Branch</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Source</TableHead>
-                    <TableHead className="text-right">Change</TableHead>
-                    <TableHead className="text-right">Before</TableHead>
-                    <TableHead className="text-right">After</TableHead>
-                    <TableHead>By</TableHead>
-                    <TableHead>Notes</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {allMovements.map((movement: any) => {
-                    const isIncrease = Number(movement.quantity_change) > 0
-                    const movementTypeColors: Record<string, string> = {
-                      purchase: 'bg-green-100 text-green-800 border-green-200',
-                      sale: 'bg-red-100 text-red-800 border-red-200',
-                      return: 'bg-blue-100 text-blue-800 border-blue-200',
-                      adjustment: 'bg-amber-100 text-amber-800 border-amber-200',
-                      transfer: 'bg-purple-100 text-purple-800 border-purple-200',
-                      damaged_return: 'bg-orange-100 text-orange-800 border-orange-200',
-                    }
-                    const referenceLabels: Record<string, string> = {
-                      transaction: 'POS',
-                      transaction_reversal: 'Deleted Txn',
-                      inventory_correction: 'Bulk Correction',
-                      manual_adjustment: 'Manual Count',
-                      system_reconciliation: 'System Fix',
-                      purchase_order: 'Purchase Order',
-                    }
-                    return (
-                      <TableRow key={movement.id}>
-                        <TableCell className="whitespace-nowrap text-sm">
-                          {new Date(movement.created_at).toLocaleDateString('en-PH', {
-                            year: 'numeric', month: 'short', day: 'numeric',
-                            hour: '2-digit', minute: '2-digit',
-                          })}
-                        </TableCell>
-                        <TableCell className="text-sm">{movement.branch?.name ?? '—'}</TableCell>
-                        <TableCell>
-                          <span className={cn(
-                            'inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium capitalize',
-                            movementTypeColors[movement.movement_type] ?? 'bg-gray-100 text-gray-800 border-gray-200'
+            <>
+              <div className="border rounded-lg overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Branch</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Source</TableHead>
+                      <TableHead className="text-right">Change</TableHead>
+                      <TableHead className="text-right">Before</TableHead>
+                      <TableHead className="text-right">After</TableHead>
+                      <TableHead>By</TableHead>
+                      <TableHead>Notes</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {paginatedMovements.map((movement: any) => {
+                      const isIncrease = Number(movement.quantity_change) > 0
+                      const movementTypeColors: Record<string, string> = {
+                        purchase: 'bg-green-100 text-green-800 border-green-200',
+                        sale: 'bg-red-100 text-red-800 border-red-200',
+                        return: 'bg-blue-100 text-blue-800 border-blue-200',
+                        adjustment: 'bg-amber-100 text-amber-800 border-amber-200',
+                        transfer: 'bg-purple-100 text-purple-800 border-purple-200',
+                        damaged_return: 'bg-orange-100 text-orange-800 border-orange-200',
+                      }
+                      const referenceLabels: Record<string, string> = {
+                        transaction: 'POS',
+                        transaction_reversal: 'Deleted Txn',
+                        inventory_correction: 'Bulk Correction',
+                        manual_adjustment: 'Manual Count',
+                        system_reconciliation: 'System Fix',
+                        purchase_order: 'Purchase Order',
+                      }
+                      return (
+                        <TableRow key={movement.id}>
+                          <TableCell className="whitespace-nowrap text-sm">
+                            {new Date(movement.created_at).toLocaleDateString('en-PH', {
+                              year: 'numeric', month: 'short', day: 'numeric',
+                              hour: '2-digit', minute: '2-digit',
+                            })}
+                          </TableCell>
+                          <TableCell className="text-sm">{movement.branch?.name ?? '—'}</TableCell>
+                          <TableCell>
+                            <span className={cn(
+                              'inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium capitalize',
+                              movementTypeColors[movement.movement_type] ?? 'bg-gray-100 text-gray-800 border-gray-200'
+                            )}>
+                              {movement.movement_type}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-xs text-muted-foreground">
+                            {referenceLabels[movement.reference_type ?? ''] ?? movement.reference_type ?? '—'}
+                          </TableCell>
+                          <TableCell className={cn(
+                            "text-right font-mono font-semibold",
+                            isIncrease ? "text-green-600" : "text-red-600"
                           )}>
-                            {movement.movement_type}
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-xs text-muted-foreground">
-                          {referenceLabels[movement.reference_type ?? ''] ?? movement.reference_type ?? '—'}
-                        </TableCell>
-                        <TableCell className={cn(
-                          "text-right font-mono font-semibold",
-                          isIncrease ? "text-green-600" : "text-red-600"
-                        )}>
-                          {isIncrease ? '+' : ''}
-                          {Number(movement.quantity_change).toLocaleString(undefined, { maximumFractionDigits: 4 })}
-                        </TableCell>
-                        <TableCell className="text-right font-mono text-sm text-muted-foreground">
-                          {Number(movement.quantity_before).toLocaleString(undefined, { maximumFractionDigits: 4 })}
-                        </TableCell>
-                        <TableCell className="text-right font-mono text-sm">
-                          {Number(movement.quantity_after).toLocaleString(undefined, { maximumFractionDigits: 4 })}
-                        </TableCell>
-                        <TableCell className="text-sm">{movement.created_by_user?.full_name ?? '—'}</TableCell>
-                        <TableCell className="text-xs text-muted-foreground max-w-xs">
-                          <span className="line-clamp-2">{movement.notes ?? '—'}</span>
-                        </TableCell>
-                      </TableRow>
-                    )
-                  })}
-                </TableBody>
-              </Table>
-              {(movementsResult as any)?.totalPages > 1 && (
-                <p className="text-xs text-muted-foreground text-center py-2 border-t">
-                  Showing most recent 200 movements.{' '}
-                  <a href={`/inventory/movements?productId=${id}`} className="underline hover:no-underline">
-                    View all in Inventory Movements
-                  </a>
-                </p>
+                            {isIncrease ? '+' : ''}
+                            {Number(movement.quantity_change).toLocaleString(undefined, { maximumFractionDigits: 4 })}
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-sm text-muted-foreground">
+                            {Number(movement.quantity_before).toLocaleString(undefined, { maximumFractionDigits: 4 })}
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-sm">
+                            {Number(movement.quantity_after).toLocaleString(undefined, { maximumFractionDigits: 4 })}
+                          </TableCell>
+                          <TableCell className="text-sm">{movement.created_by_user?.full_name ?? '—'}</TableCell>
+                          <TableCell className="text-xs text-muted-foreground max-w-xs">
+                            <span className="line-clamp-2">{movement.notes ?? '—'}</span>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+              
+              {/* Pagination Controls */}
+              {movementsTotalPages > 1 && (
+                <div className="flex items-center justify-between mt-4">
+                  <div className="text-sm text-muted-foreground">
+                    Page {movementsPage} of {movementsTotalPages}
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setMovementsPage(p => Math.max(1, p - 1))}
+                      disabled={movementsPage === 1}
+                    >
+                      <ChevronLeft className="h-4 w-4 mr-1" />
+                      Previous
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setMovementsPage(p => Math.min(movementsTotalPages, p + 1))}
+                      disabled={movementsPage === movementsTotalPages}
+                    >
+                      Next
+                      <ChevronRight className="h-4 w-4 ml-1" />
+                    </Button>
+                  </div>
+                </div>
               )}
-            </div>
+            </>
           )}
         </CardContent>
       </Card>

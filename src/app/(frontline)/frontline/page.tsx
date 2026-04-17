@@ -6,6 +6,7 @@ import { useAuthStore } from '@/lib/stores/auth'
 import { usePOSProductSearch, useCreateTransaction, useTransactions, useUpdateTransactionDeliveryType } from '@/hooks/useTransactions'
 import { getTransaction, getCustomerDeliveryPhones } from '@/lib/supabase/queries/transactions'
 import { useSearchCustomers, useAllActiveCustomers, useCreateCustomer } from '@/hooks/useCustomers'
+import { useAllActiveReferrers } from '@/hooks/useReferrers'
 import { useBranches } from '@/hooks/useInventory'
 import { useDiscountRules } from '@/hooks/useDiscountRules'
 import { useProductSellingUnits } from '@/hooks/useProductSellingUnits'
@@ -37,6 +38,7 @@ import {
   Printer,
   Edit,
   PackageCheck,
+  Handshake,
 } from 'lucide-react'
 import type { ReceiptData } from '@/components/print/receipt-template'
 import { buildReceiptBytes, buildDeliverySlipBytes } from '@/lib/utils/usb-thermal-print'
@@ -125,6 +127,10 @@ export default function FrontlinePOSPage() {
   const [newCustomerType, setNewCustomerType] = useState<'cash' | 'credit'>('cash')
   const [saleDate, setSaleDate] = useState('')
   const [discountInput, setDiscountInput] = useState('')
+  const [referrerId, setReferrerId] = useState<string | null>(null)
+  const [referrerCommissionRate, setReferrerCommissionRate] = useState<string>('')
+  const [referrerSearch, setReferrerSearch] = useState('')
+  const [isReferrerOpen, setIsReferrerOpen] = useState(false)
   const [isMounted, setIsMounted] = useState(false)
   const [isUnitSelectorOpen, setIsUnitSelectorOpen] = useState(false)
   const [selectedProduct, setSelectedProduct] = useState<any>(null)
@@ -181,6 +187,7 @@ export default function FrontlinePOSPage() {
   const { data: branches } = useBranches()
   const { data: discountRules = [] } = useDiscountRules()
   const { data: allCustomers = [], isLoading: isLoadingCustomers } = useAllActiveCustomers()
+  const { data: allReferrers = [] } = useAllActiveReferrers()
   const { data: searchedProducts, isLoading: isSearchingProducts } = usePOSProductSearch(
     productSearch,
     branchId || ''
@@ -259,6 +266,22 @@ export default function FrontlinePOSPage() {
     }
     return result
   }, [customer?.phone, customer?.id, deliveryPhoneHistory])
+
+  // Filter referrers based on search
+  const filteredReferrers = useMemo(() => {
+    if (!referrerSearch.trim()) return allReferrers
+    const q = referrerSearch.toLowerCase()
+    return allReferrers.filter(r =>
+      r.name.toLowerCase().includes(q) ||
+      r.profession?.toLowerCase().includes(q)
+    )
+  }, [allReferrers, referrerSearch])
+
+  // Selected referrer object
+  const selectedReferrer = useMemo(() =>
+    allReferrers.find(r => r.id === referrerId) ?? null,
+    [allReferrers, referrerId]
+  )
 
   // Filter customers based on search
   const filteredCustomers = useMemo(() => {
@@ -721,6 +744,8 @@ export default function FrontlinePOSPage() {
           discount_amount: getTotalDiscount(),
           notes: notes || null,
           transaction_date: createTimestampPH(saleDate),
+          referrer_id: referrerId || null,
+          commission_rate: referrerId && referrerCommissionRate ? Number(referrerCommissionRate) : null,
         },
         lines: items.map((item) => ({
           product_id: item.product_id,
@@ -746,6 +771,9 @@ export default function FrontlinePOSPage() {
       setSaleDate(getTodayPH())
       setDiscountInput('')
       setCustomer(WALK_IN_CUSTOMER)
+      setReferrerId(null)
+      setReferrerCommissionRate('')
+      setReferrerSearch('')
 
       const invoiceData: InvoiceData = {
         invoice_number: result.transaction_number.replace('TXN', 'INV'),
@@ -1470,6 +1498,93 @@ export default function FrontlinePOSPage() {
                   <span>{formatCurrency(total)}</span>
                 </div>
               </div>
+            </div>
+
+            {/* Referrer Section */}
+            <div className="space-y-3">
+              <h3 className="font-semibold text-lg">Referrer <span className="text-sm font-normal text-muted-foreground">(optional)</span></h3>
+              <div className="flex gap-2">
+                <Popover open={isReferrerOpen} onOpenChange={setIsReferrerOpen}>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" className="flex-1 justify-start">
+                      <Handshake className="mr-2 h-4 w-4 text-muted-foreground" />
+                      {selectedReferrer ? (
+                        <span>{selectedReferrer.name}{selectedReferrer.profession ? ` · ${selectedReferrer.profession}` : ''}</span>
+                      ) : (
+                        <span className="text-muted-foreground">Select referrer...</span>
+                      )}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[320px] p-0" align="start">
+                    <Command>
+                      <CommandInput
+                        placeholder="Search by name or profession..."
+                        value={referrerSearch}
+                        onValueChange={setReferrerSearch}
+                      />
+                      <CommandList>
+                        <CommandEmpty>No referrers found.</CommandEmpty>
+                        <CommandGroup>
+                          {referrerId && (
+                            <CommandItem
+                              onSelect={() => {
+                                setReferrerId(null)
+                                setReferrerCommissionRate('')
+                                setIsReferrerOpen(false)
+                              }}
+                              className="cursor-pointer text-muted-foreground"
+                            >
+                              <X className="mr-2 h-4 w-4" />
+                              Clear referrer
+                            </CommandItem>
+                          )}
+                          {filteredReferrers.map((r) => (
+                            <CommandItem
+                              key={r.id}
+                              onSelect={() => {
+                                setReferrerId(r.id)
+                                setReferrerCommissionRate(r.default_commission_rate.toString())
+                                setIsReferrerOpen(false)
+                                setReferrerSearch('')
+                              }}
+                              className="cursor-pointer"
+                            >
+                              <Handshake className="mr-2 h-4 w-4" />
+                              <div className="flex-1">
+                                <div className="font-medium">{r.name}</div>
+                                {r.profession && (
+                                  <div className="text-xs text-muted-foreground">{r.profession}</div>
+                                )}
+                              </div>
+                              <span className="text-xs text-muted-foreground ml-2">{r.default_commission_rate}%</span>
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+                {referrerId && (
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Input
+                      type="number"
+                      value={referrerCommissionRate}
+                      onChange={(e) => setReferrerCommissionRate(e.target.value)}
+                      className="w-20 text-right"
+                      min="0"
+                      max="100"
+                      step="0.01"
+                      placeholder="0"
+                    />
+                    <span className="text-sm text-muted-foreground">%</span>
+                  </div>
+                )}
+              </div>
+              {referrerId && (
+                <p className="text-xs text-muted-foreground">
+                  Commission of <span className="font-semibold">{referrerCommissionRate}%</span> will be recorded for <span className="font-semibold">{selectedReferrer?.name}</span> on this sale.
+                </p>
+              )}
             </div>
 
             {/* Discount Section */}
