@@ -15,6 +15,7 @@ import {
   deleteReferrer,
   createPayout,
   tagTransactionReferrer,
+  updateCommissionRate,
   type ReferrerFilters,
   type ReferrerInput,
   type PayoutInput,
@@ -142,6 +143,23 @@ export function useCreatePayout() {
       createPayout(referrerId, input, userId),
     onSuccess: (_, { referrerId }) => {
       queryClient.invalidateQueries({ queryKey: referrerKeys.payouts(referrerId) })
+      queryClient.invalidateQueries({ queryKey: referrerKeys.stats(referrerId) })
+      queryClient.invalidateQueries({ queryKey: referrerKeys.globalStats() })
+    },
+  })
+}
+
+export function useUpdateCommissionRate() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ commissionId, transactionId, commissionRate, referrerId }: {
+      commissionId: string
+      transactionId: string
+      commissionRate: number
+      referrerId: string
+    }) => updateCommissionRate(commissionId, transactionId, commissionRate),
+    onSuccess: (_, { referrerId }) => {
+      queryClient.invalidateQueries({ queryKey: referrerKeys.commissions(referrerId) })
       queryClient.invalidateQueries({ queryKey: referrerKeys.stats(referrerId) })
       queryClient.invalidateQueries({ queryKey: referrerKeys.globalStats() })
     },

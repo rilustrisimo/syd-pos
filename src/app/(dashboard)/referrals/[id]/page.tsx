@@ -11,6 +11,7 @@ import {
   useUpdateReferrer,
   useCreatePayout,
   useTagTransactionReferrer,
+  useUpdateCommissionRate,
   referrerKeys,
 } from '@/hooks/useReferrers'
 import { useTransactions } from '@/hooks/useTransactions'
@@ -613,15 +614,15 @@ export default function ReferrerDetailPage({ params }: { params: Promise<{ id: s
   const [isPayoutOpen, setIsPayoutOpen] = useState(false)
   const [isTagOpen, setIsTagOpen] = useState(false)
   const [printPayout, setPrintPayout] = useState<PayoutRow | null>(null)
+  const [editingRateId, setEditingRateId] = useState<string | null>(null)
+  const [editingRateValue, setEditingRateValue] = useState('')
   const printRef = useRef<HTMLDivElement>(null)
 
   const { data: referrer, isLoading: referrerLoading } = useReferrer(id)
   const { data: stats } = useReferrerStats(id)
   const { data: commissions = [] } = useReferrerCommissions(id)
   const { data: payouts = [] } = useReferrerPayouts(id)
-  const { data: transactionsData } = useTransactions({ referrer_id: id })
-
-  const transactions = transactionsData?.transactions || []
+  const updateRateMutation = useUpdateCommissionRate()
 
   const handlePrintPayout = (payout: PayoutRow) => {
     setPrintPayout(payout)
@@ -769,16 +770,15 @@ export default function ReferrerDetailPage({ params }: { params: Promise<{ id: s
           <TabsList>
             <TabsTrigger value="commissions">Commissions ({commissions.length})</TabsTrigger>
             <TabsTrigger value="payouts">Payouts ({payouts.length})</TabsTrigger>
-            <TabsTrigger value="transactions">Transactions ({transactions.length})</TabsTrigger>
           </TabsList>
 
-          {/* Commissions Tab */}
+          {/* Commissions Tab — merged with transactions */}
           <TabsContent value="commissions" className="mt-4">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between">
                 <div>
                   <CardTitle>Commission History</CardTitle>
-                  <CardDescription>All commission rows for this referrer</CardDescription>
+                  <CardDescription>All tagged sales with commission details. Click the rate to edit.</CardDescription>
                 </div>
                 <Button variant="outline" size="sm" onClick={() => setIsTagOpen(true)}>
                   <Tag className="mr-2 h-4 w-4" />
@@ -787,59 +787,167 @@ export default function ReferrerDetailPage({ params }: { params: Promise<{ id: s
               </CardHeader>
               <CardContent>
                 {commissions.length === 0 ? (
-                  <p className="text-center text-muted-foreground py-8">No commissions yet.</p>
+                  <p className="text-center text-muted-foreground py-8">No commissions yet. Tag a transaction to get started.</p>
                 ) : (
                   <div className="border rounded-lg overflow-x-auto">
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead>Transaction</TableHead>
+                          <TableHead>Transaction #</TableHead>
                           <TableHead>Date</TableHead>
+                          <TableHead>Customer</TableHead>
                           <TableHead className="text-right">Sale Amount</TableHead>
+                          <TableHead>Payment</TableHead>
                           <TableHead className="text-right">Rate</TableHead>
                           <TableHead className="text-right">Commission</TableHead>
                           <TableHead>Status</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {commissions.map((c) => (
-                          <TableRow key={c.id}>
-                            <TableCell>
-                              {c.transaction ? (
-                                <Link
-                                  href={`/pos/transactions/${c.transaction_id}`}
-                                  className="font-mono text-sm hover:underline hover:text-primary flex items-center gap-1"
-                                >
-                                  {c.transaction.transaction_number}
-                                  <ExternalLink className="h-3 w-3" />
-                                </Link>
-                              ) : (
-                                <span className="font-mono text-sm text-muted-foreground">{c.transaction_id.slice(0, 8)}…</span>
-                              )}
-                            </TableCell>
-                            <TableCell className="text-sm text-muted-foreground">
-                              {c.transaction?.transaction_date ? formatDate(c.transaction.transaction_date) : '—'}
-                            </TableCell>
-                            <TableCell className="text-right font-mono text-sm">
-                              {c.sale_amount > 0 ? formatCurrency(c.sale_amount) : '—'}
-                            </TableCell>
-                            <TableCell className="text-right text-sm">
-                              {c.commission_rate}%
-                            </TableCell>
-                            <TableCell className="text-right font-mono font-semibold text-sm">
-                              {c.commission_amount > 0
-                                ? (c.status === 'reversed'
-                                  ? <span className="text-destructive">-{formatCurrency(c.commission_amount)}</span>
-                                  : formatCurrency(c.commission_amount))
-                                : '—'}
-                            </TableCell>
-                            <TableCell>
-                              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${commissionStatusColors[c.status]}`}>
-                                {c.status.charAt(0).toUpperCase() + c.status.slice(1)}
-                              </span>
-                            </TableCell>
-                          </TableRow>
-                        ))}
+                        {commissions.map((c) => {
+                          const txn = c.transaction
+                          const isEditingRate = editingRateId === c.id
+                          // Get customer info from commission's transaction join — not available, so we rely on what we have
+                          return (
+                            <TableRow key={c.id}>
+                              {/* Transaction # */}
+                              <TableCell>
+                                {txn ? (
+                                  <Link
+                                    href={`/pos/transactions/${c.transaction_id}`}
+                                    className="font-mono text-sm font-medium hover:underline hover:text-primary flex items-center gap-1"
+                                  >
+                                    {txn.transaction_number}
+                                    <ExternalLink className="h-3 w-3" />
+                                  </Link>
+                                ) : (
+                                  <span className="font-mono text-sm text-muted-foreground">{c.transaction_id.slice(0, 8)}…</span>
+                                )}
+                              </TableCell>
+
+                              {/* Date */}
+                              <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                                {txn?.transaction_date ? formatDate(txn.transaction_date) : '—'}
+                              </TableCell>
+
+                              {/* Customer — from transaction join */}
+                              <TableCell className="text-sm">
+                                {(txn as any)?.customer ? (
+                                  <Link href={`/customers/${(txn as any).customer.id}`} className="hover:underline">
+                                    {(txn as any).customer.name}
+                                  </Link>
+                                ) : (
+                                  <span className="text-muted-foreground">Walk-in</span>
+                                )}
+                              </TableCell>
+
+                              {/* Sale amount */}
+                              <TableCell className="text-right font-mono text-sm">
+                                {c.sale_amount > 0 ? formatCurrency(c.sale_amount) : (txn?.total_amount ? formatCurrency(txn.total_amount) : '—')}
+                              </TableCell>
+
+                              {/* Payment status */}
+                              <TableCell>
+                                {txn ? (
+                                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize ${
+                                    (txn as any).payment_status === 'paid'
+                                      ? 'bg-green-100 text-green-800'
+                                      : (txn as any).payment_status === 'partial'
+                                      ? 'bg-yellow-100 text-yellow-800'
+                                      : 'bg-red-100 text-red-800'
+                                  }`}>
+                                    {(txn as any).payment_status ?? '—'}
+                                  </span>
+                                ) : '—'}
+                              </TableCell>
+
+                              {/* Rate — inline editable (skip for reversals) */}
+                              <TableCell className="text-right">
+                                {c.status === 'reversed' ? (
+                                  <span className="text-sm">{c.commission_rate}%</span>
+                                ) : isEditingRate ? (
+                                  <div className="flex items-center justify-end gap-1">
+                                    <Input
+                                      type="number"
+                                      value={editingRateValue}
+                                      onChange={(e) => setEditingRateValue(e.target.value)}
+                                      className="w-16 h-7 text-right text-sm px-1"
+                                      min="0" max="100" step="0.01"
+                                      autoFocus
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Escape') setEditingRateId(null)
+                                        if (e.key === 'Enter') {
+                                          const newRate = parseFloat(editingRateValue)
+                                          if (!isNaN(newRate) && newRate >= 0) {
+                                            updateRateMutation.mutate({
+                                              commissionId: c.id,
+                                              transactionId: c.transaction_id,
+                                              commissionRate: newRate,
+                                              referrerId: id,
+                                            }, {
+                                              onSuccess: () => { setEditingRateId(null); toast.success('Rate updated') },
+                                              onError: (e: any) => toast.error(e.message),
+                                            })
+                                          }
+                                        }
+                                      }}
+                                    />
+                                    <span className="text-xs text-muted-foreground">%</span>
+                                    <Button
+                                      variant="ghost" size="icon" className="h-7 w-7 text-primary"
+                                      disabled={updateRateMutation.isPending}
+                                      onClick={() => {
+                                        const newRate = parseFloat(editingRateValue)
+                                        if (!isNaN(newRate) && newRate >= 0) {
+                                          updateRateMutation.mutate({
+                                            commissionId: c.id,
+                                            transactionId: c.transaction_id,
+                                            commissionRate: newRate,
+                                            referrerId: id,
+                                          }, {
+                                            onSuccess: () => { setEditingRateId(null); toast.success('Rate updated') },
+                                            onError: (e: any) => toast.error(e.message),
+                                          })
+                                        }
+                                      }}
+                                    >
+                                      {updateRateMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                                    </Button>
+                                    <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" onClick={() => setEditingRateId(null)}>
+                                      <X className="h-3 w-3" />
+                                    </Button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    className="text-sm hover:underline hover:text-primary flex items-center gap-1 ml-auto"
+                                    onClick={() => { setEditingRateId(c.id); setEditingRateValue(c.commission_rate.toString()) }}
+                                    title="Click to edit rate"
+                                  >
+                                    {c.commission_rate}%
+                                    <Pencil className="h-3 w-3 opacity-40" />
+                                  </button>
+                                )}
+                              </TableCell>
+
+                              {/* Commission amount */}
+                              <TableCell className="text-right font-mono font-semibold text-sm">
+                                {c.commission_amount > 0
+                                  ? c.status === 'reversed'
+                                    ? <span className="text-destructive">-{formatCurrency(c.commission_amount)}</span>
+                                    : formatCurrency(c.commission_amount)
+                                  : <span className="text-muted-foreground">—</span>
+                                }
+                              </TableCell>
+
+                              {/* Status badge */}
+                              <TableCell>
+                                <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${commissionStatusColors[c.status]}`}>
+                                  {c.status.charAt(0).toUpperCase() + c.status.slice(1)}
+                                </span>
+                              </TableCell>
+                            </TableRow>
+                          )
+                        })}
                       </TableBody>
                     </Table>
                   </div>
@@ -906,82 +1014,6 @@ export default function ReferrerDetailPage({ params }: { params: Promise<{ id: s
                               >
                                 <Printer className="h-4 w-4" />
                               </Button>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Transactions Tab */}
-          <TabsContent value="transactions" className="mt-4">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
-                <div>
-                  <CardTitle>Tagged Transactions</CardTitle>
-                  <CardDescription>Sales linked to this referrer</CardDescription>
-                </div>
-                <Button variant="outline" size="sm" onClick={() => setIsTagOpen(true)}>
-                  <Tag className="mr-2 h-4 w-4" />
-                  Tag Historical
-                </Button>
-              </CardHeader>
-              <CardContent>
-                {transactions.length === 0 ? (
-                  <p className="text-center text-muted-foreground py-8">No transactions tagged to this referrer.</p>
-                ) : (
-                  <div className="border rounded-lg overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Transaction #</TableHead>
-                          <TableHead>Date</TableHead>
-                          <TableHead>Customer</TableHead>
-                          <TableHead className="text-right">Total</TableHead>
-                          <TableHead>Payment Status</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {transactions.map((txn: any) => (
-                          <TableRow key={txn.id}>
-                            <TableCell>
-                              <Link
-                                href={`/pos/transactions/${txn.id}`}
-                                className="font-mono text-sm hover:underline hover:text-primary flex items-center gap-1"
-                              >
-                                {txn.transaction_number}
-                                <ExternalLink className="h-3 w-3" />
-                              </Link>
-                            </TableCell>
-                            <TableCell className="text-sm text-muted-foreground">
-                              {formatDate(txn.transaction_date)}
-                            </TableCell>
-                            <TableCell>
-                              {txn.customer ? (
-                                <Link href={`/customers/${txn.customer.id}`} className="hover:underline">
-                                  {txn.customer.name}
-                                </Link>
-                              ) : (
-                                <span className="text-muted-foreground">Walk-in</span>
-                              )}
-                            </TableCell>
-                            <TableCell className="text-right font-mono">
-                              {formatCurrency(txn.total_amount)}
-                            </TableCell>
-                            <TableCell>
-                              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize ${
-                                txn.payment_status === 'paid'
-                                  ? 'bg-green-100 text-green-800'
-                                  : txn.payment_status === 'partial'
-                                  ? 'bg-yellow-100 text-yellow-800'
-                                  : 'bg-red-100 text-red-800'
-                              }`}>
-                                {txn.payment_status}
-                              </span>
                             </TableCell>
                           </TableRow>
                         ))}

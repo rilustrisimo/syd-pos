@@ -330,6 +330,45 @@ export async function tagTransactionReferrer(
   if (commErr) throw commErr
 }
 
+export async function updateCommissionRate(
+  commissionId: string,
+  transactionId: string,
+  commissionRate: number
+): Promise<void> {
+  const supabase = createClient()
+
+  // Fetch current transaction to recalculate commission amount
+  const { data: txn, error: fetchErr } = await supabase
+    .from('transactions')
+    .select('payment_status, total_amount')
+    .eq('id', transactionId)
+    .single()
+  if (fetchErr) throw fetchErr
+
+  const t = txn as any
+  const isPaid = t.payment_status === 'paid'
+  const commissionAmount = isPaid ? Number(t.total_amount) * commissionRate / 100 : 0
+
+  // Update commission row
+  const { error: commErr } = await supabase
+    .from('referrer_commissions')
+    .update({
+      commission_rate: commissionRate,
+      commission_amount: commissionAmount,
+      sale_amount: isPaid ? Number(t.total_amount) : 0,
+      updated_at: new Date().toISOString(),
+    } as any)
+    .eq('id', commissionId)
+  if (commErr) throw commErr
+
+  // Also update commission_rate on the transaction row
+  const { error: txnErr } = await supabase
+    .from('transactions')
+    .update({ commission_rate: commissionRate } as any)
+    .eq('id', transactionId)
+  if (txnErr) throw txnErr
+}
+
 // ── Payouts ───────────────────────────────────────────────────────────────────
 
 export async function getReferrerPayouts(referrerId: string): Promise<PayoutRow[]> {
