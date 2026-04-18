@@ -10,6 +10,7 @@ import {
   useReferrerPayouts,
   useUpdateReferrer,
   useCreatePayout,
+  useDeletePayout,
   useTagTransactionReferrer,
   useUpdateCommissionRate,
   referrerKeys,
@@ -35,6 +36,7 @@ import {
   ChevronLeft,
   ChevronRight,
   X,
+  Trash2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -73,8 +75,9 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
+import { Checkbox } from '@/components/ui/checkbox'
 import { useQueryClient } from '@tanstack/react-query'
-import type { ReferrerInput, PayoutInput, PayoutRow } from '@/lib/supabase/queries/referrers'
+import type { ReferrerInput, PayoutInput, PayoutRow, CommissionRow } from '@/lib/supabase/queries/referrers'
 import { PayoutSlipTemplate } from '@/components/print/payout-slip-template'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -228,47 +231,116 @@ function EditReferrerDialog({ referrer, open, onClose }: {
 
 // ── Record Payout Dialog ──────────────────────────────────────────────────────
 
-function RecordPayoutDialog({ referrerId, balance, open, onClose }: {
+function RecordPayoutDialog({ referrerId, balance, commissions, open, onClose }: {
   referrerId: string
   balance: number
+  commissions: CommissionRow[]
   open: boolean
   onClose: () => void
 }) {
   const { user } = useAuthStore()
   const createPayout = useCreatePayout()
-  const [form, setForm] = useState<PayoutInput & { amount_str: string }>({
-    amount: 0,
-    amount_str: '',
-    payment_method: 'cash',
+
+  // Unpaid earned commissions only
+  const unpaid = commissions.filter(c => c.status === 'earned' && !c.payout_id)
+
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [search, setSearch] = useState('')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+  const [form, setForm] = useState({
+    payment_method: 'cash' as 'cash' | 'gcash' | 'bank_transfer',
     reference_number: '',
     payout_date: new Date().toISOString().split('T')[0],
     notes: '',
+    amount_str: '',
   })
+
+  // Reset when dialog opens
+  useEffect(() => {
+    if (open) {
+      setSelectedIds(new Set())
+      setSearch('')
+      setDateFrom('')
+      setDateTo('')
+      setForm({
+        payment_method: 'cash',
+        reference_number: '',
+        payout_date: new Date().toISOString().split('T')[0],
+        notes: '',
+        amount_str: '',
+      })
+    }
+  }, [open])
+
+  const filtered = unpaid.filter(c => {
+    const txn = c.transaction
+    if (search.trim()) {
+      const q = search.toLowerCase()
+      const matchTxn = txn?.transaction_number?.toLowerCase().includes(q)
+      const matchCustomer = (txn?.customer as any)?.name?.toLowerCase().includes(q)
+      if (!matchTxn && !matchCustomer) return false
+    }
+    if (dateFrom && txn?.transaction_date && txn.transaction_date < dateFrom) return false
+    if (dateTo && txn?.transaction_date && txn.transaction_date > dateTo) return false
+    return true
+  })
+
+  const allFilteredSelected = filtered.length > 0 && filtered.every(c => selectedIds.has(c.id))
+
+  const toggleAll = () => {
+    if (allFilteredSelected) {
+      setSelectedIds(prev => {
+        const next = new Set(prev)
+        filtered.forEach(c => next.delete(c.id))
+        return next
+      })
+    } else {
+      setSelectedIds(prev => {
+        const next = new Set(prev)
+        filtered.forEach(c => next.add(c.id))
+        return next
+      })
+    }
+  }
+
+  const toggle = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  // Auto-fill amount from selected
+  const selectedTotal = unpaid
+    .filter(c => selectedIds.has(c.id))
+    .reduce((s, c) => s + Number(c.commission_amount), 0)
+
+  useEffect(() => {
+    if (selectedIds.size > 0) {
+      setForm(f => ({ ...f, amount_str: selectedTotal.toFixed(2) }))
+    } else {
+      setForm(f => ({ ...f, amount_str: '' }))
+    }
+  }, [selectedTotal, selectedIds.size])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     const amount = parseFloat(form.amount_str)
-    if (!amount || amount <= 0) {
-      toast.error('Enter a valid payout amount')
-      return
-    }
-    if (amount > balance) {
-      toast.error(`Amount exceeds current balance of ${formatCurrency(balance)}`)
-      return
-    }
-    if (!user?.id) {
-      toast.error('User session not found')
-      return
-    }
+    if (!amount || amount <= 0) { toast.error('Enter a valid payout amount'); return }
+    if (amount > balance + 0.001) { toast.error(`Amount exceeds current balance of ${formatCurrency(balance)}`); return }
+    if (!user?.id) { toast.error('User session not found'); return }
     try {
       await createPayout.mutateAsync({
         referrerId,
         input: {
           amount,
-          payment_method: form.payment_method as 'cash' | 'gcash' | 'bank_transfer',
-          reference_number: form.reference_number?.trim() || null,
+          payment_method: form.payment_method,
+          reference_number: form.reference_number.trim() || null,
           payout_date: form.payout_date,
-          notes: form.notes?.trim() || null,
+          notes: form.notes.trim() || null,
+          commissionIds: selectedIds.size > 0 ? Array.from(selectedIds) : undefined,
         },
         userId: user.id,
       })
@@ -281,75 +353,149 @@ function RecordPayoutDialog({ referrerId, balance, open, onClose }: {
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-sm">
+      <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>Record Payout</DialogTitle>
           <DialogDescription>
             Current balance: <span className="font-semibold text-orange-500">{formatCurrency(balance)}</span>
+            {unpaid.length > 0 && <span className="ml-2 text-muted-foreground">· {unpaid.length} unpaid commission{unpaid.length !== 1 ? 's' : ''}</span>}
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-1">
-            <Label>Amount *</Label>
-            <Input
-              type="number"
-              value={form.amount_str}
-              onChange={(e) => setForm({ ...form, amount_str: e.target.value })}
-              placeholder="0.00"
-              min="0.01"
-              step="0.01"
-              required
-            />
+
+        <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+          {/* Commission picker */}
+          {unpaid.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search by transaction # or customer…"
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                    className="pl-8 h-8 text-sm"
+                  />
+                </div>
+                <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="h-8 text-sm w-36" placeholder="From" />
+                <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="h-8 text-sm w-36" placeholder="To" />
+              </div>
+
+              <div className="border rounded-lg overflow-hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/50">
+                      <TableHead className="w-10">
+                        <Checkbox checked={allFilteredSelected} onCheckedChange={toggleAll} />
+                      </TableHead>
+                      <TableHead>Transaction #</TableHead>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Customer</TableHead>
+                      <TableHead className="text-right">Sale</TableHead>
+                      <TableHead className="text-right">Rate</TableHead>
+                      <TableHead className="text-right">Commission</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filtered.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={7} className="text-center text-muted-foreground py-4 text-sm">
+                          No matching commissions
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      filtered.map(c => {
+                        const txn = c.transaction
+                        return (
+                          <TableRow
+                            key={c.id}
+                            className={`cursor-pointer ${selectedIds.has(c.id) ? 'bg-primary/5' : ''}`}
+                            onClick={() => toggle(c.id)}
+                          >
+                            <TableCell onClick={e => e.stopPropagation()}>
+                              <Checkbox checked={selectedIds.has(c.id)} onCheckedChange={() => toggle(c.id)} />
+                            </TableCell>
+                            <TableCell className="font-mono text-sm">{txn?.transaction_number ?? c.transaction_id.slice(0, 8)}</TableCell>
+                            <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                              {txn?.transaction_date ? formatDate(txn.transaction_date) : '—'}
+                            </TableCell>
+                            <TableCell className="text-sm">
+                              {(txn?.customer as any)?.name ?? <span className="text-muted-foreground">Walk-in</span>}
+                            </TableCell>
+                            <TableCell className="text-right font-mono text-sm">
+                              {formatCurrency(c.sale_amount || txn?.total_amount || 0)}
+                            </TableCell>
+                            <TableCell className="text-right text-sm">{c.commission_rate}%</TableCell>
+                            <TableCell className="text-right font-mono font-semibold text-sm text-primary">
+                              {formatCurrency(c.commission_amount)}
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {selectedIds.size > 0 && (
+                <div className="flex items-center justify-between text-sm bg-primary/5 rounded px-3 py-2">
+                  <span className="text-muted-foreground">{selectedIds.size} commission{selectedIds.size !== 1 ? 's' : ''} selected</span>
+                  <span className="font-semibold text-primary">{formatCurrency(selectedTotal)}</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Payment details */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <Label>Amount *</Label>
+              <Input
+                type="number"
+                value={form.amount_str}
+                onChange={e => setForm({ ...form, amount_str: e.target.value })}
+                placeholder="0.00"
+                min="0.01"
+                step="0.01"
+                required
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Payment Method</Label>
+              <Select value={form.payment_method} onValueChange={v => setForm({ ...form, payment_method: v as any })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cash">Cash</SelectItem>
+                  <SelectItem value="gcash">GCash</SelectItem>
+                  <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label>Reference Number</Label>
+              <Input
+                value={form.reference_number}
+                onChange={e => setForm({ ...form, reference_number: e.target.value })}
+                placeholder="GCash / bank ref"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Payout Date</Label>
+              <Input type="date" value={form.payout_date} onChange={e => setForm({ ...form, payout_date: e.target.value })} />
+            </div>
+            <div className="col-span-2 space-y-1">
+              <Label>Notes</Label>
+              <Textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={2} placeholder="Optional notes" />
+            </div>
           </div>
-          <div className="space-y-1">
-            <Label>Payment Method</Label>
-            <Select
-              value={form.payment_method as string}
-              onValueChange={(v) => setForm({ ...form, payment_method: v as any })}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="cash">Cash</SelectItem>
-                <SelectItem value="gcash">GCash</SelectItem>
-                <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1">
-            <Label>Reference Number</Label>
-            <Input
-              value={form.reference_number || ''}
-              onChange={(e) => setForm({ ...form, reference_number: e.target.value })}
-              placeholder="GCash / bank ref"
-            />
-          </div>
-          <div className="space-y-1">
-            <Label>Payout Date</Label>
-            <Input
-              type="date"
-              value={form.payout_date || ''}
-              onChange={(e) => setForm({ ...form, payout_date: e.target.value })}
-            />
-          </div>
-          <div className="space-y-1">
-            <Label>Notes</Label>
-            <Textarea
-              value={form.notes || ''}
-              onChange={(e) => setForm({ ...form, notes: e.target.value })}
-              rows={2}
-              placeholder="Optional notes"
-            />
-          </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
-            <Button type="submit" disabled={createPayout.isPending}>
-              {createPayout.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Record Payout
-            </Button>
-          </DialogFooter>
-        </form>
+        </div>
+
+        <DialogFooter className="pt-2 border-t">
+          <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+          <Button onClick={handleSubmit} disabled={createPayout.isPending}>
+            {createPayout.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Record Payout
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )
@@ -623,6 +769,7 @@ export default function ReferrerDetailPage({ params }: { params: Promise<{ id: s
   const { data: commissions = [] } = useReferrerCommissions(id)
   const { data: payouts = [] } = useReferrerPayouts(id)
   const updateRateMutation = useUpdateCommissionRate()
+  const deletePayoutMutation = useDeletePayout()
 
   const handlePrintPayout = (payout: PayoutRow) => {
     setPrintPayout(payout)
@@ -801,6 +948,7 @@ export default function ReferrerDetailPage({ params }: { params: Promise<{ id: s
                           <TableHead className="text-right">Rate</TableHead>
                           <TableHead className="text-right">Commission</TableHead>
                           <TableHead>Status</TableHead>
+                          <TableHead>Payout</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -945,6 +1093,17 @@ export default function ReferrerDetailPage({ params }: { params: Promise<{ id: s
                                   {c.status.charAt(0).toUpperCase() + c.status.slice(1)}
                                 </span>
                               </TableCell>
+
+                              {/* Payout */}
+                              <TableCell className="text-sm">
+                                {c.payout ? (
+                                  <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-800 whitespace-nowrap">
+                                    {formatDate(c.payout.payout_date)}
+                                  </span>
+                                ) : c.status === 'earned' ? (
+                                  <span className="text-xs text-muted-foreground">Unpaid</span>
+                                ) : null}
+                              </TableCell>
                             </TableRow>
                           )
                         })}
@@ -984,7 +1143,7 @@ export default function ReferrerDetailPage({ params }: { params: Promise<{ id: s
                           <TableHead>Reference</TableHead>
                           <TableHead className="text-right">Amount</TableHead>
                           <TableHead>Recorded By</TableHead>
-                          <TableHead className="w-[80px]"></TableHead>
+                          <TableHead className="w-[100px]"></TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -1006,14 +1165,35 @@ export default function ReferrerDetailPage({ params }: { params: Promise<{ id: s
                               {p.created_user?.full_name || p.created_user?.email || '—'}
                             </TableCell>
                             <TableCell>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => handlePrintPayout(p)}
-                                title="Print slip"
-                              >
-                                <Printer className="h-4 w-4" />
-                              </Button>
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => handlePrintPayout(p)}
+                                  title="Print slip"
+                                >
+                                  <Printer className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="text-destructive hover:text-destructive"
+                                  title="Delete payout"
+                                  disabled={deletePayoutMutation.isPending}
+                                  onClick={() => {
+                                    if (!confirm(`Delete payout of ${formatCurrency(p.amount)} on ${formatDate(p.payout_date)}? This will unlink any associated commissions.`)) return
+                                    deletePayoutMutation.mutate(
+                                      { payoutId: p.id, referrerId: id },
+                                      {
+                                        onSuccess: () => toast.success('Payout deleted'),
+                                        onError: (e: any) => toast.error(e.message || 'Failed to delete payout'),
+                                      }
+                                    )
+                                  }}
+                                >
+                                  {deletePayoutMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                                </Button>
+                              </div>
                             </TableCell>
                           </TableRow>
                         ))}
@@ -1032,6 +1212,7 @@ export default function ReferrerDetailPage({ params }: { params: Promise<{ id: s
       <RecordPayoutDialog
         referrerId={id}
         balance={balance}
+        commissions={commissions}
         open={isPayoutOpen}
         onClose={() => setIsPayoutOpen(false)}
       />

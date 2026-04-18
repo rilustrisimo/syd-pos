@@ -14,6 +14,7 @@ import {
   updateReferrer,
   deleteReferrer,
   createPayout,
+  deletePayout,
   tagTransactionReferrer,
   updateCommissionRate,
   type ReferrerFilters,
@@ -143,6 +144,7 @@ export function useCreatePayout() {
       createPayout(referrerId, input, userId),
     onSuccess: (_, { referrerId }) => {
       queryClient.invalidateQueries({ queryKey: referrerKeys.payouts(referrerId) })
+      queryClient.invalidateQueries({ queryKey: referrerKeys.commissions(referrerId) })
       queryClient.invalidateQueries({ queryKey: referrerKeys.stats(referrerId) })
       queryClient.invalidateQueries({ queryKey: referrerKeys.globalStats() })
     },
@@ -180,6 +182,20 @@ export function useTagTransactionReferrer() {
       queryClient.invalidateQueries({ queryKey: referrerKeys.globalStats() })
       // Invalidate transaction lists so tagged transactions disappear from the picker immediately
       queryClient.invalidateQueries({ queryKey: transactionKeys.lists() })
+    },
+  })
+}
+
+export function useDeletePayout() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ payoutId }: { payoutId: string; referrerId: string }) =>
+      deletePayout(payoutId),
+    onSuccess: (_, { referrerId }) => {
+      queryClient.invalidateQueries({ queryKey: referrerKeys.payouts(referrerId) })
+      queryClient.invalidateQueries({ queryKey: referrerKeys.commissions(referrerId) })
+      queryClient.invalidateQueries({ queryKey: referrerKeys.stats(referrerId) })
+      queryClient.invalidateQueries({ queryKey: referrerKeys.globalStats() })
     },
   })
 }

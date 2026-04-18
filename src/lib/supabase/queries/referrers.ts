@@ -52,10 +52,12 @@ export interface CommissionRow {
   sale_amount: number
   commission_amount: number
   status: 'pending' | 'earned' | 'reversed'
+  payout_id: string | null
   earned_at: string | null
   created_at: string
   updated_at: string
-  transaction?: { id: string; transaction_number: string; transaction_date: string; total_amount: number } | null
+  transaction?: { id: string; transaction_number: string; transaction_date: string; total_amount: number; payment_status?: string; customer?: { id: string; name: string } | null } | null
+  payout?: { id: string; payout_date: string; amount: number; payment_method: string } | null
 }
 
 export interface PayoutRow {
@@ -77,6 +79,7 @@ export interface PayoutInput {
   reference_number?: string | null
   payout_date?: string
   notes?: string | null
+  commissionIds?: string[]  // commission rows to mark as covered by this payout
 }
 
 // ── List / search ─────────────────────────────────────────────────────────────
@@ -229,7 +232,8 @@ export async function getReferrerCommissions(referrerId: string): Promise<Commis
     .from('referrer_commissions')
     .select(`
       *,
-      transaction:transactions!transaction_id(id, transaction_number, transaction_date, total_amount)
+      transaction:transactions!transaction_id(id, transaction_number, transaction_date, total_amount, payment_status, customer:customers!customer_id(id, name)),
+      payout:referrer_payouts!payout_id(id, payout_date, amount, payment_method)
     `)
     .eq('referrer_id', referrerId)
     .order('created_at', { ascending: false })
@@ -402,7 +406,35 @@ export async function createPayout(
     .select('*, created_user:users!created_by(full_name, email)')
     .single()
   if (error) throw error
-  return data as any
+
+  const payout = data as any
+
+  // Link selected commission rows to this payout
+  if (input.commissionIds && input.commissionIds.length > 0) {
+    const { error: linkErr } = await supabase
+      .from('referrer_commissions')
+      .update({ payout_id: payout.id } as any)
+      .in('id', input.commissionIds)
+    if (linkErr) throw linkErr
+  }
+
+  return payout as PayoutRow
+}
+
+export async function deletePayout(payoutId: string): Promise<void> {
+  const supabase = createClient()
+  // Unlink any commissions that reference this payout first
+  const { error: unlinkErr } = await supabase
+    .from('referrer_commissions')
+    .update({ payout_id: null } as any)
+    .eq('payout_id', payoutId)
+  if (unlinkErr) throw unlinkErr
+
+  const { error } = await supabase
+    .from('referrer_payouts')
+    .delete()
+    .eq('id', payoutId)
+  if (error) throw error
 }
 
 // ── CRUD ──────────────────────────────────────────────────────────────────────
