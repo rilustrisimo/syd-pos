@@ -68,8 +68,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import type { ReceiptData } from '@/components/print/receipt-template'
-import { ReceiptTemplate } from '@/components/print/receipt-template'
+import type { A4ReceiptData } from '@/components/print/a4-receipt-template'
+import { A4ReceiptTemplate } from '@/components/print/a4-receipt-template'
 
 function formatCurrency(amount: number): string {
   return new Intl.NumberFormat('en-PH', {
@@ -111,8 +111,8 @@ export default function TransactionHistoryPage() {
   const [detailsTransaction, setDetailsTransaction] = useState<any | null>(null)
   const [loadingDetails, setLoadingDetails] = useState(false)
   const printRef = useRef<HTMLDivElement>(null)
-  const [printData, setPrintData] = useState<ReceiptData | null>(null)
-  
+  const [printData, setPrintData] = useState<A4ReceiptData | null>(null)
+
   // Edit delivery type state
   const [isEditingDelivery, setIsEditingDelivery] = useState(false)
   const [editDeliveryType, setEditDeliveryType] = useState<'pickup' | 'delivery'>('pickup')
@@ -121,9 +121,13 @@ export default function TransactionHistoryPage() {
 
   const { user } = useAuthStore()
 
+  // Detect whether search looks like a transaction # or a customer name
+  const isTransactionSearch = searchQuery.toUpperCase().startsWith('TXN')
+
   const { data: branches } = useBranches()
   const { data: transactionsData, isLoading, refetch } = useTransactions({
-    search: searchQuery || undefined,
+    search: isTransactionSearch ? searchQuery : undefined,
+    customer_name: !isTransactionSearch && searchQuery ? searchQuery : undefined,
     payment_status: statusFilter !== 'all' ? statusFilter : undefined,
     branch_id: branchFilter !== 'all' ? branchFilter : undefined,
     page: currentPage,
@@ -193,64 +197,75 @@ export default function TransactionHistoryPage() {
     }
   }
 
-  // Fetch full transaction details then print using browser print
+  // Fetch full transaction details then print A4 receipt
   const handlePrintTransaction = async (txnId: string) => {
     setPrintingId(txnId)
-    const toastId = toast.loading('Fetching transaction…')
+    const toastId = toast.loading('Preparing receipt…')
     try {
       const txn = await getTransaction(txnId)
       const txnDate = new Date(txn.transaction_date)
+      const customer = txn.customer as any
+      const branch = txn.branch as any
 
-      const receiptData: ReceiptData = {
+      const receiptData: A4ReceiptData = {
         transaction_number: txn.transaction_number,
-        date: txnDate.toLocaleDateString('en-PH'),
+        transaction_type: (txn.transaction_type as any) === 'return' ? 'return' : 'sale',
+        date: txn.transaction_date,
         time: txnDate.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' }),
-        cashier: 'Staff',
-        branch: (txn.branch as any)?.name || 'Main Branch',
+        branch: branch?.name || 'Main Branch',
+        cashier: (txn as any).created_by_user?.full_name || null,
         customer: {
-          name: (txn.customer as any)?.name || 'Walk-in Customer',
-          phone: (txn.customer as any)?.phone || null,
+          name: customer?.name || 'Walk-in Customer',
+          phone: customer?.phone || null,
+          email: customer?.email || null,
+          address: customer?.address || null,
         },
         delivery_type: txn.delivery_type,
         delivery_address: txn.delivery_address,
+        delivery_phone: (txn as any).delivery_phone || null,
         items: (txn.lines || []).map((line: any) => ({
+          code: line.product?.code || null,
           name: line.product?.name || 'Product',
+          variant: line.variant?.name || null,
           quantity: line.quantity,
           unit_price: line.unit_price,
           uom: line.uom?.abbreviation || line.uom?.name || 'pc',
           discount: line.discount_amount || 0,
-          total: line.line_total || line.quantity * line.unit_price - (line.discount_amount || 0),
+          total: line.line_total ?? (line.quantity * line.unit_price - (line.discount_amount || 0)),
         })),
         subtotal: txn.subtotal,
         discount: txn.discount_amount,
+        delivery_fee: (txn as any).delivery_fee || 0,
+        other_fees: (txn as any).other_fees || 0,
+        other_fees_notes: (txn as any).other_fees_notes || null,
         tax: txn.tax_amount,
         total: txn.total_amount,
         payments: (txn.payments || []).map((p: any) => ({
           method: p.payment_method,
           amount: p.amount,
           reference: p.reference_number,
+          date: p.payment_date,
         })),
         amount_paid: txn.amount_paid,
-        change: Math.max(0, txn.amount_paid - txn.total_amount),
+        balance_due: Math.max(0, txn.total_amount - txn.amount_paid),
+        payment_status: txn.payment_status as 'paid' | 'partial' | 'unpaid',
         notes: txn.notes,
       }
 
-      // Set receipt data and trigger print after render
       setPrintData(receiptData)
       toast.dismiss(toastId)
-      
-      // Wait for render then print
+
       setTimeout(() => {
         if (printRef.current) {
           printElement(printRef.current, {
-            title: `Receipt - ${receiptData.transaction_number}`,
+            title: `${receiptData.transaction_type === 'return' ? 'Return' : 'Sales'} Receipt - ${receiptData.transaction_number}`,
             paperSize: 'a4',
           })
           toast.success('Print dialog opened')
           setPrintData(null)
           setPrintingId(null)
         }
-      }, 100)
+      }, 150)
     } catch (err: any) {
       toast.error(err?.message || 'Print failed', { id: toastId })
       setPrintingId(null)
@@ -297,7 +312,7 @@ export default function TransactionHistoryPage() {
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
                 type="search"
-                placeholder="Search by transaction #..."
+                placeholder="Search by transaction # or customer name…"
                 className="pl-8"
                 value={searchQuery}
                 onChange={(e) => {
@@ -814,11 +829,11 @@ export default function TransactionHistoryPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Hidden print template */}
+      {/* Hidden A4 print template */}
       {printData && (
         <div style={{ position: 'absolute', left: '-9999px' }}>
           <div ref={printRef}>
-            <ReceiptTemplate data={printData} />
+            <A4ReceiptTemplate data={printData} />
           </div>
         </div>
       )}
