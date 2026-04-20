@@ -1,12 +1,14 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import {
   useSuppliers,
   useCreateSupplier,
   useUpdateSupplier,
   useDeleteSupplier,
   useGenerateSupplierCode,
+  useAllSupplierStats,
 } from '@/hooks/useSuppliers'
 import type { Supplier } from '@/lib/supabase/queries/suppliers'
 import { toast } from 'sonner'
@@ -20,7 +22,7 @@ import {
   Phone,
   Mail,
   Loader2,
-  Package,
+  Eye,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -68,6 +70,10 @@ import {
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 
+function formatCurrency(amount: number) {
+  return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: 0 }).format(amount)
+}
+
 interface SupplierFormData {
   code: string
   name: string
@@ -103,6 +109,7 @@ export default function SuppliersPage() {
     limit: 20,
   })
   const { data: generatedCode, refetch: refetchCode } = useGenerateSupplierCode()
+  const { data: allStats } = useAllSupplierStats()
 
   const createMutation = useCreateSupplier()
   const updateMutation = useUpdateSupplier()
@@ -274,19 +281,25 @@ export default function SuppliersPage() {
                       <TableHead>Name</TableHead>
                       <TableHead>Contact Person</TableHead>
                       <TableHead>Phone</TableHead>
-                      <TableHead>Email</TableHead>
                       <TableHead>Payment Terms</TableHead>
+                      <TableHead className="text-right">Total POs</TableHead>
+                      <TableHead className="text-right">Total Spend</TableHead>
+                      <TableHead>Last Order</TableHead>
                       <TableHead>Status</TableHead>
-                      <TableHead className="w-[80px]"></TableHead>
+                      <TableHead className="w-[100px]"></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {suppliers.map((supplier) => (
+                    {suppliers.map((supplier) => {
+                      const stat = allStats?.get(supplier.id)
+                      return (
                       <TableRow key={supplier.id}>
-                        <TableCell className="font-mono text-sm">
-                          {supplier.code}
+                        <TableCell className="font-mono text-sm">{supplier.code}</TableCell>
+                        <TableCell className="font-medium">
+                          <Link href={`/suppliers/${supplier.id}`} className="hover:underline hover:text-primary">
+                            {supplier.name}
+                          </Link>
                         </TableCell>
-                        <TableCell className="font-medium">{supplier.name}</TableCell>
                         <TableCell>{supplier.contact_person || '-'}</TableCell>
                         <TableCell>
                           {supplier.phone ? (
@@ -294,50 +307,57 @@ export default function SuppliersPage() {
                               <Phone className="h-3 w-3" />
                               {supplier.phone}
                             </span>
-                          ) : (
-                            '-'
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {supplier.email ? (
-                            <span className="flex items-center gap-1">
-                              <Mail className="h-3 w-3" />
-                              {supplier.email}
-                            </span>
-                          ) : (
-                            '-'
-                          )}
+                          ) : '-'}
                         </TableCell>
                         <TableCell>{supplier.payment_terms || '-'}</TableCell>
+                        <TableCell className="text-right font-medium">
+                          {stat ? stat.total_pos : <span className="text-muted-foreground">—</span>}
+                        </TableCell>
+                        <TableCell className="text-right font-medium">
+                          {stat ? formatCurrency(stat.total_spend) : <span className="text-muted-foreground">—</span>}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {stat?.last_order_date
+                            ? new Date(stat.last_order_date).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' })
+                            : '—'}
+                        </TableCell>
                         <TableCell>
                           <Badge variant={supplier.is_active ? 'default' : 'secondary'}>
                             {supplier.is_active ? 'Active' : 'Inactive'}
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon">
-                                <MoreHorizontal className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => handleOpenEdit(supplier)}>
-                                <Pencil className="mr-2 h-4 w-4" />
-                                Edit
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => handleOpenDelete(supplier)}
-                                className="text-destructive"
-                              >
-                                <Trash2 className="mr-2 h-4 w-4" />
-                                Delete
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                          <div className="flex items-center gap-1">
+                            <Button variant="ghost" size="icon" asChild title="View details">
+                              <Link href={`/suppliers/${supplier.id}`}>
+                                <Eye className="h-4 w-4" />
+                              </Link>
+                            </Button>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon">
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => handleOpenEdit(supplier)}>
+                                  <Pencil className="mr-2 h-4 w-4" />
+                                  Edit
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => handleOpenDelete(supplier)}
+                                  className="text-destructive"
+                                >
+                                  <Trash2 className="mr-2 h-4 w-4" />
+                                  Delete
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
                         </TableCell>
                       </TableRow>
-                    ))}
+                    )})}
+
                   </TableBody>
                 </Table>
               </div>

@@ -9,6 +9,9 @@ import {
   deleteSupplier,
   generateSupplierCode,
   getSupplierPurchaseHistory,
+  getSupplierStats,
+  getSupplierTopProducts,
+  getAllSupplierStats,
 } from '@/lib/supabase/queries/suppliers'
 import type { InsertTables, UpdateTables } from '@/types/database'
 
@@ -82,6 +85,33 @@ export function useUpdateSupplier() {
       queryClient.refetchQueries({ queryKey: ['suppliers'], type: 'active' })
       queryClient.refetchQueries({ queryKey: ['supplier', variables.id], type: 'active' })
     },
+  })
+}
+
+// Supplier analytics
+export function useSupplierStats(id: string) {
+  return useQuery({
+    queryKey: ['supplier-stats', id],
+    queryFn: () => getSupplierStats(id),
+    enabled: !!id,
+    staleTime: 60000,
+  })
+}
+
+export function useSupplierTopProducts(id: string) {
+  return useQuery({
+    queryKey: ['supplier-top-products', id],
+    queryFn: () => getSupplierTopProducts(id),
+    enabled: !!id,
+    staleTime: 60000,
+  })
+}
+
+export function useAllSupplierStats() {
+  return useQuery({
+    queryKey: ['all-supplier-stats'],
+    queryFn: getAllSupplierStats,
+    staleTime: 60000,
   })
 }
 
