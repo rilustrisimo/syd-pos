@@ -46,6 +46,8 @@ interface ForecastRaw {
   transaction_count: number
   txn_count_last_30d: number
   txn_count_prior_30d: number
+  po_count_total: number
+  po_count_last_90d: number
   abc_class: 'A' | 'B' | 'C'
 }
 
@@ -54,6 +56,7 @@ type StatusType = 'critical' | 'warning' | 'ok' | 'excess' | 'no_movement'
 
 interface ForecastItem extends ForecastRaw {
   velocity_class: VelocityClass
+  velocity_score: number      // combined sales+PO frequency score for sorting
   safety_stock: number
   reorder_point: number
   days_to_stockout: number
@@ -91,6 +94,8 @@ async function fetchForecastData(): Promise<ForecastRaw[]> {
     transaction_count:    Number(r.transaction_count     || 0),
     txn_count_last_30d:   Number(r.txn_count_last_30d    || 0),
     txn_count_prior_30d:  Number(r.txn_count_prior_30d   || 0),
+    po_count_total:       Number(r.po_count_total        || 0),
+    po_count_last_90d:    Number(r.po_count_last_90d     || 0),
     abc_class:            (r.abc_class || 'C') as 'A' | 'B' | 'C',
   }))
 }
@@ -103,22 +108,36 @@ function deriveItems(
   Z: number,
   forecastDays: number,
 ): ForecastItem[] {
-  // Compute velocity percentile thresholds from txn_count_last_30d
-  const txnCounts = raw.map(r => r.txn_count_last_30d).sort((a, b) => a - b)
-  const n = txnCounts.length
-  const p75 = n > 0 ? txnCounts[Math.floor(n * 0.75)] : 0
-  const p40 = n > 0 ? txnCounts[Math.floor(n * 0.40)] : 0
+  // ── Velocity score = sales txn frequency (70%) + PO replenishment frequency (30%)
+  // Normalise each signal to 0–1 across all products, then combine.
+  // Products that sell often AND need frequent restocking rank highest.
+  const maxTxn = Math.max(1, ...raw.map(r => r.txn_count_last_30d))
+  const maxPO  = Math.max(1, ...raw.map(r => r.po_count_last_90d))
+
+  const scores = raw.map(r => {
+    const txnNorm = r.txn_count_last_30d / maxTxn
+    const poNorm  = r.po_count_last_90d  / maxPO
+    return txnNorm * 0.7 + poNorm * 0.3
+  }).sort((a, b) => a - b)
+
+  const n   = scores.length
+  const p75 = n > 0 ? scores[Math.floor(n * 0.75)] : 0
+  const p40 = n > 0 ? scores[Math.floor(n * 0.40)] : 0
 
   return raw.map(r => {
     const add    = r.avg_daily_demand
     const sigma  = r.demand_stddev_daily
 
-    // Velocity: based on how many separate transactions in last 30 days
+    // Combined velocity score for this product
+    const txnNorm      = r.txn_count_last_30d / maxTxn
+    const poNorm       = r.po_count_last_90d  / maxPO
+    const velocity_score = txnNorm * 0.7 + poNorm * 0.3
+
     let velocity_class: VelocityClass
-    if (r.txn_count_last_30d === 0)          velocity_class = 'none'
-    else if (r.txn_count_last_30d >= p75)    velocity_class = 'high'
-    else if (r.txn_count_last_30d >= p40)    velocity_class = 'medium'
-    else                                      velocity_class = 'low'
+    if (r.txn_count_last_30d === 0)        velocity_class = 'none'
+    else if (velocity_score >= p75)        velocity_class = 'high'
+    else if (velocity_score >= p40)        velocity_class = 'medium'
+    else                                   velocity_class = 'low'
 
     const safety_stock     = Z * sigma * Math.sqrt(leadTimeDays)
     const reorder_point    = add * leadTimeDays + safety_stock
@@ -144,6 +163,7 @@ function deriveItems(
     return {
       ...r,
       velocity_class,
+      velocity_score,
       safety_stock,
       reorder_point,
       days_to_stockout,
@@ -177,7 +197,7 @@ const VEL_CFG: Record<VelocityClass, { label: string; bg: string; text: string; 
   none:   { label: 'No Sales', bg: 'bg-gray-50',  text: 'text-gray-400',   dot: 'bg-gray-300'   },
 }
 
-type SortKey = 'days_to_stockout' | 'avg_daily_demand' | 'suggested_order_qty' | 'current_stock' | 'reorder_value' | 'txn_count_last_30d'
+type SortKey = 'velocity_score' | 'days_to_stockout' | 'avg_daily_demand' | 'suggested_order_qty' | 'current_stock' | 'reorder_value' | 'txn_count_last_30d'
 
 // ── Stock Health Bar ──────────────────────────────────────────────────────────
 
@@ -221,8 +241,8 @@ function ForecastTable({
   const [search,         setSearch]         = useState('')
   const [statusFilter,   setStatusFilter]   = useState<string>('all')
   const [categoryFilter, setCategoryFilter] = useState<string>('all')
-  const [sortKey,        setSortKey]        = useState<SortKey>('days_to_stockout')
-  const [sortDir,        setSortDir]        = useState<'asc' | 'desc'>('asc')
+  const [sortKey,        setSortKey]        = useState<SortKey>('velocity_score')
+  const [sortDir,        setSortDir]        = useState<'asc' | 'desc'>('desc')
 
   const categories = useMemo(() => Array.from(new Set(items.map(i => i.category_name))).sort(), [items])
 
@@ -296,10 +316,12 @@ function ForecastTable({
             <TableRow className="bg-muted/30 hover:bg-muted/30">
               <TableHead className="w-[110px]">Status</TableHead>
               <TableHead className="min-w-[200px]">Product</TableHead>
-              <TableHead className="w-[90px] cursor-pointer hover:text-primary select-none" onClick={() => toggleSort('txn_count_last_30d')}>
+              <TableHead className="w-[90px] cursor-pointer hover:text-primary select-none" onClick={() => toggleSort('velocity_score')}>
                 <Tooltip>
-                  <TooltipTrigger>Velocity <SI k="txn_count_last_30d" /></TooltipTrigger>
-                  <TooltipContent>Transactions in last 30 days — how frequently this item sells</TooltipContent>
+                  <TooltipTrigger>Velocity <SI k="velocity_score" /></TooltipTrigger>
+                  <TooltipContent className="max-w-xs">
+                    Combined score: 70% sales frequency (txns last 30d) + 30% restock frequency (POs last 90d). Higher = true fast mover.
+                  </TooltipContent>
                 </Tooltip>
               </TableHead>
               <TableHead className="w-[80px] cursor-pointer hover:text-primary select-none text-right" onClick={() => toggleSort('days_to_stockout')}>
@@ -364,9 +386,12 @@ function ForecastTable({
                         </span>
                       </TooltipTrigger>
                       <TooltipContent>
-                        <p className="text-xs font-semibold">{item.txn_count_last_30d} transactions in last 30d</p>
-                        <p className="text-xs text-muted-foreground">Prior 30d: {item.txn_count_prior_30d} · All-time: {item.transaction_count}</p>
-                        <p className="text-xs text-muted-foreground mt-1">{item.sold_last_30d.toFixed(1)} {item.uom_code} sold this month</p>
+                        <p className="text-xs font-semibold">Sales: {item.txn_count_last_30d} transactions in last 30d</p>
+                        <p className="text-xs text-muted-foreground">Prior 30d: {item.txn_count_prior_30d} txns · All-time: {item.transaction_count} txns</p>
+                        <p className="text-xs text-muted-foreground">{item.sold_last_30d.toFixed(1)} {item.uom_code} sold this month</p>
+                        <p className="text-xs font-semibold mt-1">Restocks: {item.po_count_last_90d} POs in last 90d</p>
+                        <p className="text-xs text-muted-foreground">All-time POs: {item.po_count_total}</p>
+                        <p className="text-xs text-muted-foreground mt-1">Score: {(item.velocity_score * 100).toFixed(0)}/100</p>
                       </TooltipContent>
                     </Tooltip>
                   </TableCell>
@@ -471,15 +496,26 @@ export default function DemandForecastPage() {
     [rawItems, leadTime, Z, forecastDays],
   )
 
-  // Fast movers = high + medium velocity
+  // Fast movers = high + medium velocity, sorted by velocity score DESC
+  // (most frequently sold + most frequently restocked first)
+  // Within same score, secondary sort by days_to_stockout ASC so at-risk items surface
   const fastMovers = useMemo(
-    () => items.filter(i => i.velocity_class === 'high' || i.velocity_class === 'medium')
-               .sort((a, b) => a.days_to_stockout - b.days_to_stockout),
+    () => items
+      .filter(i => i.velocity_class === 'high' || i.velocity_class === 'medium')
+      .sort((a, b) =>
+        b.velocity_score !== a.velocity_score
+          ? b.velocity_score - a.velocity_score
+          : a.days_to_stockout - b.days_to_stockout
+      ),
     [items],
   )
 
   const allItems = useMemo(
-    () => [...items].sort((a, b) => a.days_to_stockout - b.days_to_stockout),
+    () => [...items].sort((a, b) =>
+      b.velocity_score !== a.velocity_score
+        ? b.velocity_score - a.velocity_score
+        : a.days_to_stockout - b.days_to_stockout
+    ),
     [items],
   )
 
@@ -767,9 +803,10 @@ export default function DemandForecastPage() {
             <div className="rounded-lg border border-dashed bg-muted/20 px-5 py-4 text-sm text-muted-foreground">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                  <p className="font-semibold text-foreground text-xs uppercase tracking-wide mb-1.5">Velocity Classification</p>
-                  <p><strong>High / Medium</strong> = top 60% by transaction count in last 30d — items that sell frequently</p>
-                  <p className="mt-1"><strong>Low / None</strong> = infrequent or no recent sales — appear only in All Products tab</p>
+                  <p className="font-semibold text-foreground text-xs uppercase tracking-wide mb-1.5">Velocity Score</p>
+                  <p><strong>Score</strong> = 70% sales frequency (txns last 30d) + 30% restock frequency (POs last 90d)</p>
+                  <p className="mt-1"><strong>High</strong> = top 25% score · <strong>Medium</strong> = 40–75% · <strong>Low/None</strong> = infrequent</p>
+                  <p className="mt-1">Products that sell often <em>and</em> get restocked often rank highest — true fast movers.</p>
                 </div>
                 <div>
                   <p className="font-semibold text-foreground text-xs uppercase tracking-wide mb-1.5">Reorder Formula</p>
