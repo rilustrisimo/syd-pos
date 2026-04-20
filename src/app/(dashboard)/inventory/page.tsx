@@ -301,7 +301,6 @@ export default function InventoryPage() {
                       <TableHead>Category</TableHead>
                       <TableHead>Branch</TableHead>
                       <TableHead className="text-right">On Hand</TableHead>
-                      <TableHead className="text-right">Reserved</TableHead>
                       <TableHead className="text-right">Available</TableHead>
                       <TableHead className="text-right">Reorder Point</TableHead>
                       <TableHead>Status</TableHead>
@@ -311,8 +310,7 @@ export default function InventoryPage() {
                   <TableBody>
                     {inventory.map((item: any) => {
                       const status = getStockStatus(item)
-                      const available =
-                        Number(item.quantity_on_hand) - Number(item.quantity_reserved)
+                      const available = Number(item.quantity_on_hand)
                       const value =
                         Number(item.quantity_on_hand) *
                         Number(item.product?.latest_cogs || 0)
@@ -337,9 +335,6 @@ export default function InventoryPage() {
                             <span className="text-xs text-muted-foreground">
                               {item.product?.base_uom?.code}
                             </span>
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {Number(item.quantity_reserved).toLocaleString()}
                           </TableCell>
                           <TableCell className="text-right font-medium">
                             {available.toLocaleString()}
