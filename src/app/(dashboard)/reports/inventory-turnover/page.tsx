@@ -81,112 +81,48 @@ async function fetchTurnoverData(days: number): Promise<TurnoverItem[]> {
   const endDate   = new Date()
   const startDate = new Date()
   startDate.setDate(startDate.getDate() - days)
-  const startISO = startDate.toISOString()
-  const endISO   = endDate.toISOString()
 
-  // 1. All active products with category + base UOM
-  const { data: products, error: pErr } = await supabase
-    .from('products')
-    .select('id, code, name, latest_cogs, category:product_categories(name), base_uom:units_of_measure!products_base_uom_id_fkey(code, name)')
-    .eq('is_active', true)
-    .order('name')
+  // Single RPC call — Postgres does all joins + aggregation server-side.
+  // Returns one row per product (no row-limit truncation risk).
+  const { data, error } = await supabase.rpc('get_inventory_turnover_v2', {
+    p_start_date: startDate.toISOString(),
+    p_end_date:   endDate.toISOString(),
+  })
 
-  if (pErr) throw pErr
+  if (error) throw error
 
-  // 2. Current stock aggregated by product across all branches
-  const { data: inventory, error: iErr } = await supabase
-    .from('branch_inventory')
-    .select('product_id, quantity_on_hand')
+  return ((data as any[]) || []).map(row => {
+    const currentStock   = Number(row.current_stock  || 0)
+    const unitsSold      = Number(row.units_sold     || 0)
+    const netChange      = Number(row.net_change     || 0)
+    const cogsPerUnit    = Number(row.latest_cogs    || 0)
 
-  if (iErr) throw iErr
-
-  const stockMap = new Map<string, number>()
-  for (const row of (inventory as any[]) || []) {
-    stockMap.set(row.product_id, (stockMap.get(row.product_id) ?? 0) + Number(row.quantity_on_hand || 0))
-  }
-
-  // 3. Sales lines within the period (forward sales only, not returns)
-  //    We join via the transaction to filter by date and exclude deletes/returns
-  const { data: salesTxns, error: tErr } = await supabase
-    .from('transactions')
-    .select('id')
-    .eq('transaction_type', 'sale')
-    .eq('is_deleted', false)
-    .gte('transaction_date', startISO)
-    .lte('transaction_date', endISO)
-
-  if (tErr) throw tErr
-
-  const txnIds = ((salesTxns as any[]) || []).map((t: any) => t.id)
-
-  // Sales lines map: product_id → { units, cogs }
-  const salesMap = new Map<string, { units: number; cogs: number }>()
-
-  if (txnIds.length > 0) {
-    // Supabase has a 1000-item .in() limit — chunk if needed
-    const chunkSize = 500
-    for (let i = 0; i < txnIds.length; i += chunkSize) {
-      const chunk = txnIds.slice(i, i + chunkSize)
-      const { data: lines, error: lErr } = await supabase
-        .from('transaction_lines')
-        .select('product_id, quantity, cogs_per_unit')
-        .in('transaction_id', chunk)
-
-      if (lErr) throw lErr
-
-      for (const line of (lines as any[]) || []) {
-        const pid = line.product_id
-        if (!pid) continue
-        const prev = salesMap.get(pid) ?? { units: 0, cogs: 0 }
-        prev.units += Number(line.quantity || 0)
-        prev.cogs  += Number(line.quantity || 0) * Number(line.cogs_per_unit || 0)
-        salesMap.set(pid, prev)
-      }
-    }
-  }
-
-  // 4. Build result — include ALL active products (with stock OR with sales)
-  const items: TurnoverItem[] = []
-
-  for (const p of (products as any[]) || []) {
-    const currentStock = stockMap.get(p.id) ?? 0
-    const sale         = salesMap.get(p.id) ?? { units: 0, cogs: 0 }
-    const unitsSold    = sale.units
-    const cogsSold     = sale.cogs
-
-    // Skip products with no stock and no sales
-    if (currentStock === 0 && unitsSold === 0) continue
-
-    // Average stock: beginning ≈ current + sold (what we had before selling)
-    const beginningStock = currentStock + unitsSold
-    const avgStock       = (beginningStock + currentStock) / 2  // = current + unitsSold/2
+    // beginning_stock = what stock was at start of period
+    // current = beginning + net_change  →  beginning = current − net_change
+    const beginningStock = Math.max(0, currentStock - netChange)
+    const avgStock       = (beginningStock + currentStock) / 2
 
     const turnoverRatio   = avgStock > 0 ? unitsSold / avgStock : 0
-    const daysInInventory = turnoverRatio > 0 ? days / turnoverRatio : days * 10 // cap at 10× period for display
-
-    const cogsPerUnit    = p.latest_cogs || (unitsSold > 0 ? cogsSold / unitsSold : 0)
-    const inventoryValue = currentStock * cogsPerUnit
+    const daysInInventory = turnoverRatio > 0 ? days / turnoverRatio : days * 10
 
     const status = getStatus(daysInInventory, currentStock, unitsSold, days)
 
-    items.push({
-      product_id:       p.id,
-      product_code:     p.code || '—',
-      product_name:     p.name,
-      category_name:    p.category?.name || 'Uncategorized',
-      uom:              p.base_uom?.code || p.base_uom?.name || 'pc',
-      current_stock:    currentStock,
-      units_sold:       unitsSold,
-      cogs_sold:        cogsSold,
-      avg_stock:        avgStock,
-      turnover_ratio:   turnoverRatio,
+    return {
+      product_id:        row.product_id,
+      product_code:      row.product_code || '—',
+      product_name:      row.product_name,
+      category_name:     row.category_name || 'Uncategorized',
+      uom:               row.uom_code      || 'pc',
+      current_stock:     currentStock,
+      units_sold:        unitsSold,
+      cogs_sold:         unitsSold * cogsPerUnit,
+      avg_stock:         avgStock,
+      turnover_ratio:    turnoverRatio,
       days_in_inventory: daysInInventory,
-      inventory_value:  inventoryValue,
+      inventory_value:   currentStock * cogsPerUnit,
       status,
-    })
-  }
-
-  return items
+    } satisfies TurnoverItem
+  })
 }
 
 // ── Page ──────────────────────────────────────────────────────────────────────
