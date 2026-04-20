@@ -113,28 +113,45 @@ function StatCard({ title, value, sub, color }: {
   )
 }
 
-// ── Spend Bar Chart (CSS-based) ───────────────────────────────────────────────
+// ── Spend Bar Chart ───────────────────────────────────────────────────────────
+
+const BAR_HEIGHT = 140 // px — height of the bar area
 
 function SpendChart({ data }: { data: { month: string; amount: number }[] }) {
   const max = Math.max(...data.map(d => d.amount), 1)
   return (
-    <div className="flex items-end gap-1 h-32 w-full">
-      {data.map(d => {
-        const pct = (d.amount / max) * 100
-        return (
-          <div key={d.month} className="flex-1 flex flex-col items-center gap-1" title={`${formatMonth(d.month)}: ${formatCurrency(d.amount)}`}>
+    <div className="w-full">
+      {/* Bars */}
+      <div className="flex items-end gap-1 w-full" style={{ height: BAR_HEIGHT }}>
+        {data.map(d => {
+          const barH = Math.round((d.amount / max) * BAR_HEIGHT)
+          const displayH = d.amount > 0 ? Math.max(barH, 4) : 0
+          return (
             <div
-              className="w-full rounded-t-sm bg-primary/80 hover:bg-primary transition-colors"
-              style={{ height: `${Math.max(pct, d.amount > 0 ? 4 : 0)}%` }}
-            />
-            {data.length <= 12 && (
-              <span className="text-[9px] text-muted-foreground rotate-[-45deg] origin-top-left translate-y-2 whitespace-nowrap">
-                {formatMonth(d.month)}
-              </span>
-            )}
+              key={d.month}
+              className="flex-1 flex items-end"
+              style={{ height: BAR_HEIGHT }}
+            >
+              <div
+                className="w-full rounded-t-sm bg-primary/80 hover:bg-primary transition-colors cursor-default"
+                style={{ height: displayH }}
+                title={`${formatMonth(d.month)}: ${formatCurrency(d.amount)}`}
+              />
+            </div>
+          )
+        })}
+      </div>
+      {/* Labels */}
+      <div className="flex gap-1 w-full mt-1">
+        {data.map(d => (
+          <div key={d.month} className="flex-1 flex justify-center overflow-hidden">
+            <span className="text-[9px] text-muted-foreground whitespace-nowrap"
+              style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)', maxHeight: 36 }}>
+              {formatMonth(d.month)}
+            </span>
           </div>
-        )
-      })}
+        ))}
+      </div>
     </div>
   )
 }

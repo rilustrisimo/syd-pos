@@ -235,11 +235,12 @@ export async function getSupplierTopProducts(supplierId: string): Promise<Suppli
     .from('purchase_order_lines')
     .select(`
       po_id,
+      product_id,
       quantity_ordered,
       unit_cost,
-      total_amount,
-      product:products!product_id(id, code, name),
-      uom:units_of_measure!uom_id(code, name)
+      uom_id,
+      product:products(id, code, name),
+      uom:units_of_measure(code, name)
     `)
     .in('po_id', poIds)
 
@@ -247,7 +248,7 @@ export async function getSupplierTopProducts(supplierId: string): Promise<Suppli
 
   const productMap = new Map<string, SupplierTopProduct>()
   for (const line of (lines as any[]) || []) {
-    const pid = line.product?.id
+    const pid = line.product?.id || line.product_id
     if (!pid) continue
     if (!productMap.has(pid)) {
       productMap.set(pid, {
@@ -262,7 +263,7 @@ export async function getSupplierTopProducts(supplierId: string): Promise<Suppli
     }
     const entry = productMap.get(pid)!
     entry.total_ordered += Number(line.quantity_ordered || 0)
-    entry.total_spend += Number(line.total_amount || line.quantity_ordered * line.unit_cost || 0)
+    entry.total_spend += Number(line.quantity_ordered || 0) * Number(line.unit_cost || 0)
     entry.po_count += 1
   }
 
