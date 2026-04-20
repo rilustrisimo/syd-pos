@@ -93,7 +93,6 @@ const navigation = [
       { name: 'AP Aging', href: '/reports/ap-aging', icon: FileWarning },
       { name: 'Inventory Turnover', href: '/reports/inventory-turnover', icon: RefreshCw },
       { name: 'Profit Margin', href: '/reports/profit-margin', icon: Percent },
-      { name: 'Supplier History', href: '/reports/supplier-history', icon: Truck },
       { name: 'Demand Forecast', href: '/reports/demand-forecast', icon: BarChart },
     ],
   },
