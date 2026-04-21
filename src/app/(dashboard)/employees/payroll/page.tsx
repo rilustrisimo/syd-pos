@@ -349,8 +349,7 @@ function PayrollRunDetail({ runId, branchId, userId }: {
 
 export default function PayrollPage() {
   const { user } = useAuthStore()
-  const { data: branchesData } = useBranches()
-  const branches = branchesData?.data || []
+  const { data: branches = [] } = useBranches()
   const branchId = user?.branchId ?? branches[0]?.id ?? ''
 
   const { data: runsData, isLoading: runsLoading } = usePayrollRuns({ limit: 30 })

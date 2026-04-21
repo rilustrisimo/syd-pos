@@ -295,8 +295,7 @@ const LIMIT = 20
 
 export default function EmployeesPage() {
   const { user } = useAuthStore()
-  const { data: branchesData } = useBranches()
-  const branches = branchesData?.data || []
+  const { data: branches = [] } = useBranches()
   const branchId = user?.branchId ?? branches[0]?.id ?? ''
 
   const [search, setSearch] = useState('')
