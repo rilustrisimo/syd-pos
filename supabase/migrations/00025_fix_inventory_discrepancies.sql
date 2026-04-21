@@ -25,15 +25,15 @@ WITH all_purchases AS (
         pol.product_id,
         pol.variant_id,
         SUM(
-            CASE 
+            CASE
                 -- Already in base unit
                 WHEN pol.uom_id = p.base_uom_id THEN pol.quantity_received
-                -- In product's main selling unit (CHECK THIS BEFORE product_selling_units!)
-                WHEN pol.uom_id = p.selling_uom_id AND p.conversion_factor > 0
-                    THEN pol.quantity_received / p.conversion_factor
-                -- Check additional selling units from product_selling_units table
+                -- Check product_selling_units FIRST (takes priority if a product has multiple selling units)
                 WHEN psu.conversion_factor IS NOT NULL AND psu.conversion_factor > 0
                     THEN pol.quantity_received / psu.conversion_factor
+                -- Fall back to product's main selling unit
+                WHEN pol.uom_id = p.selling_uom_id AND p.conversion_factor > 0
+                    THEN pol.quantity_received / p.conversion_factor
                 -- Default 1:1 (should rarely happen)
                 ELSE pol.quantity_received
             END
@@ -55,15 +55,15 @@ all_sales AS (
         tl.product_id,
         tl.variant_id,
         SUM(
-            CASE 
+            CASE
                 -- Already in base unit
                 WHEN tl.uom_id = p.base_uom_id THEN tl.quantity
-                -- In product's main selling unit (CHECK THIS BEFORE product_selling_units!)
-                WHEN tl.uom_id = p.selling_uom_id AND p.conversion_factor > 0
-                    THEN tl.quantity / p.conversion_factor
-                -- Check additional selling units from product_selling_units table
+                -- Check product_selling_units FIRST (takes priority if a product has multiple selling units)
                 WHEN psu.conversion_factor IS NOT NULL AND psu.conversion_factor > 0
                     THEN tl.quantity / psu.conversion_factor
+                -- Fall back to product's main selling unit
+                WHEN tl.uom_id = p.selling_uom_id AND p.conversion_factor > 0
+                    THEN tl.quantity / p.conversion_factor
                 -- Default 1:1 (should rarely happen)
                 ELSE tl.quantity
             END
@@ -82,30 +82,59 @@ all_returns AS (
     -- Sum all returns in base units per product/branch (excluding deleted)
     -- NOTE: Only count returns where should_restock is true (Migration 00029)
     -- Damaged/expired items have should_restock = false and should NOT be counted
-    SELECT 
+    -- IMPORTANT: Look up the UOM from the ORIGINAL transaction to ensure correct conversion
+    -- (Return lines may use a different UOM than the original sale)
+    SELECT
         t.branch_id,
         tl.product_id,
         tl.variant_id,
         SUM(
-            CASE 
-                -- Already in base unit
-                WHEN tl.uom_id = p.base_uom_id THEN tl.quantity
-                -- In product's main selling unit (CHECK THIS BEFORE product_selling_units!)
-                WHEN tl.uom_id = p.selling_uom_id AND p.conversion_factor > 0
-                    THEN tl.quantity / p.conversion_factor
-                -- Check additional selling units from product_selling_units table
-                WHEN psu.conversion_factor IS NOT NULL AND psu.conversion_factor > 0
-                    THEN tl.quantity / psu.conversion_factor
-                -- Default 1:1 (should rarely happen)
-                ELSE tl.quantity
+            CASE
+                -- Use the UOM from the original transaction (if available)
+                -- to match the selling UOM that was actually used
+                WHEN otl.uom_id IS NOT NULL THEN
+                    CASE
+                        -- Original was in base unit
+                        WHEN otl.uom_id = p.base_uom_id THEN tl.quantity
+                        -- Check product_selling_units FIRST (takes priority if multiple units defined)
+                        WHEN opsu.conversion_factor IS NOT NULL AND opsu.conversion_factor > 0
+                            THEN tl.quantity / opsu.conversion_factor
+                        -- Fall back to product's main selling unit
+                        WHEN otl.uom_id = p.selling_uom_id AND p.conversion_factor > 0
+                            THEN tl.quantity / p.conversion_factor
+                        -- Fallback 1:1 (shouldn't happen if original transaction is valid)
+                        ELSE tl.quantity
+                    END
+                -- Fallback: If no original transaction found, use return line's UOM
+                ELSE
+                    CASE
+                        -- Already in base unit
+                        WHEN tl.uom_id = p.base_uom_id THEN tl.quantity
+                        -- Check product_selling_units FIRST (takes priority if multiple units defined)
+                        WHEN psu.conversion_factor IS NOT NULL AND psu.conversion_factor > 0
+                            THEN tl.quantity / psu.conversion_factor
+                        -- Fall back to product's main selling unit
+                        WHEN tl.uom_id = p.selling_uom_id AND p.conversion_factor > 0
+                            THEN tl.quantity / p.conversion_factor
+                        -- Default 1:1
+                        ELSE tl.quantity
+                    END
             END
         ) as total_returned
     FROM transaction_lines tl
     JOIN transactions t ON t.id = tl.transaction_id
     JOIN products p ON p.id = tl.product_id
-    LEFT JOIN product_selling_units psu ON psu.product_id = tl.product_id 
-        AND psu.uom_id = tl.uom_id 
+    LEFT JOIN product_selling_units psu ON psu.product_id = tl.product_id
+        AND psu.uom_id = tl.uom_id
         AND psu.is_active = true
+    -- Join to original transaction to get the UOM that was sold
+    LEFT JOIN transactions orig_t ON orig_t.id = t.original_transaction_id
+    LEFT JOIN transaction_lines otl ON otl.transaction_id = orig_t.id
+        AND otl.product_id = tl.product_id
+        AND otl.variant_id = tl.variant_id
+    LEFT JOIN product_selling_units opsu ON opsu.product_id = otl.product_id
+        AND opsu.uom_id = otl.uom_id
+        AND opsu.is_active = true
     WHERE t.is_deleted = false
       AND t.transaction_type = 'return'
       AND COALESCE(tl.should_restock, true) = true  -- Only count items that were restocked

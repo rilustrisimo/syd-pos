@@ -179,6 +179,7 @@ BEGIN
         IF v_uom_id = v_base_uom THEN
             v_base_qty := v_quantity;
         ELSE
+            -- Check product_selling_units FIRST (takes priority if multiple units defined)
             SELECT conversion_factor INTO v_unit_conv
             FROM product_selling_units
             WHERE product_id = v_prod_id
@@ -188,6 +189,7 @@ BEGIN
 
             IF v_unit_conv IS NOT NULL AND v_unit_conv > 0 THEN
                 v_base_qty := v_quantity / v_unit_conv;
+            -- Fall back to product's main selling unit
             ELSIF v_uom_id = v_selling_uom AND v_prod_conv > 0 THEN
                 v_base_qty := v_quantity / v_prod_conv;
             ELSE
