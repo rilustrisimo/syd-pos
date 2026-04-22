@@ -16,6 +16,7 @@ import {
   getEmployeePayrollLines,
   createPayrollRun,
   updatePayrollLine,
+  deletePayrollRun,
   finalizePayrollRun,
   payPayrollRun,
   getCashAdvances,
@@ -198,6 +199,17 @@ export function useUpdatePayrollLine() {
     }) => updatePayrollLine(lineId, updates),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['payroll-runs'] })
+    },
+  })
+}
+
+export function useDeletePayrollRun() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (runId: string) => deletePayrollRun(runId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['payroll-runs'] })
+      queryClient.invalidateQueries({ queryKey: employeeKeys.all })
     },
   })
 }

@@ -424,6 +424,8 @@ export async function createPayrollRun(
   }
 
   // Build attendance summary per employee
+  // days_worked counts full days (present/holiday = 1, half_day = 0.5)
+  // regular_hours is the actual hours entered (used for OT calc; basic_pay uses days_worked)
   const attMap = new Map<string, { days: number; reg_hours: number; ot_hours: number }>()
   for (const row of (attendance as any[]) || []) {
     const cur = attMap.get(row.employee_id) || { days: 0, reg_hours: 0, ot_hours: 0 }
@@ -564,6 +566,23 @@ async function recomputeRunTotals(runId: string) {
       updated_at: new Date().toISOString(),
     })
     .eq('id', runId)
+}
+
+export async function deletePayrollRun(runId: string): Promise<void> {
+  const supabase = createClient()
+  // Delete lines first (cascade should handle it, but be explicit)
+  const { error: linesErr } = await supabase
+    .from('employee_payroll_lines')
+    .delete()
+    .eq('payroll_run_id', runId)
+  if (linesErr) throw new Error(`Failed to delete payroll lines: ${linesErr.message}`)
+
+  const { error } = await supabase
+    .from('employee_payroll_runs')
+    .delete()
+    .eq('id', runId)
+    .neq('status', 'paid') // never delete paid runs
+  if (error) throw new Error(`Failed to delete payroll run: ${error.message}`)
 }
 
 export async function finalizePayrollRun(runId: string): Promise<void> {

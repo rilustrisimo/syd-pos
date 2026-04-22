@@ -510,10 +510,10 @@ export default function EmployeesPage() {
                     <TableRow key={emp.id}>
                       <TableCell className="font-mono text-sm">{emp.employee_number}</TableCell>
                       <TableCell>
-                        <div className="font-medium">
+                        <Link href={`/employees/${emp.id}`} className="font-medium hover:text-[#ffc107] transition-colors">
                           {emp.last_name}, {emp.first_name}
                           {emp.nickname ? <span className="text-muted-foreground ml-1">"{emp.nickname}"</span> : null}
-                        </div>
+                        </Link>
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">{emp.position || '—'}</TableCell>
                       <TableCell>

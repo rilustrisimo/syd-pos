@@ -7,6 +7,7 @@ import {
   usePayrollRun,
   useCreatePayrollRun,
   useUpdatePayrollLine,
+  useDeletePayrollRun,
   useFinalizePayrollRun,
   usePayPayrollRun,
 } from '@/hooks/useEmployees'
@@ -17,10 +18,9 @@ import {
   ArrowLeft,
   Loader2,
   Plus,
-  ChevronDown,
-  ChevronUp,
   Check,
   Banknote,
+  Trash2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -74,18 +74,19 @@ function formatDate(d: string | null) {
   return new Date(d).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-// Default to previous complete Mon–Sun week
+// Default to previous complete Sun–Sat week (work week is Sun–Sat, payday Saturday)
 function getLastWeekDates() {
   const today = new Date()
-  const dow = today.getDay()
-  const thisMon = new Date(today)
-  thisMon.setDate(today.getDate() - ((dow + 6) % 7))
-  const lastMon = new Date(thisMon)
-  lastMon.setDate(thisMon.getDate() - 7)
-  const lastSun = new Date(lastMon)
-  lastSun.setDate(lastMon.getDate() + 6)
+  const dow = today.getDay() // 0=Sun
+  // Find the most recent Sunday (start of last week)
+  const thisSun = new Date(today)
+  thisSun.setDate(today.getDate() - dow)
+  const lastSun = new Date(thisSun)
+  lastSun.setDate(thisSun.getDate() - 7)
+  const lastSat = new Date(lastSun)
+  lastSat.setDate(lastSun.getDate() + 6)
   const toISO = (d: Date) => d.toISOString().split('T')[0]
-  return { start: toISO(lastMon), end: toISO(lastSun) }
+  return { start: toISO(lastSun), end: toISO(lastSat) }
 }
 
 const statusConfig: Record<string, { label: string; className: string }> = {
@@ -96,13 +97,14 @@ const statusConfig: Record<string, { label: string; className: string }> = {
 
 // ── Payroll Run Detail ─────────────────────────────────────────────────────────
 
-function PayrollRunDetail({ runId, branchId, userId }: {
-  runId: string; branchId: string; userId: string
+function PayrollRunDetail({ runId, branchId, userId, onDeleted }: {
+  runId: string; branchId: string; userId: string; onDeleted: () => void
 }) {
   const { data: run, isLoading } = usePayrollRun(runId)
   const updateLineMutation = useUpdatePayrollLine()
   const finalizeMutation = useFinalizePayrollRun()
   const payMutation = usePayPayrollRun()
+  const deleteMutation = useDeletePayrollRun()
 
   const [editingLine, setEditingLine] = useState<string | null>(null)
   const [lineEdits, setLineEdits] = useState<Record<string, {
@@ -112,6 +114,8 @@ function PayrollRunDetail({ runId, branchId, userId }: {
     bonus_notes: string; adjustment_notes: string
   }>>({})
   const [confirmPay, setConfirmPay] = useState(false)
+  const [confirmDelete1, setConfirmDelete1] = useState(false)
+  const [confirmDelete2, setConfirmDelete2] = useState(false)
 
   if (isLoading) return <div className="flex justify-center py-16"><Loader2 className="h-5 w-5 animate-spin" /></div>
   if (!run) return <div className="text-center py-8 text-muted-foreground">Run not found</div>
@@ -183,6 +187,18 @@ function PayrollRunDetail({ runId, branchId, userId }: {
     }
   }
 
+  async function handleDelete() {
+    try {
+      await deleteMutation.mutateAsync(runId)
+      toast.success('Payroll run deleted')
+      setConfirmDelete2(false)
+      onDeleted()
+    } catch (err: any) {
+      toast.error(err.message)
+      setConfirmDelete2(false)
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -196,6 +212,18 @@ function PayrollRunDetail({ runId, branchId, userId }: {
           </div>
         </div>
         <div className="flex gap-2">
+          {!run.status || run.status !== 'paid' ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+              onClick={() => setConfirmDelete1(true)}
+              disabled={deleteMutation.isPending}
+            >
+              <Trash2 className="h-4 w-4 mr-1" />
+              Delete
+            </Button>
+          ) : null}
           {isDraft && (
             <Button variant="outline" onClick={handleFinalize} disabled={finalizeMutation.isPending}>
               {finalizeMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
@@ -341,6 +369,52 @@ function PayrollRunDetail({ runId, branchId, userId }: {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Delete — first confirmation */}
+      <AlertDialog open={confirmDelete1} onOpenChange={setConfirmDelete1}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Payroll Run?</AlertDialogTitle>
+            <AlertDialogDescription>
+              You are about to delete <strong>{run.label}</strong>. All payroll lines will be removed.
+              This cannot be undone. Are you sure?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              onClick={() => { setConfirmDelete1(false); setConfirmDelete2(true) }}
+            >
+              Yes, delete it
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete — second confirmation */}
+      <AlertDialog open={confirmDelete2} onOpenChange={setConfirmDelete2}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This is your final confirmation. Deleting <strong>{run.label}</strong> is permanent and
+              cannot be recovered.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              onClick={handleDelete}
+              disabled={deleteMutation.isPending}
+            >
+              {deleteMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Delete Permanently
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
@@ -448,6 +522,7 @@ export default function PayrollPage() {
                   runId={selectedRunId}
                   branchId={branchId}
                   userId={user?.id ?? ''}
+                  onDeleted={() => setSelectedRunId(null)}
                 />
               </CardContent>
             </Card>

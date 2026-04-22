@@ -82,14 +82,14 @@ function formatDate(d: string | null) {
   })
 }
 
-// Get ISO week dates (Mon–Sun) from a reference date
+// Get ISO week dates (Sun–Sat) from a reference date — work week is Sun-Sat, payday Saturday
 function getWeekDates(refDate: Date): Date[] {
   const day = refDate.getDay() // 0=Sun
-  const monday = new Date(refDate)
-  monday.setDate(refDate.getDate() - ((day + 6) % 7))
+  const sunday = new Date(refDate)
+  sunday.setDate(refDate.getDate() - day)
   return Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(monday)
-    d.setDate(monday.getDate() + i)
+    const d = new Date(sunday)
+    d.setDate(sunday.getDate() + i)
     return d
   })
 }
@@ -98,7 +98,7 @@ function toISODate(d: Date) {
   return d.toISOString().split('T')[0]
 }
 
-const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 const ATTENDANCE_STATUSES: AttendanceRow['status'][] = [
   'present', 'absent', 'half_day', 'rest_day', 'holiday',
@@ -176,10 +176,11 @@ function AttendanceTab({ employeeId, userId }: { employeeId: string; userId: str
             notes: existing.notes || '',
           }
         : {
-            status: d.getDay() === 0 || d.getDay() === 6 ? 'rest_day' : 'present',
+            // Sunday = half day (4 hrs); Mon–Sat = present (8 hrs)
+            status: d.getDay() === 0 ? 'half_day' : 'present',
             time_in: '',
             time_out: '',
-            regular_hours: '8',
+            regular_hours: d.getDay() === 0 ? '4' : '8',
             overtime_hours: '0',
             notes: '',
           }
@@ -262,9 +263,9 @@ function AttendanceTab({ employeeId, userId }: { employeeId: string; userId: str
               {weekDates.map((d, i) => {
                 const dateStr = toISODate(d)
                 const row = editRows[dateStr] || { status: 'present', time_in: '', time_out: '', regular_hours: '8', overtime_hours: '0', notes: '' }
-                const isWeekend = d.getDay() === 0 || d.getDay() === 6
+                const isSunday = d.getDay() === 0
                 return (
-                  <TableRow key={dateStr} className={isWeekend ? 'bg-muted/30' : ''}>
+                  <TableRow key={dateStr} className={isSunday ? 'bg-muted/30' : ''}>
                     <TableCell className="font-medium text-sm">{DAY_NAMES[i]}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}
@@ -272,7 +273,20 @@ function AttendanceTab({ employeeId, userId }: { employeeId: string; userId: str
                     <TableCell>
                       <Select
                         value={row.status}
-                        onValueChange={v => setRow(dateStr, 'status', v)}
+                        onValueChange={v => {
+                          const s = v as AttendanceRow['status']
+                          setEditRows(prev => ({
+                            ...prev,
+                            [dateStr]: {
+                              ...prev[dateStr],
+                              status: s,
+                              regular_hours: s === 'absent' || s === 'rest_day' ? '0'
+                                : s === 'half_day' ? '4'
+                                : '8',
+                              overtime_hours: s === 'absent' || s === 'rest_day' ? '0' : prev[dateStr]?.overtime_hours || '0',
+                            },
+                          }))
+                        }}
                       >
                         <SelectTrigger className="h-8 text-xs w-[110px]">
                           <SelectValue />
