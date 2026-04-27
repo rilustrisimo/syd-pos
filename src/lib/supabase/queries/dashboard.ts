@@ -345,109 +345,30 @@ export interface SalesReportFilters {
 export async function getSalesByProduct(filters: SalesReportFilters = {}): Promise<SalesByProduct[]> {
   const supabase = createClient()
 
-  // Query from transactions (not transaction_lines) so we can apply DB-level date filtering.
-  // This avoids hitting Supabase's row limit when fetching unbounded transaction_lines.
-  let query = supabase
-    .from('transactions')
-    .select(`
-      id,
-      transaction_type,
-      transaction_date,
-      branch_id,
-      is_deleted,
-      delivery_fee,
-      other_fees,
-      discount_amount,
-      subtotal,
-      lines:transaction_lines(
-        quantity,
-        unit_price,
-        cogs_per_unit,
-        line_total,
-        line_profit,
-        discount_amount,
-        product:products!product_id(
-          id,
-          code,
-          name,
-          category:product_categories!category_id(id, name)
-        )
-      )
-    `)
-    .in('transaction_type', ['sale', 'return'])
-    .eq('is_deleted', false)
-
-  // Apply date filter at DB level - convert PH timezone to ISO UTC timestamps
-  if (filters.date_from) {
-    const startTime = new Date(`${filters.date_from}T00:00:00+08:00`).toISOString()
-    query = query.gte('transaction_date', startTime)
-  }
-  if (filters.date_to) {
-    const endTime = new Date(`${filters.date_to}T23:59:59.999+08:00`).toISOString()
-    query = query.lte('transaction_date', endTime)
-  }
-  if (filters.branch_id) {
-    query = query.eq('branch_id', filters.branch_id)
-  }
-
-  const { data, error } = await query
+  const { data, error } = await supabase.rpc('get_sales_by_product_report', {
+    p_date_from:   filters.date_from   ?? null,
+    p_date_to:     filters.date_to     ?? null,
+    p_category_id: filters.category_id ?? null,
+  })
 
   if (error) throw error
 
-  // Aggregate by product
-  const productMap = new Map<string, SalesByProduct>()
-
-  for (const txn of (data as any[]) || []) {
-    const sign = txn.transaction_type === 'return' ? -1 : 1
-    const subtotal = txn.subtotal || 0
-    const deliveryFee = txn.delivery_fee || 0
-    const otherFees = txn.other_fees || 0
-    const transactionDiscount = txn.discount_amount || 0
-
-    for (const line of txn.lines || []) {
-      // Filter by category
-      if (filters.category_id && line.product?.category?.id !== filters.category_id) continue
-
-      const productId = line.product?.id
-      if (!productId) continue
-
-      const lineRatio = subtotal > 0 ? (line.line_total || 0) / subtotal : 0
-      const proportionalDeliveryFee = deliveryFee * lineRatio
-      const proportionalOtherFees = otherFees * lineRatio
-      const proportionalTransactionDiscount = transactionDiscount * lineRatio
-
-      const revenue = sign * ((line.line_total || 0) + proportionalDeliveryFee + proportionalOtherFees - proportionalTransactionDiscount)
-      const cost = sign * ((line.quantity || 0) * (line.cogs_per_unit || 0))
-
-      const existing = productMap.get(productId)
-      if (existing) {
-        existing.quantity_sold += sign * (line.quantity || 0)
-        existing.total_revenue += revenue
-        existing.total_cost += cost
-        existing.gross_profit += revenue - cost
-      } else {
-        productMap.set(productId, {
-          product_id: productId,
-          product_code: line.product.code,
-          product_name: line.product.name,
-          category_name: line.product.category?.name || 'Uncategorized',
-          quantity_sold: sign * (line.quantity || 0),
-          total_revenue: revenue,
-          total_cost: cost,
-          gross_profit: revenue - cost,
-          profit_margin: 0
-        })
-      }
+  return ((data as any[]) || []).map(row => {
+    const revenue = Number(row.total_revenue) || 0
+    const cost    = Number(row.total_cost)    || 0
+    const profit  = revenue - cost
+    return {
+      product_id:    row.product_id,
+      product_code:  row.product_code,
+      product_name:  row.product_name,
+      category_name: row.category_name,
+      quantity_sold: Number(row.quantity_sold) || 0,
+      total_revenue: revenue,
+      total_cost:    cost,
+      gross_profit:  profit,
+      profit_margin: revenue > 0 ? (profit / revenue) * 100 : 0,
     }
-  }
-
-  // Calculate profit margins
-  const products = Array.from(productMap.values()).map(p => ({
-    ...p,
-    profit_margin: p.total_revenue > 0 ? (p.gross_profit / p.total_revenue) * 100 : 0
-  }))
-
-  return products.sort((a, b) => b.total_revenue - a.total_revenue)
+  })
 }
 
 // Get sales by category report
@@ -505,95 +426,36 @@ export async function getSalesTrendByDateRange(
 ): Promise<SalesTrendPoint[]> {
   const supabase = createClient()
 
-  // Get all transaction lines with their transaction details
-  // Filter by transaction_date on the transactions table
-  // Convert date strings to proper ISO 8601 timestamps with Philippine timezone
-  const startTime = new Date(`${dateFrom}T00:00:00+08:00`).toISOString()
-  const endTime = new Date(`${dateTo}T23:59:59.999+08:00`).toISOString()
-  
-  const { data, error } = await supabase
-    .from('transactions')
-    .select(`
-      id,
-      transaction_type,
-      transaction_date,
-      is_deleted,
-      delivery_fee,
-      other_fees,
-      discount_amount,
-      subtotal,
-      lines:transaction_lines(
-        quantity,
-        unit_price,
-        cogs_per_unit,
-        discount_amount,
-        line_total
-      )
-    `)
-    .in('transaction_type', ['sale', 'return'])
-    .eq('is_deleted', false)
-    .gte('transaction_date', startTime)
-    .lte('transaction_date', endTime)
+  const { data, error } = await supabase.rpc('get_sales_trend_daily', {
+    p_date_from: dateFrom,
+    p_date_to:   dateTo,
+  })
 
   if (error) throw error
 
-  // Build date map with all days in range initialized to 0
+  // Pre-fill every day in range with zeros so the chart has continuous data
   const dateMap = new Map<string, SalesTrendPoint>()
-  const start = new Date(dateFrom)
-  const end = new Date(dateTo)
-  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-    const key = d.toISOString().split('T')[0]
-    dateMap.set(key, { date: key, revenue: 0, cost: 0, profit: 0, discounts: 0, transactions: 0 })
+  let current = dateFrom
+  while (current <= dateTo) {
+    dateMap.set(current, { date: current, revenue: 0, cost: 0, profit: 0, discounts: 0, transactions: 0 })
+    const d = new Date(current + 'T00:00:00Z')
+    d.setUTCDate(d.getUTCDate() + 1)
+    current = d.toISOString().split('T')[0]
   }
 
-  // Process each transaction (sales add, returns subtract)
-  for (const txn of (data as any[]) || []) {
-    // Convert UTC timestamp to Philippine timezone to get the correct date
-    if (!txn.transaction_date) continue
-    const phDate = new Date(txn.transaction_date)
-    const phDateStr = new Date(phDate.getTime() + (8 * 60 * 60 * 1000)).toISOString().split('T')[0]
-    const dateStr: string = phDateStr
-    if (!dateStr || !dateMap.has(dateStr)) continue
-
-    const point = dateMap.get(dateStr)!
-    const isReturn = txn.transaction_type === 'return'
-    const sign = isReturn ? -1 : 1
-
-    // Only count sale transactions in the transaction tally
-    if (!isReturn) point.transactions += 1
-
-    const deliveryFee = txn.delivery_fee || 0
-    const otherFees = txn.other_fees || 0
-    const transactionDiscount = txn.discount_amount || 0
-    const subtotal = txn.subtotal || 0
-
-    let txnTotalDiscount = transactionDiscount
-    let txnRevenue = 0
-    let txnCost = 0
-
-    for (const line of txn.lines || []) {
-      const lineTotal = line.line_total || 0
-      const cost = (line.quantity || 0) * (line.cogs_per_unit || 0)
-
-      const lineDiscount = line.discount_amount || 0
-      txnTotalDiscount += lineDiscount
-
-      const lineRatio = subtotal > 0 ? lineTotal / subtotal : 0
-      const proportionalDeliveryFee = deliveryFee * lineRatio
-      const proportionalOtherFees = otherFees * lineRatio
-      const proportionalTransactionDiscount = transactionDiscount * lineRatio
-
-      const revenue = lineTotal + proportionalDeliveryFee + proportionalOtherFees - proportionalTransactionDiscount
-
-      txnRevenue += revenue
-      txnCost += cost
-    }
-
-    // Apply sign: returns subtract from revenue, cost, profit
-    point.revenue += sign * txnRevenue
-    point.cost += sign * txnCost
-    point.profit += sign * (txnRevenue - txnCost)
-    if (!isReturn) point.discounts += txnTotalDiscount
+  // Merge RPC results (only days that have activity)
+  for (const row of (data as any[]) || []) {
+    const phDate  = typeof row.ph_date === 'string' ? row.ph_date : String(row.ph_date)
+    const revenue = Number(row.revenue)      || 0
+    const cost    = Number(row.cost)         || 0
+    dateMap.set(phDate, {
+      date:         phDate,
+      revenue,
+      cost,
+      profit:       revenue - cost,
+      discounts:    Number(row.discounts)    || 0,
+      transactions: Number(row.transactions) || 0,
+    })
   }
 
   return Array.from(dateMap.values())
@@ -613,83 +475,27 @@ export interface SalesFeeSummary {
 export async function getSalesFeeSummary(filters: SalesReportFilters = {}): Promise<SalesFeeSummary> {
   const supabase = createClient()
 
-  // Query from transactions with joined lines — apply DB-level date filter with PH timezone.
-  let query = supabase
-    .from('transactions')
-    .select(`
-      id,
-      delivery_fee,
-      other_fees,
-      discount_amount,
-      transaction_date,
-      branch_id,
-      lines:transaction_lines(
-        discount_amount,
-        product:products!product_id(
-          id,
-          category_id
-        )
-      )
-    `)
-    .eq('transaction_type', 'sale')
-    .eq('is_deleted', false)
+  const { data, error } = await supabase.rpc('get_sales_fee_summary_report', {
+    p_date_from:   filters.date_from   ?? null,
+    p_date_to:     filters.date_to     ?? null,
+    p_category_id: filters.category_id ?? null,
+  })
 
-  // Apply date filter - convert PH timezone to ISO UTC timestamps
-  if (filters.date_from) {
-    const startTime = new Date(`${filters.date_from}T00:00:00+08:00`).toISOString()
-    query = query.gte('transaction_date', startTime)
+  if (error) throw error
+
+  const row = (data as any[])?.[0] ?? {}
+  const deliveryFees = Number(row.total_delivery_fees) || 0
+  const otherFees    = Number(row.total_other_fees)    || 0
+
+  return {
+    total_delivery_fees:            deliveryFees,
+    total_other_fees:               otherFees,
+    total_fees:                     deliveryFees + otherFees,
+    total_discounts:                Number(row.total_discounts)                || 0,
+    transactions_with_delivery_fee: Number(row.transactions_with_delivery_fee) || 0,
+    transactions_with_other_fees:   Number(row.transactions_with_other_fees)   || 0,
+    items_with_discount:            Number(row.items_with_discount)            || 0,
   }
-  if (filters.date_to) {
-    const endTime = new Date(`${filters.date_to}T23:59:59.999+08:00`).toISOString()
-    query = query.lte('transaction_date', endTime)
-  }
-  if (filters.branch_id) {
-    query = query.eq('branch_id', filters.branch_id)
-  }
-
-  const { data: txnData, error: txnError } = await query
-  if (txnError) throw txnError
-
-  const summary: SalesFeeSummary = {
-    total_delivery_fees: 0,
-    total_other_fees: 0,
-    total_fees: 0,
-    total_discounts: 0,
-    transactions_with_delivery_fee: 0,
-    transactions_with_other_fees: 0,
-    items_with_discount: 0,
-  }
-
-  for (const txn of (txnData as any[]) || []) {
-    const deliveryFee = txn.delivery_fee || 0
-    const otherFees = txn.other_fees || 0
-    const transactionDiscount = txn.discount_amount || 0
-
-    // Check category filter: skip if transaction has no lines in that category
-    if (filters.category_id) {
-      const hasCategory = (txn.lines || []).some((l: any) => l.product?.category_id === filters.category_id)
-      if (!hasCategory) continue
-    }
-
-    summary.total_delivery_fees += deliveryFee
-    summary.total_other_fees += otherFees
-    summary.total_fees += deliveryFee + otherFees
-    summary.total_discounts += transactionDiscount
-
-    if (deliveryFee > 0) summary.transactions_with_delivery_fee++
-    if (otherFees > 0) summary.transactions_with_other_fees++
-    if (transactionDiscount > 0) summary.items_with_discount++
-
-    // Sum line-level discounts
-    for (const line of txn.lines || []) {
-      if (filters.category_id && line.product?.category_id !== filters.category_id) continue
-      const discount = line.discount_amount || 0
-      summary.total_discounts += discount
-      if (discount > 0) summary.items_with_discount++
-    }
-  }
-
-  return summary
 }
 
 // ============================================
@@ -1102,122 +908,54 @@ export interface PLReport {
 
 export async function getPLReport(dateFrom: string, dateTo: string): Promise<PLReport> {
   const supabase = createClient()
-  const startTime = new Date(`${dateFrom}T00:00:00+08:00`).toISOString()
-  const endTime = new Date(`${dateTo}T23:59:59.999+08:00`).toISOString()
 
-  // ── 1. Revenue & COGS from transactions ────────────────────────────────────
+  // ── 1 & 2. Revenue/COGS and Expenses via RPC (no PostgREST row-limit) ──────
+  const [revResult, expResult] = await Promise.all([
+    supabase.rpc('get_pl_revenue_cogs_daily', { p_date_from: dateFrom, p_date_to: dateTo }),
+    supabase.rpc('get_pl_expenses',           { p_date_from: dateFrom, p_date_to: dateTo }),
+  ])
+  if (revResult.error) throw revResult.error
+  if (expResult.error) throw expResult.error
 
-  const { data: txnData, error: txnError } = await supabase
-    .from('transactions')
-    .select(`
-      id,
-      transaction_type,
-      transaction_date,
-      delivery_fee,
-      other_fees,
-      discount_amount,
-      subtotal,
-      lines:transaction_lines(
-        quantity,
-        unit_price,
-        cogs_per_unit,
-        line_total,
-        discount_amount
-      )
-    `)
-    .in('transaction_type', ['sale', 'return'])
-    .eq('is_deleted', false)
-    .gte('transaction_date', startTime)
-    .lte('transaction_date', endTime)
-
-  if (txnError) throw txnError
-
+  // Build daily revenue/COGS map from aggregated RPC rows
+  const dailyRevenueMap = new Map<string, { revenue: number; gross_profit: number }>()
   let totalRevenue = 0
   let totalCogs = 0
 
-  // Daily revenue/profit map (keyed by PH date)
-  const dailyRevenueMap = new Map<string, { revenue: number; gross_profit: number }>()
-
-  for (const txn of (txnData as any[]) || []) {
-    const sign = txn.transaction_type === 'return' ? -1 : 1
-    const subtotal = txn.subtotal || 0
-    const deliveryFee = txn.delivery_fee || 0
-    const otherFees = txn.other_fees || 0
-    const transactionDiscount = txn.discount_amount || 0
-
-    // PH date for this transaction
-    const phDateStr = new Date(new Date(txn.transaction_date).getTime() + 8 * 3600 * 1000)
-      .toISOString().split('T')[0]
-
-    let txnRevenue = 0
-    let txnCogs = 0
-
-    for (const line of txn.lines || []) {
-      const lineTotal = line.line_total || 0
-      const cost = (line.quantity || 0) * (line.cogs_per_unit || 0)
-      const lineRatio = subtotal > 0 ? lineTotal / subtotal : 0
-      const proportionalDeliveryFee = deliveryFee * lineRatio
-      const proportionalOtherFees = otherFees * lineRatio
-      const proportionalTransactionDiscount = transactionDiscount * lineRatio
-
-      txnRevenue += lineTotal + proportionalDeliveryFee + proportionalOtherFees - proportionalTransactionDiscount
-      txnCogs += cost
-    }
-
-    totalRevenue += sign * txnRevenue
-    totalCogs += sign * txnCogs
-
-    const existing = dailyRevenueMap.get(phDateStr) || { revenue: 0, gross_profit: 0 }
-    dailyRevenueMap.set(phDateStr, {
-      revenue: existing.revenue + sign * txnRevenue,
-      gross_profit: existing.gross_profit + sign * (txnRevenue - txnCogs),
-    })
+  for (const row of (revResult.data as any[]) || []) {
+    const rev  = Number(row.revenue) || 0
+    const cogs = Number(row.cogs)    || 0
+    const phDate = typeof row.ph_date === 'string' ? row.ph_date : String(row.ph_date)
+    dailyRevenueMap.set(phDate, { revenue: rev, gross_profit: rev - cogs })
+    totalRevenue += rev
+    totalCogs    += cogs
   }
 
-  // ── 2. Expenses ────────────────────────────────────────────────────────────
-
-  const { data: expData, error: expError } = await supabase
-    .from('expenses')
-    .select(`
-      id,
-      amount,
-      expense_date,
-      category_id,
-      category:expense_categories(id, name, color)
-    `)
-    .eq('is_deleted', false)
-    .gte('expense_date', startTime)
-    .lte('expense_date', endTime)
-
-  if (expError) throw expError
-
-  const categoryMap = new Map<string, ExpenseByCategory>()
-  let totalExpenses = 0
+  // Build expense category map and daily expense map from aggregated RPC rows
+  const categoryMap    = new Map<string, ExpenseByCategory>()
   const dailyExpenseMap = new Map<string, number>()
+  let totalExpenses = 0
 
-  for (const exp of (expData as any[]) || []) {
-    const amount = exp.amount || 0
+  for (const row of (expResult.data as any[]) || []) {
+    const amount  = Number(row.total_amount) || 0
+    const cnt     = Number(row.cnt)          || 0
+    const phDate  = typeof row.ph_date === 'string' ? row.ph_date : String(row.ph_date)
+
     totalExpenses += amount
+    dailyExpenseMap.set(phDate, (dailyExpenseMap.get(phDate) || 0) + amount)
 
-    // PH date for this expense
-    const phDateStr = new Date(new Date(exp.expense_date).getTime() + 8 * 3600 * 1000)
-      .toISOString().split('T')[0]
-    dailyExpenseMap.set(phDateStr, (dailyExpenseMap.get(phDateStr) || 0) + amount)
-
-    const catKey = exp.category_id || '__none__'
-    const catName = exp.category?.name || 'Uncategorized'
-    const catColor = exp.category?.color || '#6b7280'
+    const catKey = row.category_id || '__none__'
     const existing = categoryMap.get(catKey)
     if (existing) {
       existing.total_amount += amount
-      existing.count++
+      existing.count        += cnt
     } else {
       categoryMap.set(catKey, {
-        category_id: exp.category_id,
-        category_name: catName,
-        category_color: catColor,
-        total_amount: amount,
-        count: 1,
+        category_id:    row.category_id,
+        category_name:  row.category_name  || 'Uncategorized',
+        category_color: row.category_color || '#6b7280',
+        total_amount:   amount,
+        count:          cnt,
       })
     }
   }
@@ -1225,8 +963,7 @@ export async function getPLReport(dateFrom: string, dateTo: string): Promise<PLR
   const expensesByCategory = Array.from(categoryMap.values())
     .sort((a, b) => b.total_amount - a.total_amount)
 
-  // ── 2b. Loan interest expense (by actual payment_date, not trigger-set paid_date) ──
-  // Each payment is proportionally allocated: interest = payment × (interest_portion / scheduled_amount)
+  // ── 2b. Loan interest expense ───────────────────────────────────────────────
   const { data: interestData } = await supabase
     .from('liability_loan_payments')
     .select('amount, liability_loan_schedule(interest_portion, scheduled_amount)')
@@ -1236,18 +973,17 @@ export async function getPLReport(dateFrom: string, dateTo: string): Promise<PLR
   const totalInterest = (interestData || []).reduce((sum, payment) => {
     const schedule = payment.liability_loan_schedule as unknown as { interest_portion: number; scheduled_amount: number } | null
     if (!schedule || !schedule.scheduled_amount) return sum
-    const interestShare = (payment.amount / schedule.scheduled_amount) * schedule.interest_portion
-    return sum + interestShare
+    return sum + (payment.amount / schedule.scheduled_amount) * schedule.interest_portion
   }, 0)
 
   if (totalInterest > 0) {
     totalExpenses += totalInterest
     expensesByCategory.push({
-      category_id: null,
-      category_name: 'Interest Expense',
+      category_id:    null,
+      category_name:  'Interest Expense',
       category_color: '#8b5cf6',
-      total_amount: totalInterest,
-      count: (interestData || []).length,
+      total_amount:   totalInterest,
+      count:          (interestData || []).length,
     })
     expensesByCategory.sort((a, b) => b.total_amount - a.total_amount)
   }
@@ -1255,36 +991,37 @@ export async function getPLReport(dateFrom: string, dateTo: string): Promise<PLR
   // ── 3. Daily trend ─────────────────────────────────────────────────────────
 
   const dailyTrend: DailyPLPoint[] = []
-  const start = new Date(dateFrom + 'T00:00:00')
-  const end = new Date(dateTo + 'T00:00:00')
-  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-    const key = d.toISOString().split('T')[0]
-    const rev = dailyRevenueMap.get(key) || { revenue: 0, gross_profit: 0 }
-    const exp = dailyExpenseMap.get(key) || 0
+  let current = dateFrom
+  while (current <= dateTo) {
+    const rev = dailyRevenueMap.get(current) || { revenue: 0, gross_profit: 0 }
+    const exp = dailyExpenseMap.get(current) || 0
     dailyTrend.push({
-      date: key,
-      revenue: rev.revenue,
+      date:         current,
+      revenue:      rev.revenue,
       gross_profit: rev.gross_profit,
-      expenses: exp,
-      net_profit: rev.gross_profit - exp,
+      expenses:     exp,
+      net_profit:   rev.gross_profit - exp,
     })
+    const d = new Date(current + 'T00:00:00Z')
+    d.setUTCDate(d.getUTCDate() + 1)
+    current = d.toISOString().split('T')[0]
   }
 
   // ── 4. Summary ─────────────────────────────────────────────────────────────
 
   const grossProfit = totalRevenue - totalCogs
-  const netProfit = grossProfit - totalExpenses
+  const netProfit   = grossProfit - totalExpenses
 
   return {
-    revenue: totalRevenue,
-    cogs: totalCogs,
-    gross_profit: grossProfit,
-    gross_margin: totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0,
-    total_expenses: totalExpenses,
-    expenses_by_category: expensesByCategory,
-    net_profit: netProfit,
-    net_margin: totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0,
-    daily_trend: dailyTrend,
+    revenue:               totalRevenue,
+    cogs:                  totalCogs,
+    gross_profit:          grossProfit,
+    gross_margin:          totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0,
+    total_expenses:        totalExpenses,
+    expenses_by_category:  expensesByCategory,
+    net_profit:            netProfit,
+    net_margin:            totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0,
+    daily_trend:           dailyTrend,
   }
 }
 
@@ -1330,6 +1067,7 @@ export async function getTransactionsList(dateFrom: string, dateTo: string): Pro
     .gte('transaction_date', start)
     .lte('transaction_date', end)
     .order('transaction_date', { ascending: true })
+    .limit(50000)
 
   if (error) throw error
 
