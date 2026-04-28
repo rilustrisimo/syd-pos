@@ -306,7 +306,8 @@ export async function receivePOLineItems(
 
   const lineData = line as any
 
-  // Call atomic RPC
+  // Call atomic RPC — pass today as receive date (used only if this completes the PO)
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })
   const { data, error } = await supabase.rpc('receive_purchase_order_atomic', {
     p_po_id: lineData.po_id,
     p_received_lines: [
@@ -315,7 +316,8 @@ export async function receivePOLineItems(
         quantity_received: quantityReceived
       }
     ],
-    p_user_id: userId
+    p_user_id: userId,
+    p_receive_date: today,
   })
 
   if (error) {
@@ -387,22 +389,16 @@ export async function receiveAllPOLines(poId: string, userId: string, receiveDat
     throw new Error('No items remaining to receive')
   }
 
-  // Call atomic RPC to receive all lines
+  // Call atomic RPC — pass the receive date so actual_delivery_date is stamped correctly
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })
   const { data, error } = await supabase.rpc('receive_purchase_order_atomic', {
     p_po_id: poId,
     p_received_lines: linesToReceive,
-    p_user_id: userId
+    p_user_id: userId,
+    p_receive_date: receiveDate || today,
   })
 
   if (error) throw error
-
-  // If custom receive date provided, update it
-  if (receiveDate) {
-    await supabase
-      .from('purchase_orders')
-      .update({ updated_at: receiveDate } as any)
-      .eq('id', poId)
-  }
 
   return data
 }
