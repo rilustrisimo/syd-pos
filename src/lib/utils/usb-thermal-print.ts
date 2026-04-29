@@ -431,3 +431,105 @@ export async function listCupsPrinters(): Promise<CupsPrinter[]> {
     return []
   }
 }
+
+// ---------------------------------------------------------------------------
+// Printer discovery — lists all available thermal printers across all transports
+// ---------------------------------------------------------------------------
+
+export interface DiscoveredPrinter {
+  value: string          // the queue/path to pass to sendBytes / printThermalTransaction
+  label: string          // human-readable display name
+  type: 'bluetooth' | 'usb' | 'cups'
+}
+
+/**
+ * List all printers available in the current environment:
+ *  - Bluetooth/COM (Electron): virtual COM ports from paired Bluetooth devices
+ *  - USB (Electron): USB class-7 devices via node-usb
+ *  - CUPS (macOS web): from /api/print
+ */
+export async function listAllPrinters(): Promise<DiscoveredPrinter[]> {
+  const results: DiscoveredPrinter[] = []
+
+  if (typeof window === 'undefined') return results
+
+  // Bluetooth / COM ports
+  if (window.electronBluetooth) {
+    try {
+      const ports = await window.electronBluetooth.listPorts()
+      for (const p of ports) {
+        results.push({
+          value: p.path,
+          label: p.displayName && p.displayName !== p.path ? `${p.path} — ${p.displayName}` : p.path,
+          type: 'bluetooth',
+        })
+      }
+    } catch { /* ignore */ }
+  }
+
+  // USB printers
+  if (window.electronPrint) {
+    try {
+      const devices = await window.electronPrint.listUsbPrinters()
+      for (const d of devices) {
+        const label = d.manufacturer && d.product
+          ? `${d.manufacturer} ${d.product}`
+          : `USB Printer (${d.vendorId.toString(16)}:${d.productId.toString(16)})`
+        results.push({
+          value: `usb:${d.vendorId}:${d.productId}`,
+          label,
+          type: 'usb',
+        })
+      }
+    } catch { /* ignore */ }
+  }
+
+  // CUPS (macOS / non-Electron)
+  if (!window.electronBluetooth && !window.electronPrint) {
+    try {
+      const cups = await listCupsPrinters()
+      for (const p of cups) {
+        results.push({ value: p.name, label: `${p.name} (${p.status})`, type: 'cups' })
+      }
+    } catch { /* ignore */ }
+  }
+
+  return results
+}
+
+// ---------------------------------------------------------------------------
+// Test print
+// ---------------------------------------------------------------------------
+
+/** Send a short ESC/POS test page to verify the printer connection. */
+export async function printTestPage(printerQueue: string, width = 48): Promise<void> {
+  const bytes: number[] = []
+  const divider = '='.repeat(width)
+
+  function cmd(...cmds: number[][]): void { for (const c of cmds) bytes.push(...c) }
+  function line(str: string): void {
+    const safe = str.replace(/[^\x00-\x7F]/g, '?')
+    for (let i = 0; i < safe.length; i++) bytes.push(safe.charCodeAt(i) & 0xff)
+    bytes.push(0x0a)
+  }
+
+  cmd([ESC, 0x40])                        // INIT
+  cmd([ESC, 0x61, 0x01])                  // CENTER
+  cmd([ESC, 0x45, 0x01], [GS, 0x21, 0x11]) // BOLD + DOUBLE SIZE
+  line('PRINTER TEST')
+  cmd([GS, 0x21, 0x00], [ESC, 0x45, 0x00]) // normal
+  cmd([ESC, 0x61, 0x00])                  // LEFT
+  line(divider)
+  line(`SYD POS Desktop`)
+  line(`Queue: ${printerQueue}`)
+  line(`Width: ${width} chars`)
+  line(new Date().toLocaleString('en-PH', { timeZone: 'Asia/Manila' }))
+  line(divider)
+  cmd([ESC, 0x61, 0x01])
+  line('** CONNECTION OK **')
+  cmd([ESC, 0x61, 0x00])
+  cmd([ESC, 0x64, 4])                     // FEED 4
+  cmd([GS, 0x56, 0x42, 0x00])            // CUT
+
+  await sendBytes(new Uint8Array(bytes), printerQueue)
+}
