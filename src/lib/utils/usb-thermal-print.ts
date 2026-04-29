@@ -260,17 +260,17 @@ function toBase64(bytes: Uint8Array): string {
 
 /**
  * Send ESC/POS bytes to the configured thermal printer.
- * Priority: Bluetooth IPC → USB IPC → CUPS (macOS)
+ * Priority: Bluetooth/COM IPC → USB IPC → CUPS (macOS)
  */
 async function sendBytes(bytes: Uint8Array, printerQueue: string): Promise<void> {
-  // Branch 1: Bluetooth / COM port via Electron IPC
-  if (typeof window !== 'undefined' && window.electronBluetooth && printerQueue) {
+  // Branch 1: Bluetooth / COM port via Electron IPC (non-USB paths only)
+  if (typeof window !== 'undefined' && window.electronBluetooth && printerQueue && !printerQueue.startsWith('usb:')) {
     const result = await window.electronBluetooth.printBytes(printerQueue, toBase64(bytes))
     if (result.success) return
     throw new Error(result.error || 'Bluetooth print failed')
   }
 
-  // Branch 2: USB via node-usb Electron IPC
+  // Branch 2: USB via node-usb Electron IPC ("usb:vendorId:productId" paths)
   if (typeof window !== 'undefined' && window.electronPrint) {
     const parts = printerQueue.split(':')
     if (parts[0] === 'usb' && parts.length === 3) {
@@ -400,8 +400,20 @@ export function buildDeliverySlipBytes(data: ReceiptData, width = 48): Uint8Arra
 // Public API
 // ---------------------------------------------------------------------------
 
+/** Print receipt only (no delivery slip). */
 export async function printUSBReceipt(data: ReceiptData, printerQueue: string, width = 48): Promise<void> {
   await sendBytes(buildReceiptBytes(data, width), printerQueue)
+}
+
+/**
+ * Print receipt, then — for delivery transactions — also print the delivery
+ * slip. This is the correct function to call after a completed transaction.
+ */
+export async function printThermalTransaction(data: ReceiptData, printerQueue: string, width = 48): Promise<void> {
+  await sendBytes(buildReceiptBytes(data, width), printerQueue)
+  if (data.delivery_type === 'delivery') {
+    await sendBytes(buildDeliverySlipBytes(data, width), printerQueue)
+  }
 }
 
 export interface CupsPrinter {

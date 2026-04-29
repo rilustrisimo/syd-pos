@@ -25,8 +25,7 @@ import { ReceiptTemplate, ReceiptData } from './receipt-template'
 import { InvoiceTemplate, InvoiceData } from './invoice-template'
 import { PackingSlipTemplate, PackingSlipData } from './packing-slip-template'
 import { printElement } from '@/lib/utils/print'
-import { buildReceiptBytes, buildDeliverySlipBytes } from '@/lib/utils/usb-thermal-print'
-import { listCupsPrinters, printUSBReceipt, type CupsPrinter } from '@/lib/utils/usb-thermal-print'
+import { printThermalTransaction, listCupsPrinters, type CupsPrinter } from '@/lib/utils/usb-thermal-print'
 import { usePrinterStore } from '@/lib/stores/printer'
 
 interface PrintDialogProps {
@@ -64,9 +63,11 @@ export function PrintDialog({
   // ── Printer store ────────────────────────────────────────────────────────
   const { btPortPath, setBtPortPath, paperWidth, setPaperWidth, cupsQueueName, setCupsQueueName } = usePrinterStore()
 
-  // ── Bluetooth / COM port state ───────────────────────────────────────────
+  // ── Bluetooth / COM port + USB state ─────────────────────────────────────
   type SerialPort = { path: string; displayName: string }
+  type UsbPrinter = { vendorId: number; productId: number; label: string }
   const [serialPorts, setSerialPorts]     = useState<SerialPort[]>([])
+  const [usbPrinters, setUsbPrinters]     = useState<UsbPrinter[]>([])
   const [loadingPorts, setLoadingPorts]   = useState(false)
   const [btPrinting, setBtPrinting]       = useState(false)
   const [btError, setBtError]             = useState<string | null>(null)
@@ -79,42 +80,54 @@ export function PrintDialog({
   useEffect(() => {
     if (!open) return
     setBtError(null)
-    if (hasBluetooth) {
-      loadSerialPorts()
-    } else if (!isElectron) {
+    if (hasBluetooth || isElectron) {
+      loadPrinters()
+    } else {
       listCupsPrinters().then(setCupsPrinters).catch(() => setCupsPrinters([]))
     }
   }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const loadSerialPorts = () => {
-    if (!window.electronBluetooth) return
+  const loadPrinters = () => {
     setLoadingPorts(true)
-    window.electronBluetooth.listPorts()
-      .then(setSerialPorts)
-      .catch(() => setSerialPorts([]))
-      .finally(() => setLoadingPorts(false))
+    const tasks: Promise<void>[] = []
+
+    if (window.electronBluetooth) {
+      tasks.push(
+        window.electronBluetooth.listPorts()
+          .then(setSerialPorts)
+          .catch(() => setSerialPorts([]))
+      )
+    }
+    if (window.electronPrint) {
+      tasks.push(
+        window.electronPrint.listUsbPrinters()
+          .then((devices) => setUsbPrinters(
+            devices.map((d) => ({
+              vendorId:  d.vendorId,
+              productId: d.productId,
+              label: d.manufacturer && d.product
+                ? `${d.manufacturer} ${d.product}`
+                : `USB Printer (${d.vendorId.toString(16)}:${d.productId.toString(16)})`,
+            }))
+          ))
+          .catch(() => setUsbPrinters([]))
+      )
+    }
+
+    Promise.all(tasks).finally(() => setLoadingPorts(false))
   }
 
   // ── Bluetooth print ──────────────────────────────────────────────────────
   const charWidth = paperWidth === '58mm' ? 32 : 48
 
-  const sendBytesToBt = async (bytes: Uint8Array) => {
-    if (!btPortPath || !window.electronBluetooth) throw new Error('No printer')
-    let binary = ''
-    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
-    const result = await window.electronBluetooth.printBytes(btPortPath, btoa(binary))
-    if (!result.success) throw new Error(result.error || 'Print failed')
-  }
-
   const handleBluetoothPrint = async () => {
-    if (!receiptData || !btPortPath || !window.electronBluetooth) return
+    if (!receiptData || !btPortPath) return
     setBtPrinting(true)
     setBtError(null)
     try {
-      await sendBytesToBt(buildReceiptBytes(receiptData, charWidth))
-      if (receiptData.delivery_type === 'delivery') {
-        await sendBytesToBt(buildDeliverySlipBytes(receiptData, charWidth))
-      }
+      // printThermalTransaction uses the unified sendBytes routing:
+      // "usb:vid:pid" → electronPrint (node-usb), else → electronBluetooth COM
+      await printThermalTransaction(receiptData, btPortPath, charWidth)
     } catch (err: any) {
       setBtError(err?.message || 'Print failed')
     } finally {
@@ -127,7 +140,7 @@ export function PrintDialog({
     if (!receiptData) return
     setCupsPrinting(true)
     try {
-      await printUSBReceipt(receiptData, cupsQueueName)
+      await printThermalTransaction(receiptData, cupsQueueName, charWidth)
     } catch (err: any) {
       console.error('[cups] Print failed:', err)
     } finally {
@@ -207,36 +220,51 @@ export function PrintDialog({
               {/* ── Thermal printer section ── */}
               <div className="mt-4 border rounded-lg p-3 space-y-2 bg-muted/30">
 
-                {hasBluetooth ? (
-                  // ── Electron: Bluetooth / COM port ──────────────────────
+                {(hasBluetooth || isElectron) ? (
+                  // ── Electron: Bluetooth/COM + USB ────────────────────────
                   <>
                     <div className="flex items-center justify-between">
                       <Label className="text-sm font-medium flex items-center gap-1.5">
                         <Bluetooth className="h-3.5 w-3.5" />
-                        Bluetooth Printer
+                        Thermal Printer
                       </Label>
-                      <Button variant="ghost" size="sm" onClick={loadSerialPorts} disabled={loadingPorts}>
+                      <Button variant="ghost" size="sm" onClick={loadPrinters} disabled={loadingPorts}>
                         <RefreshCw className={`h-3.5 w-3.5 ${loadingPorts ? 'animate-spin' : ''}`} />
                       </Button>
                     </div>
 
                     <Select value={btPortPath} onValueChange={setBtPortPath}>
                       <SelectTrigger className="h-8 text-sm">
-                        <SelectValue placeholder={loadingPorts ? 'Scanning ports…' : 'Select COM port'} />
+                        <SelectValue placeholder={loadingPorts ? 'Scanning…' : 'Select printer'} />
                       </SelectTrigger>
                       <SelectContent>
-                        {serialPorts.length === 0 && !loadingPorts && (
-                          <SelectItem value="_none" disabled>No COM ports found — pair printer in Windows Bluetooth settings</SelectItem>
+                        {serialPorts.length === 0 && usbPrinters.length === 0 && !loadingPorts && (
+                          <SelectItem value="_none" disabled>No printers found — pair Bluetooth or connect USB printer</SelectItem>
                         )}
-                        {serialPorts.map((p) => (
-                          <SelectItem key={p.path} value={p.path}>
-                            {p.path} {p.displayName !== p.path ? `— ${p.displayName}` : ''}
-                          </SelectItem>
-                        ))}
+                        {serialPorts.length > 0 && (
+                          <>
+                            <div className="px-2 py-1 text-xs text-muted-foreground font-medium">Bluetooth / COM</div>
+                            {serialPorts.map((p) => (
+                              <SelectItem key={p.path} value={p.path}>
+                                {p.path} {p.displayName !== p.path ? `— ${p.displayName}` : ''}
+                              </SelectItem>
+                            ))}
+                          </>
+                        )}
+                        {usbPrinters.length > 0 && (
+                          <>
+                            <div className="px-2 py-1 text-xs text-muted-foreground font-medium">USB</div>
+                            {usbPrinters.map((u) => (
+                              <SelectItem key={`usb:${u.vendorId}:${u.productId}`} value={`usb:${u.vendorId}:${u.productId}`}>
+                                {u.label}
+                              </SelectItem>
+                            ))}
+                          </>
+                        )}
                       </SelectContent>
                     </Select>
 
-                    {/* Paper width (mirrors mobile setting) */}
+                    {/* Paper width */}
                     <div className="flex gap-2">
                       {(['58mm', '80mm'] as const).map((w) => (
                         <Button
@@ -261,8 +289,8 @@ export function PrintDialog({
                       onClick={handleBluetoothPrint}
                       disabled={btPrinting || !btPortPath || btPortPath === '_none'}
                     >
-                      <Bluetooth className="mr-2 h-3.5 w-3.5" />
-                      {btPrinting ? 'Printing…' : 'Print to Bluetooth Printer'}
+                      <Printer className="mr-2 h-3.5 w-3.5" />
+                      {btPrinting ? 'Printing…' : 'Print to Thermal Printer'}
                     </Button>
                   </>
                 ) : (

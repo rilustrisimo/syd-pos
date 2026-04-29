@@ -41,7 +41,7 @@ import {
   Handshake,
 } from 'lucide-react'
 import type { ReceiptData } from '@/components/print/receipt-template'
-import { buildReceiptBytes, buildDeliverySlipBytes } from '@/lib/utils/usb-thermal-print'
+import { printThermalTransaction } from '@/lib/utils/usb-thermal-print'
 import { usePrinterStore } from '@/lib/stores/printer'
 
 import { Button } from '@/components/ui/button'
@@ -299,28 +299,15 @@ export default function FrontlinePOSPage() {
   const { btPortPath, paperWidth } = usePrinterStore()
   const charWidth = paperWidth === '58mm' ? 32 : 48
 
-  // Send a single Uint8Array to the Bluetooth thermal printer
-  const sendBytesToBt = useCallback(async (bytes: Uint8Array): Promise<boolean> => {
-    if (!btPortPath || typeof window === 'undefined' || !window.electronBluetooth) return false
-    let binary = ''
-    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
-    const result = await window.electronBluetooth.printBytes(btPortPath, btoa(binary))
-    if (!result.success) throw new Error(result.error || 'Print failed')
-    return true
-  }, [btPortPath])
-
-  // Auto-print receipt (+ delivery slip for delivery orders) to Bluetooth thermal printer
+  // Auto-print receipt (+ delivery slip for delivery orders) to thermal printer
   const autoPrintBluetooth = useCallback(async (receipt: ReceiptData) => {
-    if (!btPortPath || typeof window === 'undefined' || !window.electronBluetooth) return
+    if (!btPortPath || typeof window === 'undefined' || (!window.electronBluetooth && !window.electronPrint)) return
     try {
-      await sendBytesToBt(buildReceiptBytes(receipt, charWidth))
-      if (receipt.delivery_type === 'delivery') {
-        await sendBytesToBt(buildDeliverySlipBytes(receipt, charWidth))
-      }
+      await printThermalTransaction(receipt, btPortPath, charWidth)
     } catch (err: any) {
       toast.error(`Thermal print error: ${err?.message}`)
     }
-  }, [btPortPath, charWidth, sendBytesToBt])
+  }, [btPortPath, charWidth])
 
   // Get authenticated user
   const { user } = useAuthStore()
@@ -929,8 +916,8 @@ export default function FrontlinePOSPage() {
         notes: txn.notes,
       }
       toast.dismiss(toastId)
-      // If Bluetooth printer is configured, print immediately without opening dialog
-      if (btPortPath && typeof window !== 'undefined' && window.electronBluetooth) {
+      // If thermal printer is configured, print immediately without opening dialog
+      if (btPortPath && typeof window !== 'undefined' && (window.electronBluetooth || window.electronPrint)) {
         autoPrintBluetooth(receipt)
         toast.success('Sent to thermal printer')
       } else {
