@@ -268,9 +268,9 @@ function toBase64(bytes: Uint8Array): string {
  *  - CUPS (macOS web): /api/print route
  */
 async function sendBytes(bytes: Uint8Array, printerQueue: string): Promise<void> {
-  // Branch 1: Bluetooth / COM port — persistent connection (port already open in main process)
+  // Branch 1: Bluetooth / COM port — open → write → close per print job
   if (typeof window !== 'undefined' && window.electronBluetooth && !printerQueue.startsWith('usb:')) {
-    const result = await window.electronBluetooth.printBytes(toBase64(bytes))
+    const result = await window.electronBluetooth.printBytes(printerQueue, toBase64(bytes))
     if (result.success) return
     throw new Error(result.error || 'Bluetooth print failed')
   }
@@ -297,23 +297,24 @@ async function sendBytes(bytes: Uint8Array, printerQueue: string): Promise<void>
 // Bluetooth connection management (Electron only)
 // ---------------------------------------------------------------------------
 
-/** Connect to a Bluetooth COM port and hold it open (persistent, like mobile). */
+/**
+ * Verify a Bluetooth COM port can be opened (quick test — open then close).
+ * Does NOT hold the port open. Each print job opens its own connection.
+ */
 export async function connectBtPrinter(portPath: string): Promise<void> {
   if (typeof window === 'undefined' || !window.electronBluetooth) {
     throw new Error('Bluetooth not available in this environment')
   }
   const result = await window.electronBluetooth.connect(portPath)
-  if (!result.success) throw new Error(result.error || 'Failed to connect')
+  if (!result.success) throw new Error(result.error || 'Failed to verify port')
 }
 
-/** Disconnect the Bluetooth COM port. */
+/** No-op — ports are not held open between prints. */
 export async function disconnectBtPrinter(): Promise<void> {
-  if (typeof window !== 'undefined' && window.electronBluetooth) {
-    await window.electronBluetooth.disconnect()
-  }
+  // nothing to do
 }
 
-/** Returns whether a Bluetooth COM port is currently connected. */
+/** Returns connected=true when a COM port path is saved. */
 export async function getBtPrinterStatus(): Promise<{ connected: boolean; path: string | null }> {
   if (typeof window === 'undefined' || !window.electronBluetooth) {
     return { connected: false, path: null }

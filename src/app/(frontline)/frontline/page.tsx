@@ -46,7 +46,7 @@ import {
   CheckCircle2,
 } from 'lucide-react'
 import type { ReceiptData } from '@/components/print/receipt-template'
-import { printThermalTransaction, listAllPrinters, printTestPage, connectBtPrinter, disconnectBtPrinter, getBtPrinterStatus, type DiscoveredPrinter } from '@/lib/utils/usb-thermal-print'
+import { printThermalTransaction, listAllPrinters, printTestPage, connectBtPrinter, type DiscoveredPrinter } from '@/lib/utils/usb-thermal-print'
 import { usePrinterStore } from '@/lib/stores/printer'
 
 import { Button } from '@/components/ui/button'
@@ -307,22 +307,16 @@ export default function FrontlinePOSPage() {
   const charWidth = paperWidth === '58mm' ? 32 : 48
 
   // Printer settings sheet state
-  const [isPrinterOpen, setIsPrinterOpen]             = useState(false)
-  const [discoveredPrinters, setDiscoveredPrinters]   = useState<DiscoveredPrinter[]>([])
-  const [scanningPrinters, setScanningPrinters]       = useState(false)
-  const [btConnected, setBtConnected]                 = useState(false)
-  const [btConnectedPath, setBtConnectedPath]         = useState<string | null>(null)
-  const [connecting, setConnecting]                   = useState(false)
-  const [testPrinting, setTestPrinting]               = useState(false)
-  const [printerError, setPrinterError]               = useState<string | null>(null)
+  const [isPrinterOpen, setIsPrinterOpen]           = useState(false)
+  const [discoveredPrinters, setDiscoveredPrinters] = useState<DiscoveredPrinter[]>([])
+  const [scanningPrinters, setScanningPrinters]     = useState(false)
+  const [connecting, setConnecting]                 = useState(false)
+  const [testPrinting, setTestPrinting]             = useState(false)
+  const [printerError, setPrinterError]             = useState<string | null>(null)
   const isElectronEnv = typeof window !== 'undefined' && (!!window.electronBluetooth || !!window.electronPrint)
 
-  // Refresh connection status from main process
-  const refreshBtStatus = useCallback(async () => {
-    const status = await getBtPrinterStatus()
-    setBtConnected(status.connected)
-    setBtConnectedPath(status.path)
-  }, [])
+  // btPortPath from store is the source of truth — if set, printer is selected
+  const btSelected = !!btPortPath
 
   const scanPrinters = useCallback(async () => {
     setScanningPrinters(true)
@@ -335,51 +329,36 @@ export default function FrontlinePOSPage() {
     }
   }, [])
 
-  // Scan + refresh status when printer sheet opens
   useEffect(() => {
-    if (isPrinterOpen) {
-      scanPrinters()
-      refreshBtStatus()
-    }
-  }, [isPrinterOpen, scanPrinters, refreshBtStatus])
+    if (isPrinterOpen) scanPrinters()
+  }, [isPrinterOpen, scanPrinters])
 
+  // "Connect" = verify the port opens successfully, then save it
   const handleConnect = async (portPath: string) => {
     setConnecting(true)
     setPrinterError(null)
     try {
-      // Disconnect existing first
-      if (btConnected) await disconnectBtPrinter()
-      await connectBtPrinter(portPath)
+      await connectBtPrinter(portPath)   // quick open+close test
       setBtPortPath(portPath)
-      setBtConnected(true)
-      setBtConnectedPath(portPath)
-      toast.success(`Connected to ${portPath}`)
+      toast.success(`Printer set to ${portPath}`)
     } catch (err: any) {
-      setPrinterError(err?.message || 'Connection failed')
-      setBtConnected(false)
-      setBtConnectedPath(null)
+      setPrinterError(err?.message || 'Could not open port — is the printer on and paired?')
     } finally {
       setConnecting(false)
     }
   }
 
-  const handleDisconnect = async () => {
-    try {
-      await disconnectBtPrinter()
-      setBtConnected(false)
-      setBtConnectedPath(null)
-      toast.success('Printer disconnected')
-    } catch (err: any) {
-      setPrinterError(err?.message || 'Disconnect failed')
-    }
+  const handleDisconnect = () => {
+    setBtPortPath('')
+    toast.success('Printer cleared')
   }
 
   const handleTestPrint = async () => {
-    if (!btConnected) return
+    if (!btPortPath) return
     setTestPrinting(true)
     setPrinterError(null)
     try {
-      await printTestPage(btConnectedPath ?? '', charWidth)
+      await printTestPage(btPortPath, charWidth)
       toast.success('Test page sent!')
     } catch (err: any) {
       setPrinterError(err?.message || 'Test print failed')
@@ -391,21 +370,9 @@ export default function FrontlinePOSPage() {
   // Auto-print receipt (+ delivery slip for delivery orders) to thermal printer
   const autoPrintBluetooth = useCallback(async (receipt: ReceiptData) => {
     if (typeof window === 'undefined') return
+    if (!btPortPath) return
     try {
-      // USB path: no connection needed, route directly
-      if (window.electronPrint && btPortPath.startsWith('usb:')) {
-        await printThermalTransaction(receipt, btPortPath, charWidth)
-        return
-      }
-      // Bluetooth/COM: verify the port is actually open in main process before printing
-      if (window.electronBluetooth) {
-        const status = await getBtPrinterStatus()
-        if (!status.connected) {
-          toast.error('Thermal printer not connected. Open printer settings to connect.')
-          return
-        }
-        await printThermalTransaction(receipt, btPortPath, charWidth)
-      }
+      await printThermalTransaction(receipt, btPortPath, charWidth)
     } catch (err: any) {
       toast.error(`Thermal print error: ${err?.message}`)
     }
@@ -1018,14 +985,11 @@ export default function FrontlinePOSPage() {
         notes: txn.notes,
       }
       toast.dismiss(toastId)
-      // If a thermal printer is connected, print immediately
-      const btStatus = typeof window !== 'undefined' && window.electronBluetooth
-        ? await getBtPrinterStatus()
-        : null
-      const usbReady = typeof window !== 'undefined' && !!window.electronPrint && btPortPath.startsWith('usb:')
-      if (btStatus?.connected || usbReady) {
+      // If a thermal printer port is saved in Electron, print directly
+      const isElectron = typeof window !== 'undefined' && (!!window.electronBluetooth || !!window.electronPrint)
+      if (isElectron && btPortPath) {
         autoPrintBluetooth(receipt)
-        toast.success('Sent to thermal printer')
+        toast.success('Sending to thermal printer…')
       } else {
         setReprintReceiptData(receipt)
         setIsReprintOpen(true)
@@ -2389,23 +2353,23 @@ export default function FrontlinePOSPage() {
             </SheetDescription>
           </SheetHeader>
 
-          {/* Connection status badge */}
+          {/* Selected printer badge */}
           <div className={`flex items-center gap-2 py-2 px-3 rounded-md text-sm mb-3 ${
-            btConnected ? 'bg-green-50 border border-green-200' : 'bg-muted'
+            btSelected ? 'bg-green-50 border border-green-200' : 'bg-muted'
           }`}>
-            {btConnected ? (
+            {btSelected ? (
               <>
                 <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
-                <span className="font-medium text-green-700 truncate flex-1">{btConnectedPath}</span>
+                <span className="font-medium text-green-700 truncate flex-1">{btPortPath}</span>
                 <Button variant="ghost" size="sm" className="h-6 text-xs shrink-0 text-destructive"
-                  onClick={handleDisconnect} disabled={connecting}>
-                  Disconnect
+                  onClick={handleDisconnect}>
+                  Clear
                 </Button>
               </>
             ) : (
               <>
                 <Bluetooth className="h-4 w-4 text-muted-foreground shrink-0" />
-                <span className="text-muted-foreground">Not connected</span>
+                <span className="text-muted-foreground">No printer selected</span>
               </>
             )}
           </div>
@@ -2414,7 +2378,7 @@ export default function FrontlinePOSPage() {
           <div className="space-y-2 flex-1">
             <div className="flex items-center justify-between mb-1">
               <Label className="text-sm font-medium">Available Ports</Label>
-              <Button variant="ghost" size="sm" onClick={() => { scanPrinters(); refreshBtStatus() }} disabled={scanningPrinters}>
+              <Button variant="ghost" size="sm" onClick={scanPrinters} disabled={scanningPrinters}>
                 <RefreshCw className={`h-3.5 w-3.5 ${scanningPrinters ? 'animate-spin' : ''}`} />
               </Button>
             </div>
@@ -2437,7 +2401,7 @@ export default function FrontlinePOSPage() {
             ) : (
               <div className="space-y-1">
                 {discoveredPrinters.map((p) => {
-                  const isConnected = btConnectedPath === p.value && btConnected
+                  const isConnected = btPortPath === p.value
                   return (
                     <button
                       key={p.value}
@@ -2496,7 +2460,7 @@ export default function FrontlinePOSPage() {
             <Button
               className="w-full"
               onClick={handleTestPrint}
-              disabled={testPrinting || !btConnected}
+              disabled={testPrinting || !btSelected}
             >
               {testPrinting
                 ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
