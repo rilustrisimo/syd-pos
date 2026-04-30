@@ -391,12 +391,21 @@ export default function FrontlinePOSPage() {
   // Auto-print receipt (+ delivery slip for delivery orders) to thermal printer
   const autoPrintBluetooth = useCallback(async (receipt: ReceiptData) => {
     if (typeof window === 'undefined') return
-    // BT: requires persistent connection; USB: uses printerQueue path
-    const hasBt = !!window.electronBluetooth
-    const hasUsb = !!window.electronPrint && btPortPath.startsWith('usb:')
-    if (!hasBt && !hasUsb) return
     try {
-      await printThermalTransaction(receipt, btPortPath, charWidth)
+      // USB path: no connection needed, route directly
+      if (window.electronPrint && btPortPath.startsWith('usb:')) {
+        await printThermalTransaction(receipt, btPortPath, charWidth)
+        return
+      }
+      // Bluetooth/COM: verify the port is actually open in main process before printing
+      if (window.electronBluetooth) {
+        const status = await getBtPrinterStatus()
+        if (!status.connected) {
+          toast.error('Thermal printer not connected. Open printer settings to connect.')
+          return
+        }
+        await printThermalTransaction(receipt, btPortPath, charWidth)
+      }
     } catch (err: any) {
       toast.error(`Thermal print error: ${err?.message}`)
     }
@@ -1009,8 +1018,12 @@ export default function FrontlinePOSPage() {
         notes: txn.notes,
       }
       toast.dismiss(toastId)
-      // If thermal printer is configured, print immediately without opening dialog
-      if (btPortPath && typeof window !== 'undefined' && (window.electronBluetooth || window.electronPrint)) {
+      // If a thermal printer is connected, print immediately
+      const btStatus = typeof window !== 'undefined' && window.electronBluetooth
+        ? await getBtPrinterStatus()
+        : null
+      const usbReady = typeof window !== 'undefined' && !!window.electronPrint && btPortPath.startsWith('usb:')
+      if (btStatus?.connected || usbReady) {
         autoPrintBluetooth(receipt)
         toast.success('Sent to thermal printer')
       } else {
