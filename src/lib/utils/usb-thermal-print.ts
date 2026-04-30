@@ -262,13 +262,13 @@ function toBase64(bytes: Uint8Array): string {
  * Send ESC/POS bytes to the configured thermal printer.
  *
  * Routing:
- *  - Bluetooth/COM (Electron): uses persistent connection opened by connectBtPrinter().
- *    printerQueue value is ignored — port is already open in main process.
- *  - USB (Electron): "usb:vendorId:productId" path → node-usb IPC
- *  - CUPS (macOS web): /api/print route
+ *  - Bluetooth/COM (Electron): printerQueue = COM port path (e.g. "COM4").
+ *    Each call opens the port, writes bytes, then closes — no persistent connection.
+ *  - USB (Electron): printerQueue = "usb:vendorId:productId" → node-usb IPC
+ *  - CUPS (macOS web): printerQueue = CUPS queue name → /api/print route
  */
 async function sendBytes(bytes: Uint8Array, printerQueue: string): Promise<void> {
-  // Branch 1: Bluetooth / COM port — open → write → close per print job
+  // Branch 1: Bluetooth / COM port — open → settle → write → close per job
   if (typeof window !== 'undefined' && window.electronBluetooth && !printerQueue.startsWith('usb:')) {
     const result = await window.electronBluetooth.printBytes(printerQueue, toBase64(bytes))
     if (result.success) return
@@ -276,17 +276,19 @@ async function sendBytes(bytes: Uint8Array, printerQueue: string): Promise<void>
   }
 
   // Branch 2: USB via node-usb Electron IPC ("usb:vendorId:productId" paths)
-  if (typeof window !== 'undefined' && window.electronPrint) {
+  if (typeof window !== 'undefined' && window.electronPrint && printerQueue.startsWith('usb:')) {
     const parts = printerQueue.split(':')
-    if (parts[0] === 'usb' && parts.length === 3) {
+    if (parts.length === 3) {
       const vendorId  = parseInt(parts[1], 10)
       const productId = parseInt(parts[2], 10)
-      if (!isNaN(vendorId) && !isNaN(productId)) {
-        const result = await window.electronPrint.printBytes(vendorId, productId, toBase64(bytes))
-        if (result.success) return
-        throw new Error(result.error || 'USB print failed')
+      if (isNaN(vendorId) || isNaN(productId)) {
+        throw new Error(`Invalid USB printer path: ${printerQueue}`)
       }
+      const result = await window.electronPrint.printBytes(vendorId, productId, toBase64(bytes))
+      if (result.success) return
+      throw new Error(result.error || 'USB print failed')
     }
+    throw new Error(`Invalid USB printer path: ${printerQueue}`)
   }
 
   // Branch 3: CUPS (macOS only)
@@ -309,18 +311,6 @@ export async function connectBtPrinter(portPath: string): Promise<void> {
   if (!result.success) throw new Error(result.error || 'Failed to verify port')
 }
 
-/** No-op — ports are not held open between prints. */
-export async function disconnectBtPrinter(): Promise<void> {
-  // nothing to do
-}
-
-/** Returns connected=true when a COM port path is saved. */
-export async function getBtPrinterStatus(): Promise<{ connected: boolean; path: string | null }> {
-  if (typeof window === 'undefined' || !window.electronBluetooth) {
-    return { connected: false, path: null }
-  }
-  return window.electronBluetooth.isConnected()
-}
 
 // ---------------------------------------------------------------------------
 // Delivery slip builder (mirrors escpos-mobile.ts buildDeliverySlipBytes)
@@ -433,11 +423,6 @@ export function buildDeliverySlipBytes(data: ReceiptData, width = 48): Uint8Arra
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
-
-/** Print receipt only (no delivery slip). */
-export async function printUSBReceipt(data: ReceiptData, printerQueue: string, width = 48): Promise<void> {
-  await sendBytes(buildReceiptBytes(data, width), printerQueue)
-}
 
 /**
  * Print receipt, then — for delivery transactions — also print the delivery
