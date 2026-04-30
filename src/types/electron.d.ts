@@ -25,11 +25,21 @@ interface ElectronSerialPort {
   displayName: string
 }
 
+/**
+ * Persistent-connection Bluetooth bridge (mirrors mobile bt-printer.ts).
+ * Flow: connect(portPath) once → hold open → printBytes() → disconnect()
+ */
 interface ElectronBluetoothBridge {
-  /** List available serial/COM ports (includes Bluetooth SPP ports on Windows) */
+  /** List available serial/COM ports (Bluetooth SPP printers appear after pairing on Windows) */
   listPorts(): Promise<ElectronSerialPort[]>
-  /** Send raw ESC/POS bytes to a COM port */
-  printBytes(portPath: string, bytesBase64: string): Promise<{ success: boolean; error?: string }>
+  /** Open and hold the COM port open (persistent connection) */
+  connect(portPath: string): Promise<{ success: boolean; error?: string; path?: string }>
+  /** Close the persistent COM port */
+  disconnect(): Promise<{ success: boolean; error?: string }>
+  /** Whether the port is currently open */
+  isConnected(): Promise<{ connected: boolean; path: string | null }>
+  /** Send raw ESC/POS bytes to the currently-open port */
+  printBytes(bytesBase64: string): Promise<{ success: boolean; error?: string }>
 }
 
 declare global {

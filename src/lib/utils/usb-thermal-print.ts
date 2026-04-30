@@ -260,12 +260,17 @@ function toBase64(bytes: Uint8Array): string {
 
 /**
  * Send ESC/POS bytes to the configured thermal printer.
- * Priority: Bluetooth/COM IPC → USB IPC → CUPS (macOS)
+ *
+ * Routing:
+ *  - Bluetooth/COM (Electron): uses persistent connection opened by connectBtPrinter().
+ *    printerQueue value is ignored — port is already open in main process.
+ *  - USB (Electron): "usb:vendorId:productId" path → node-usb IPC
+ *  - CUPS (macOS web): /api/print route
  */
 async function sendBytes(bytes: Uint8Array, printerQueue: string): Promise<void> {
-  // Branch 1: Bluetooth / COM port via Electron IPC (non-USB paths only)
-  if (typeof window !== 'undefined' && window.electronBluetooth && printerQueue && !printerQueue.startsWith('usb:')) {
-    const result = await window.electronBluetooth.printBytes(printerQueue, toBase64(bytes))
+  // Branch 1: Bluetooth / COM port — persistent connection (port already open in main process)
+  if (typeof window !== 'undefined' && window.electronBluetooth && !printerQueue.startsWith('usb:')) {
+    const result = await window.electronBluetooth.printBytes(toBase64(bytes))
     if (result.success) return
     throw new Error(result.error || 'Bluetooth print failed')
   }
@@ -286,6 +291,34 @@ async function sendBytes(bytes: Uint8Array, printerQueue: string): Promise<void>
 
   // Branch 3: CUPS (macOS only)
   await sendToCUPS(bytes, printerQueue)
+}
+
+// ---------------------------------------------------------------------------
+// Bluetooth connection management (Electron only)
+// ---------------------------------------------------------------------------
+
+/** Connect to a Bluetooth COM port and hold it open (persistent, like mobile). */
+export async function connectBtPrinter(portPath: string): Promise<void> {
+  if (typeof window === 'undefined' || !window.electronBluetooth) {
+    throw new Error('Bluetooth not available in this environment')
+  }
+  const result = await window.electronBluetooth.connect(portPath)
+  if (!result.success) throw new Error(result.error || 'Failed to connect')
+}
+
+/** Disconnect the Bluetooth COM port. */
+export async function disconnectBtPrinter(): Promise<void> {
+  if (typeof window !== 'undefined' && window.electronBluetooth) {
+    await window.electronBluetooth.disconnect()
+  }
+}
+
+/** Returns whether a Bluetooth COM port is currently connected. */
+export async function getBtPrinterStatus(): Promise<{ connected: boolean; path: string | null }> {
+  if (typeof window === 'undefined' || !window.electronBluetooth) {
+    return { connected: false, path: null }
+  }
+  return window.electronBluetooth.isConnected()
 }
 
 // ---------------------------------------------------------------------------
@@ -501,7 +534,11 @@ export async function listAllPrinters(): Promise<DiscoveredPrinter[]> {
 // Test print
 // ---------------------------------------------------------------------------
 
-/** Send a short ESC/POS test page to verify the printer connection. */
+/**
+ * Send a short ESC/POS test page to verify the printer connection.
+ * For Bluetooth printers, the port must be connected first via connectBtPrinter().
+ * printerQueue is only used for the info line printed on the page.
+ */
 export async function printTestPage(printerQueue: string, width = 48): Promise<void> {
   const bytes: number[] = []
   const divider = '='.repeat(width)

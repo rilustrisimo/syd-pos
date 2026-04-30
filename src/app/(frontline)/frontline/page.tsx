@@ -46,7 +46,7 @@ import {
   CheckCircle2,
 } from 'lucide-react'
 import type { ReceiptData } from '@/components/print/receipt-template'
-import { printThermalTransaction, listAllPrinters, printTestPage, type DiscoveredPrinter } from '@/lib/utils/usb-thermal-print'
+import { printThermalTransaction, listAllPrinters, printTestPage, connectBtPrinter, disconnectBtPrinter, getBtPrinterStatus, type DiscoveredPrinter } from '@/lib/utils/usb-thermal-print'
 import { usePrinterStore } from '@/lib/stores/printer'
 
 import { Button } from '@/components/ui/button'
@@ -307,16 +307,26 @@ export default function FrontlinePOSPage() {
   const charWidth = paperWidth === '58mm' ? 32 : 48
 
   // Printer settings sheet state
-  const [isPrinterOpen, setIsPrinterOpen]       = useState(false)
-  const [discoveredPrinters, setDiscoveredPrinters] = useState<DiscoveredPrinter[]>([])
-  const [scanningPrinters, setScanningPrinters]  = useState(false)
-  const [testPrinting, setTestPrinting]          = useState(false)
-  const [testError, setTestError]                = useState<string | null>(null)
+  const [isPrinterOpen, setIsPrinterOpen]             = useState(false)
+  const [discoveredPrinters, setDiscoveredPrinters]   = useState<DiscoveredPrinter[]>([])
+  const [scanningPrinters, setScanningPrinters]       = useState(false)
+  const [btConnected, setBtConnected]                 = useState(false)
+  const [btConnectedPath, setBtConnectedPath]         = useState<string | null>(null)
+  const [connecting, setConnecting]                   = useState(false)
+  const [testPrinting, setTestPrinting]               = useState(false)
+  const [printerError, setPrinterError]               = useState<string | null>(null)
   const isElectronEnv = typeof window !== 'undefined' && (!!window.electronBluetooth || !!window.electronPrint)
+
+  // Refresh connection status from main process
+  const refreshBtStatus = useCallback(async () => {
+    const status = await getBtPrinterStatus()
+    setBtConnected(status.connected)
+    setBtConnectedPath(status.path)
+  }, [])
 
   const scanPrinters = useCallback(async () => {
     setScanningPrinters(true)
-    setTestError(null)
+    setPrinterError(null)
     try {
       const found = await listAllPrinters()
       setDiscoveredPrinters(found)
@@ -325,20 +335,54 @@ export default function FrontlinePOSPage() {
     }
   }, [])
 
-  // Scan when printer sheet opens
+  // Scan + refresh status when printer sheet opens
   useEffect(() => {
-    if (isPrinterOpen) scanPrinters()
-  }, [isPrinterOpen, scanPrinters])
+    if (isPrinterOpen) {
+      scanPrinters()
+      refreshBtStatus()
+    }
+  }, [isPrinterOpen, scanPrinters, refreshBtStatus])
+
+  const handleConnect = async (portPath: string) => {
+    setConnecting(true)
+    setPrinterError(null)
+    try {
+      // Disconnect existing first
+      if (btConnected) await disconnectBtPrinter()
+      await connectBtPrinter(portPath)
+      setBtPortPath(portPath)
+      setBtConnected(true)
+      setBtConnectedPath(portPath)
+      toast.success(`Connected to ${portPath}`)
+    } catch (err: any) {
+      setPrinterError(err?.message || 'Connection failed')
+      setBtConnected(false)
+      setBtConnectedPath(null)
+    } finally {
+      setConnecting(false)
+    }
+  }
+
+  const handleDisconnect = async () => {
+    try {
+      await disconnectBtPrinter()
+      setBtConnected(false)
+      setBtConnectedPath(null)
+      toast.success('Printer disconnected')
+    } catch (err: any) {
+      setPrinterError(err?.message || 'Disconnect failed')
+    }
+  }
 
   const handleTestPrint = async () => {
-    if (!btPortPath) return
+    if (!btConnected) return
     setTestPrinting(true)
-    setTestError(null)
+    setPrinterError(null)
     try {
-      await printTestPage(btPortPath, charWidth)
-      toast.success('Test page sent to printer')
+      await printTestPage(btConnectedPath ?? '', charWidth)
+      toast.success('Test page sent!')
     } catch (err: any) {
-      setTestError(err?.message || 'Test print failed')
+      setPrinterError(err?.message || 'Test print failed')
     } finally {
       setTestPrinting(false)
     }
@@ -346,7 +390,11 @@ export default function FrontlinePOSPage() {
 
   // Auto-print receipt (+ delivery slip for delivery orders) to thermal printer
   const autoPrintBluetooth = useCallback(async (receipt: ReceiptData) => {
-    if (!btPortPath || typeof window === 'undefined' || (!window.electronBluetooth && !window.electronPrint)) return
+    if (typeof window === 'undefined') return
+    // BT: requires persistent connection; USB: uses printerQueue path
+    const hasBt = !!window.electronBluetooth
+    const hasUsb = !!window.electronPrint && btPortPath.startsWith('usb:')
+    if (!hasBt && !hasUsb) return
     try {
       await printThermalTransaction(receipt, btPortPath, charWidth)
     } catch (err: any) {
@@ -2324,30 +2372,36 @@ export default function FrontlinePOSPage() {
               Thermal Printer
             </SheetTitle>
             <SheetDescription>
-              Select your thermal printer and test the connection.
+              Pair your VOZY80 in Windows Bluetooth settings first, then connect here.
             </SheetDescription>
           </SheetHeader>
 
-          {/* Current status */}
-          <div className="flex items-center gap-2 py-2 px-3 rounded-md bg-muted text-sm mb-4">
-            {btPortPath ? (
+          {/* Connection status badge */}
+          <div className={`flex items-center gap-2 py-2 px-3 rounded-md text-sm mb-3 ${
+            btConnected ? 'bg-green-50 border border-green-200' : 'bg-muted'
+          }`}>
+            {btConnected ? (
               <>
-                <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
-                <span className="font-medium truncate">{btPortPath}</span>
+                <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
+                <span className="font-medium text-green-700 truncate flex-1">{btConnectedPath}</span>
+                <Button variant="ghost" size="sm" className="h-6 text-xs shrink-0 text-destructive"
+                  onClick={handleDisconnect} disabled={connecting}>
+                  Disconnect
+                </Button>
               </>
             ) : (
               <>
-                <Printer className="h-4 w-4 text-muted-foreground shrink-0" />
-                <span className="text-muted-foreground">No printer selected</span>
+                <Bluetooth className="h-4 w-4 text-muted-foreground shrink-0" />
+                <span className="text-muted-foreground">Not connected</span>
               </>
             )}
           </div>
 
-          {/* Printer list */}
+          {/* Printer list — tap to connect */}
           <div className="space-y-2 flex-1">
             <div className="flex items-center justify-between mb-1">
-              <Label className="text-sm font-medium">Available Printers</Label>
-              <Button variant="ghost" size="sm" onClick={scanPrinters} disabled={scanningPrinters}>
+              <Label className="text-sm font-medium">Available Ports</Label>
+              <Button variant="ghost" size="sm" onClick={() => { scanPrinters(); refreshBtStatus() }} disabled={scanningPrinters}>
                 <RefreshCw className={`h-3.5 w-3.5 ${scanningPrinters ? 'animate-spin' : ''}`} />
               </Button>
             </div>
@@ -2355,33 +2409,50 @@ export default function FrontlinePOSPage() {
             {scanningPrinters ? (
               <div className="flex items-center gap-2 text-sm text-muted-foreground py-4 justify-center">
                 <Loader2 className="h-4 w-4 animate-spin" />
-                Scanning for printers…
+                Scanning…
               </div>
             ) : discoveredPrinters.length === 0 ? (
-              <div className="text-sm text-muted-foreground py-4 text-center space-y-1">
-                <p>No printers found.</p>
-                <p className="text-xs">Pair your VOZY80 in Windows Bluetooth settings first,<br />then click Refresh.</p>
+              <div className="text-sm text-muted-foreground py-4 text-center space-y-2">
+                <Bluetooth className="h-8 w-8 mx-auto opacity-30" />
+                <p>No COM ports found.</p>
+                <p className="text-xs leading-relaxed">
+                  1. Go to Windows Settings → Bluetooth<br />
+                  2. Pair your VOZY80 printer<br />
+                  3. Click Refresh above
+                </p>
               </div>
             ) : (
               <div className="space-y-1">
-                {discoveredPrinters.map((p) => (
-                  <button
-                    key={p.value}
-                    onClick={() => setBtPortPath(p.value)}
-                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm text-left transition-colors
-                      ${btPortPath === p.value
-                        ? 'bg-primary text-primary-foreground'
-                        : 'hover:bg-accent'
-                      }`}
-                  >
-                    {p.type === 'usb'
-                      ? <Usb className="h-4 w-4 shrink-0" />
-                      : <Bluetooth className="h-4 w-4 shrink-0" />
-                    }
-                    <span className="truncate flex-1">{p.label}</span>
-                    {btPortPath === p.value && <Check className="h-4 w-4 shrink-0" />}
-                  </button>
-                ))}
+                {discoveredPrinters.map((p) => {
+                  const isConnected = btConnectedPath === p.value && btConnected
+                  return (
+                    <button
+                      key={p.value}
+                      onClick={() => !isConnected && handleConnect(p.value)}
+                      disabled={connecting}
+                      className={`w-full flex items-center gap-3 px-3 py-3 rounded-md text-sm text-left transition-colors
+                        ${isConnected
+                          ? 'bg-green-100 border border-green-300 cursor-default'
+                          : 'hover:bg-accent border border-transparent'
+                        }`}
+                    >
+                      {p.type === 'usb'
+                        ? <Usb className="h-4 w-4 shrink-0 text-muted-foreground" />
+                        : <Bluetooth className={`h-4 w-4 shrink-0 ${isConnected ? 'text-green-600' : 'text-muted-foreground'}`} />
+                      }
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium truncate">{p.label}</div>
+                        <div className="text-xs text-muted-foreground">{isConnected ? 'Connected — tap to use' : 'Tap to connect'}</div>
+                      </div>
+                      {connecting && btPortPath === p.value
+                        ? <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                        : isConnected
+                          ? <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
+                          : null
+                      }
+                    </button>
+                  )
+                })}
               </div>
             )}
           </div>
@@ -2404,21 +2475,20 @@ export default function FrontlinePOSPage() {
             </div>
           </div>
 
-          {/* Test print */}
+          {/* Error + test print */}
           <div className="mt-4 space-y-2">
-            {testError && (
-              <p className="text-xs text-destructive">{testError}</p>
+            {printerError && (
+              <p className="text-xs text-destructive bg-destructive/10 px-3 py-2 rounded-md">{printerError}</p>
             )}
             <Button
               className="w-full"
               onClick={handleTestPrint}
-              disabled={testPrinting || !btPortPath}
+              disabled={testPrinting || !btConnected}
             >
-              {testPrinting ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Printer className="mr-2 h-4 w-4" />
-              )}
+              {testPrinting
+                ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                : <Printer className="mr-2 h-4 w-4" />
+              }
               {testPrinting ? 'Printing…' : 'Send Test Page'}
             </Button>
           </div>
