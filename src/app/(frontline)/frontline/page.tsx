@@ -310,7 +310,7 @@ export default function FrontlinePOSPage() {
   const [isPrinterOpen, setIsPrinterOpen]           = useState(false)
   const [discoveredPrinters, setDiscoveredPrinters] = useState<DiscoveredPrinter[]>([])
   const [scanningPrinters, setScanningPrinters]     = useState(false)
-  const [connecting, setConnecting]                 = useState(false)
+  const [connectingPath, setConnectingPath]         = useState<string | null>(null)
   const [testPrinting, setTestPrinting]             = useState(false)
   const [printerError, setPrinterError]             = useState<string | null>(null)
   const isElectronEnv = typeof window !== 'undefined' && (!!window.electronBluetooth || !!window.electronPrint)
@@ -334,17 +334,24 @@ export default function FrontlinePOSPage() {
   }, [isPrinterOpen, scanPrinters])
 
   // "Connect" = verify the port opens successfully, then save it
-  const handleConnect = async (portPath: string) => {
-    setConnecting(true)
+  const handleConnect = async (printer: DiscoveredPrinter) => {
+    setConnectingPath(printer.value)
     setPrinterError(null)
     try {
-      await connectBtPrinter(portPath)   // quick open+close test
-      setBtPortPath(portPath)
-      toast.success(`Printer set to ${portPath}`)
+      if (printer.type === 'usb') {
+        // USB printers are selected directly; no COM port handshake required.
+        setBtPortPath(printer.value)
+        toast.success(`Printer set to ${printer.label}`)
+        return
+      }
+
+      await connectBtPrinter(printer.value) // quick open+close COM port test
+      setBtPortPath(printer.value)
+      toast.success(`Printer set to ${printer.value}`)
     } catch (err: any) {
       setPrinterError(err?.message || 'Could not open port — is the printer on and paired?')
     } finally {
-      setConnecting(false)
+      setConnectingPath(null)
     }
   }
 
@@ -2377,7 +2384,7 @@ export default function FrontlinePOSPage() {
           {/* Printer list — tap to connect */}
           <div className="space-y-2 flex-1">
             <div className="flex items-center justify-between mb-1">
-              <Label className="text-sm font-medium">Available Ports</Label>
+              <Label className="text-sm font-medium">Available Printers</Label>
               <Button variant="ghost" size="sm" onClick={scanPrinters} disabled={scanningPrinters}>
                 <RefreshCw className={`h-3.5 w-3.5 ${scanningPrinters ? 'animate-spin' : ''}`} />
               </Button>
@@ -2405,8 +2412,8 @@ export default function FrontlinePOSPage() {
                   return (
                     <button
                       key={p.value}
-                      onClick={() => !isConnected && handleConnect(p.value)}
-                      disabled={connecting}
+                      onClick={() => !isConnected && handleConnect(p)}
+                      disabled={!!connectingPath}
                       className={`w-full flex items-center gap-3 px-3 py-3 rounded-md text-sm text-left transition-colors
                         ${isConnected
                           ? 'bg-green-100 border border-green-300 cursor-default'
@@ -2421,7 +2428,7 @@ export default function FrontlinePOSPage() {
                         <div className="font-medium truncate">{p.label}</div>
                         <div className="text-xs text-muted-foreground">{isConnected ? 'Connected — tap to use' : 'Tap to connect'}</div>
                       </div>
-                      {connecting && btPortPath === p.value
+                      {connectingPath === p.value
                         ? <Loader2 className="h-4 w-4 animate-spin shrink-0" />
                         : isConnected
                           ? <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
