@@ -258,6 +258,10 @@ function toBase64(bytes: Uint8Array): string {
   return btoa(binary)
 }
 
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 /**
  * Send ESC/POS bytes to the configured thermal printer.
  *
@@ -431,7 +435,27 @@ export function buildDeliverySlipBytes(data: ReceiptData, width = 48): Uint8Arra
 export async function printThermalTransaction(data: ReceiptData, printerQueue: string, width = 48): Promise<void> {
   await sendBytes(buildReceiptBytes(data, width), printerQueue)
   if (data.delivery_type === 'delivery') {
-    await sendBytes(buildDeliverySlipBytes(data, width), printerQueue)
+    const slipBytes = buildDeliverySlipBytes(data, width)
+    const isDesktopBluetooth =
+      typeof window !== 'undefined' &&
+      !!window.electronBluetooth &&
+      !printerQueue.startsWith('usb:')
+
+    if (!isDesktopBluetooth) {
+      await sendBytes(slipBytes, printerQueue)
+      return
+    }
+
+    // Desktop BT opens/closes COM per job; give Windows a short settle time
+    // before sending the second document (delivery slip).
+    await wait(250)
+    try {
+      await sendBytes(slipBytes, printerQueue)
+    } catch {
+      // One retry handles transient "port busy/not ready" between back-to-back jobs.
+      await wait(700)
+      await sendBytes(slipBytes, printerQueue)
+    }
   }
 }
 
