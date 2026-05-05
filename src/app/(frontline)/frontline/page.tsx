@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { usePOSStore } from '@/lib/stores/posStore'
 import { useAuthStore } from '@/lib/stores/auth'
 import { usePOSProductSearch, useCreateTransaction, useTransactions, useUpdateTransactionDeliveryType } from '@/hooks/useTransactions'
@@ -313,6 +313,7 @@ export default function FrontlinePOSPage() {
   const [connectingPath, setConnectingPath]         = useState<string | null>(null)
   const [testPrinting, setTestPrinting]             = useState(false)
   const [printerError, setPrinterError]             = useState<string | null>(null)
+  const autoConnectAttemptedRef                      = useRef(false)
   const isElectronEnv = typeof window !== 'undefined' && (!!window.electronBluetooth || !!window.electronPrint)
 
   // btPortPath from store is the source of truth — if set, printer is selected
@@ -328,6 +329,12 @@ export default function FrontlinePOSPage() {
       setScanningPrinters(false)
     }
   }, [])
+
+  useEffect(() => {
+    if (!isElectronEnv || !!btPortPath || autoConnectAttemptedRef.current) return
+    autoConnectAttemptedRef.current = true
+    scanPrinters()
+  }, [isElectronEnv, btPortPath, scanPrinters])
 
   useEffect(() => {
     if (isPrinterOpen) scanPrinters()
@@ -347,13 +354,24 @@ export default function FrontlinePOSPage() {
 
       await connectBtPrinter(printer.value) // quick open+close COM port test
       setBtPortPath(printer.value)
-      toast.success(`Printer set to ${printer.value}`)
+      toast.success(`Printer set to ${printer.label}`)
     } catch (err: any) {
       setPrinterError(err?.message || 'Could not open port — is the printer on and paired?')
     } finally {
       setConnectingPath(null)
     }
   }
+
+  useEffect(() => {
+    if (!!btPortPath || !isElectronEnv || connectingPath || discoveredPrinters.length === 0) return
+
+    const preferred = discoveredPrinters.find((p) =>
+      p.type === 'bluetooth' && /vozy|g80/i.test(p.label)
+    )
+    if (!preferred) return
+
+    void handleConnect(preferred)
+  }, [btPortPath, isElectronEnv, connectingPath, discoveredPrinters])
 
   const handleDisconnect = () => {
     setBtPortPath('')
@@ -2426,6 +2444,9 @@ export default function FrontlinePOSPage() {
                       }
                       <div className="flex-1 min-w-0">
                         <div className="font-medium truncate">{p.label}</div>
+                        {p.type === 'bluetooth' && (
+                          <div className="text-[11px] text-muted-foreground/90 font-mono">{p.value}</div>
+                        )}
                         <div className="text-xs text-muted-foreground">{isConnected ? 'Connected — tap to use' : 'Tap to connect'}</div>
                       </div>
                       {connectingPath === p.value

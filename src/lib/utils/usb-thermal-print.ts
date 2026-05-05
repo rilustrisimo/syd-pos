@@ -479,7 +479,8 @@ export async function listAllPrinters(): Promise<DiscoveredPrinter[]> {
       for (const p of ports) {
         results.push({
           value: p.path,
-          label: p.displayName && p.displayName !== p.path ? `${p.path} — ${p.displayName}` : p.path,
+          // Show COM path first so the exact port is always visible in truncated UI labels.
+          label: p.displayName && p.displayName !== p.path ? `${p.path} - ${p.displayName}` : p.path,
           type: 'bluetooth',
         })
       }
