@@ -102,10 +102,9 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
   const lines = (txn as any).lines || []
   const payments = (txn as any).payments || []
 
-  // Line discounts are already reflected in txn.subtotal (post-line-discount).
-  // Only show the order-level portion in the totals section to avoid displaying the discount twice.
-  const lineDiscountsTotal = lines.reduce((sum: number, l: any) => sum + (l.discount_amount || 0), 0)
-  const orderDiscount = Math.max(0, (txn.discount_amount || 0) - lineDiscountsTotal)
+  // Compute gross for display — DB subtotal is post-line-discount so we derive from lines.
+  const grossSubtotal = lines.reduce((sum: number, l: any) => sum + l.quantity * l.unit_price, 0)
+  const totalDiscount = txn.discount_amount || 0
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
@@ -265,12 +264,12 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
         <CardContent className="pt-5 space-y-2">
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">Subtotal</span>
-            <span>{formatCurrency(txn.subtotal)}</span>
+            <span>{formatCurrency(grossSubtotal)}</span>
           </div>
-          {orderDiscount > 0 && (
+          {totalDiscount > 0 && (
             <div className="flex justify-between text-sm text-green-600">
               <span>Discount{txn.discount_percentage > 0 ? ` (${txn.discount_percentage}%)` : ''}</span>
-              <span>−{formatCurrency(orderDiscount)}</span>
+              <span>−{formatCurrency(totalDiscount)}</span>
             </div>
           )}
           {(txn as any).delivery_fee > 0 && (
