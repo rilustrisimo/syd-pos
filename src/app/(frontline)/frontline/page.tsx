@@ -823,6 +823,7 @@ export default function FrontlinePOSPage() {
           other_fees: otherFees || 0,
           other_fees_notes: otherFeesNotes || null,
           discount_amount: getTotalDiscount(),
+          discount_percentage: discountPercentage,
           notes: notes || null,
           transaction_date: createTimestampPH(saleDate),
           referrer_id: referrerId || null,
@@ -993,7 +994,8 @@ export default function FrontlinePOSPage() {
           discount: Number(line.discount_amount) || 0,
           total: Number(line.line_total) || Number(line.quantity) * Number(line.unit_price) - (Number(line.discount_amount) || 0),
         })),
-        subtotal: Number(txn.subtotal),
+        // Use gross subtotal so the receipt reads: gross − total_discount = total
+        subtotal: (txn.lines || []).reduce((s: number, l: any) => s + Number(l.quantity) * Number(l.unit_price), 0),
         discount: Number(txn.discount_amount),
         delivery_fee: Number((txn as any).delivery_fee) > 0 ? Number((txn as any).delivery_fee) : undefined,
         other_fees: Number((txn as any).other_fees) > 0 ? Number((txn as any).other_fees) : undefined,
@@ -1121,6 +1123,16 @@ export default function FrontlinePOSPage() {
                       <CommandEmpty>
                         No customers found. Try a different search or add a new customer.
                       </CommandEmpty>
+                      <CommandGroup>
+                        <CommandItem
+                          onSelect={() => setIsNewCustomerOpen(true)}
+                          className="cursor-pointer"
+                        >
+                          <UserPlus className="mr-2 h-4 w-4" />
+                          <span>Add New Customer</span>
+                        </CommandItem>
+                      </CommandGroup>
+                      <Separator />
                       <CommandGroup heading={customerSearch ? 'Search Results' : 'All Customers'}>
                         <CommandItem
                           onSelect={() => handleSelectCustomer(WALK_IN_CUSTOMER)}
@@ -1159,16 +1171,6 @@ export default function FrontlinePOSPage() {
                       </CommandGroup>
                     </>
                   )}
-                  <Separator />
-                  <CommandGroup>
-                    <CommandItem
-                      onSelect={() => setIsNewCustomerOpen(true)}
-                      className="cursor-pointer"
-                    >
-                      <UserPlus className="mr-2 h-4 w-4" />
-                      <span>Add New Customer</span>
-                    </CommandItem>
-                  </CommandGroup>
                 </CommandList>
               </Command>
             </PopoverContent>

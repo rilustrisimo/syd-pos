@@ -233,7 +233,9 @@ export default function TransactionHistoryPage() {
           discount: line.discount_amount || 0,
           total: line.line_total ?? (line.quantity * line.unit_price - (line.discount_amount || 0)),
         })),
-        subtotal: txn.subtotal,
+        // Use gross subtotal (sum of qty × price before discounts) so the receipt reads:
+        // gross − total_discount = total (matching the immediate checkout receipt format)
+        subtotal: (txn.lines || []).reduce((s: number, l: any) => s + l.quantity * l.unit_price, 0),
         discount: txn.discount_amount,
         delivery_fee: (txn as any).delivery_fee || 0,
         other_fees: (txn as any).other_fees || 0,
@@ -757,12 +759,16 @@ export default function TransactionHistoryPage() {
                   <span>Subtotal</span>
                   <span>{formatCurrency(detailsTransaction.subtotal)}</span>
                 </div>
-                {detailsTransaction.discount_amount > 0 && (
-                  <div className="flex justify-between text-green-600">
-                    <span>Discount</span>
-                    <span>-{formatCurrency(detailsTransaction.discount_amount)}</span>
-                  </div>
-                )}
+                {(() => {
+                  const lineDisc = (detailsTransaction.lines || []).reduce((s: number, l: any) => s + (l.discount_amount || 0), 0)
+                  const orderDisc = Math.max(0, (detailsTransaction.discount_amount || 0) - lineDisc)
+                  return orderDisc > 0 ? (
+                    <div className="flex justify-between text-green-600">
+                      <span>Discount{detailsTransaction.discount_percentage > 0 ? ` (${detailsTransaction.discount_percentage}%)` : ''}</span>
+                      <span>-{formatCurrency(orderDisc)}</span>
+                    </div>
+                  ) : null
+                })()}
                 {(detailsTransaction as any).delivery_fee > 0 && (
                   <div className="flex justify-between text-blue-600">
                     <span>Delivery Fee</span>

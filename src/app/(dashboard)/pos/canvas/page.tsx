@@ -539,6 +539,21 @@ export default function CanvasPage() {
       }
       if (canvas.notes) posStore.setNotes(canvas.notes)
 
+      // Restore order-level discount from canvas.
+      // canvas.discount_percentage > 0 means a percentage order discount was set.
+      // Otherwise, the order-level fixed portion = canvas.discount_amount minus the sum of line discounts.
+      if (canvas.discount_percentage > 0) {
+        posStore.setDiscountType('percentage')
+        posStore.setDiscountPercentage(canvas.discount_percentage)
+      } else {
+        const lineDiscTotal = (canvas.lines || []).reduce((s: number, l: any) => s + (l.discount_amount || 0), 0)
+        const orderFixed = Math.max(0, (canvas.discount_amount || 0) - lineDiscTotal)
+        if (orderFixed > 0) {
+          posStore.setDiscountType('fixed')
+          posStore.setDiscountAmount(orderFixed)
+        }
+      }
+
       toast.success('Canvas loaded into POS — complete the sale!')
       router.push('/pos')
     },

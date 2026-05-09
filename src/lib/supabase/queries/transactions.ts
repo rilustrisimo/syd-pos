@@ -312,6 +312,8 @@ export async function createTransaction(
   const supabase = createClient()
 
   // Calculate totals
+  // subtotal = post-line-discount (line discounts already deducted per line)
+  const lineDiscountsTotal = lines.reduce((sum, line) => sum + (line.discount_amount || 0), 0)
   const subtotal = lines.reduce((sum, line) => {
     const lineTotal = line.quantity * line.unit_price - (line.discount_amount || 0)
     return sum + lineTotal
@@ -321,7 +323,9 @@ export async function createTransaction(
   const taxAmount = input.tax_amount || 0
   const deliveryFee = input.delivery_fee || 0
   const otherFees = input.other_fees || 0
-  const totalAmount = subtotal - discountAmount + taxAmount + deliveryFee + otherFees
+  // Only subtract the order-level portion — line discounts are already in subtotal
+  const orderDiscountOnly = Math.max(0, discountAmount - lineDiscountsTotal)
+  const totalAmount = subtotal - orderDiscountOnly + taxAmount + deliveryFee + otherFees
   const amountPaid = payments.reduce((sum, p) => sum + p.amount, 0)
 
   // Determine payment status
@@ -363,6 +367,7 @@ export async function createTransaction(
     p_notes: input.notes || null,
     p_subtotal: subtotal,
     p_discount_amount: discountAmount,
+    p_discount_percentage: input.discount_percentage || 0,
     p_delivery_fee: deliveryFee,
     p_other_fees: otherFees,
     p_other_fees_notes: input.other_fees_notes || null,

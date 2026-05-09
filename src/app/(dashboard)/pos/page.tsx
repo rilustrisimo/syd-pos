@@ -709,6 +709,7 @@ export default function POSPage() {
           other_fees: otherFees || 0,
           other_fees_notes: otherFeesNotes || null,
           discount_amount: getTotalDiscount(),
+          discount_percentage: discountPercentage,
           notes: notes || null,
           transaction_date: createTimestampPH(saleDate),
           referrer_id: referrerId || null,
@@ -892,6 +893,16 @@ export default function POSPage() {
                       <CommandEmpty>
                         No customers found. Try a different search or add a new customer.
                       </CommandEmpty>
+                      <CommandGroup>
+                        <CommandItem
+                          onSelect={() => setIsNewCustomerOpen(true)}
+                          className="cursor-pointer"
+                        >
+                          <UserPlus className="mr-2 h-4 w-4" />
+                          <span>Add New Customer</span>
+                        </CommandItem>
+                      </CommandGroup>
+                      <Separator />
                       <CommandGroup heading={customerSearch ? 'Search Results' : 'All Customers'}>
                         {/* Walk-in Customer - Always on top */}
                         <CommandItem
@@ -932,16 +943,6 @@ export default function POSPage() {
                     </CommandGroup>
                     </>
                   )}
-                  <Separator />
-                  <CommandGroup>
-                    <CommandItem
-                      onSelect={() => setIsNewCustomerOpen(true)}
-                      className="cursor-pointer"
-                    >
-                      <UserPlus className="mr-2 h-4 w-4" />
-                      <span>Add New Customer</span>
-                    </CommandItem>
-                  </CommandGroup>
                 </CommandList>
               </Command>
             </PopoverContent>

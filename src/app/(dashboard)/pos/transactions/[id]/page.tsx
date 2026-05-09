@@ -102,6 +102,11 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
   const lines = (txn as any).lines || []
   const payments = (txn as any).payments || []
 
+  // Line discounts are already reflected in txn.subtotal (post-line-discount).
+  // Only show the order-level portion in the totals section to avoid displaying the discount twice.
+  const lineDiscountsTotal = lines.reduce((sum: number, l: any) => sum + (l.discount_amount || 0), 0)
+  const orderDiscount = Math.max(0, (txn.discount_amount || 0) - lineDiscountsTotal)
+
   return (
     <div className="max-w-3xl mx-auto space-y-6">
       {/* ── Back + Header ─────────────────────────────────────────────── */}
@@ -262,10 +267,10 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
             <span className="text-muted-foreground">Subtotal</span>
             <span>{formatCurrency(txn.subtotal)}</span>
           </div>
-          {txn.discount_amount > 0 && (
+          {orderDiscount > 0 && (
             <div className="flex justify-between text-sm text-green-600">
-              <span>Discount</span>
-              <span>−{formatCurrency(txn.discount_amount)}</span>
+              <span>Discount{txn.discount_percentage > 0 ? ` (${txn.discount_percentage}%)` : ''}</span>
+              <span>−{formatCurrency(orderDiscount)}</span>
             </div>
           )}
           {(txn as any).delivery_fee > 0 && (
