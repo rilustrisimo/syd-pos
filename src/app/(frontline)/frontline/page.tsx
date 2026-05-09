@@ -884,7 +884,7 @@ export default function FrontlinePOSPage() {
             uom: item.uom_name,
             unit_price: item.unit_price,
             discount: item.discount_amount,
-            total: Math.round(item.quantity * item.unit_price * 100) / 100 - item.discount_amount,
+            total: Math.round(item.quantity * item.unit_price * 100) / 100,
           })),
           ...(currentDeliveryFee > 0 ? [{
             code: 'FEE-DEL',
@@ -938,7 +938,7 @@ export default function FrontlinePOSPage() {
           uom: item.uom_name,
           unit_price: item.unit_price,
           discount: item.discount_amount,
-          total: Math.round(item.quantity * item.unit_price * 100) / 100 - item.discount_amount,
+          total: Math.round(item.quantity * item.unit_price * 100) / 100,
         })),
         subtotal: currentSubtotal,
         discount: currentTotalDiscount,
@@ -992,7 +992,7 @@ export default function FrontlinePOSPage() {
           unit_price: Number(line.unit_price),
           uom: line.uom?.abbreviation || line.uom?.code || line.uom?.name || 'pc',
           discount: Number(line.discount_amount) || 0,
-          total: Number(line.line_total) || Number(line.quantity) * Number(line.unit_price) - (Number(line.discount_amount) || 0),
+          total: Number(line.quantity) * Number(line.unit_price),
         })),
         // Use gross subtotal so the receipt reads: gross − total_discount = total
         subtotal: (txn.lines || []).reduce((s: number, l: any) => s + Number(l.quantity) * Number(l.unit_price), 0),

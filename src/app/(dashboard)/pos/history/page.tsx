@@ -231,7 +231,7 @@ export default function TransactionHistoryPage() {
           unit_price: line.unit_price,
           uom: line.uom?.abbreviation || line.uom?.name || 'pc',
           discount: line.discount_amount || 0,
-          total: line.line_total ?? (line.quantity * line.unit_price - (line.discount_amount || 0)),
+          total: line.quantity * line.unit_price,
         })),
         // Use gross subtotal (sum of qty × price before discounts) so the receipt reads:
         // gross − total_discount = total (matching the immediate checkout receipt format)

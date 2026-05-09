@@ -772,7 +772,7 @@ export default function POSPage() {
             uom: item.uom_name,
             unit_price: item.unit_price,
             discount: item.discount_amount,
-            total: Math.round(item.quantity * item.unit_price * 100) / 100 - item.discount_amount,
+            total: Math.round(item.quantity * item.unit_price * 100) / 100,
           })),
           ...(currentDeliveryFee > 0 ? [{
             code: 'FEE-DEL',
