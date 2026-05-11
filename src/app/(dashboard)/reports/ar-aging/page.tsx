@@ -77,13 +77,14 @@ function PaymentDialog({ transaction, open, onOpenChange, onSuccess }: PaymentDi
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    const paymentAmount = Number(amount)
+    const paymentAmount = Math.round(Number(amount) * 100) / 100
     if (paymentAmount <= 0) {
       toast.error('Please enter a valid amount')
       return
     }
 
-    if (paymentAmount > transaction.balance_due) {
+    const balanceDue = Math.round(transaction.balance_due * 100) / 100
+    if (paymentAmount > balanceDue) {
       toast.error('Payment amount cannot exceed balance due')
       return
     }
@@ -182,7 +183,7 @@ function PaymentDialog({ transaction, open, onOpenChange, onSuccess }: PaymentDi
               type="number"
               step="0.01"
               min="0.01"
-              max={transaction.balance_due}
+              max={Math.round(transaction.balance_due * 100) / 100}
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               placeholder="0.00"
