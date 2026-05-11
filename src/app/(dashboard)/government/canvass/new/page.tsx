@@ -1,12 +1,13 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Trash2, Package, PenLine, Loader2, ArrowLeft } from 'lucide-react'
+import { Plus, Trash2, Package, PenLine, Loader2, ArrowLeft, User } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuthStore } from '@/lib/stores/auth'
 import { useBranches } from '@/hooks/useInventory'
 import { usePOSProductSearch } from '@/hooks/useTransactions'
+import { useAllActiveCustomers } from '@/hooks/useCustomers'
 import { useCreateGovernmentCanvas } from '@/hooks/useGovernmentCanvases'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -15,6 +16,15 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import Link from 'next/link'
 
 function round2(n: number) { return Math.round(n * 100) / 100 }
@@ -45,8 +55,11 @@ export default function NewGovernmentCanvass() {
   const router = useRouter()
   const { user } = useAuthStore()
   const { data: branches = [] } = useBranches()
+  const { data: allCustomers = [] } = useAllActiveCustomers()
 
   const [branchId, setBranchId] = useState('')
+  const [customerId, setCustomerId] = useState<string | null>(null)
+  const [customerName, setCustomerName] = useState('')
   const [agency, setAgency] = useState('')
   const [contactPerson, setContactPerson] = useState('')
   const [poNumber, setPoNumber] = useState('')
@@ -54,11 +67,37 @@ export default function NewGovernmentCanvass() {
   const [canvasDate, setCanvasDate] = useState(new Date().toISOString().slice(0, 10))
   const [lines, setLines] = useState<CanvasLineRow[]>([])
 
+  // Customer picker state
+  const [customerOpen, setCustomerOpen] = useState(false)
+  const [customerSearch, setCustomerSearch] = useState('')
+
   // Inventory search state
   const [productSearch, setProductSearch] = useState('')
   const { data: searchResults, isLoading: isSearching } = usePOSProductSearch(productSearch, branchId)
 
   const createCanvas = useCreateGovernmentCanvas()
+
+  const govCustomers = (allCustomers as any[]).filter((c: any) => c.customer_type === 'government')
+  const filteredCustomers = customerSearch
+    ? govCustomers.filter((c: any) =>
+        c.name.toLowerCase().includes(customerSearch.toLowerCase()) ||
+        (c.phone || '').includes(customerSearch)
+      )
+    : govCustomers
+
+  function selectCustomer(c: any) {
+    setCustomerId(c.id)
+    setCustomerName(c.name)
+    // Auto-fill agency from customer name if not already set
+    if (!agency.trim()) setAgency(c.name)
+    setCustomerOpen(false)
+    setCustomerSearch('')
+  }
+
+  function clearCustomer() {
+    setCustomerId(null)
+    setCustomerName('')
+  }
 
   // Computed totals
   const subtotal = lines.reduce((s, l) => s + round2(l.quantity * l.unit_price), 0)
@@ -114,6 +153,7 @@ export default function NewGovernmentCanvass() {
       const canvas = await createCanvas.mutateAsync({
         input: {
           branch_id: branchId,
+          customer_id: customerId || null,
           government_agency: agency,
           contact_person: contactPerson || null,
           po_number: poNumber || null,
@@ -175,6 +215,51 @@ export default function NewGovernmentCanvass() {
               <Input type="date" value={canvasDate} onChange={e => setCanvasDate(e.target.value)} />
             </div>
           </div>
+
+          {/* Customer picker */}
+          <div className="col-span-2 space-y-1.5">
+            <Label>Government Customer Account</Label>
+            {customerId ? (
+              <div className="flex items-center gap-2 h-9 px-3 border rounded-md bg-muted/30 text-sm">
+                <User className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                <span className="flex-1 font-medium">{customerName}</span>
+                <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={clearCustomer}>Change</Button>
+              </div>
+            ) : (
+              <Popover open={customerOpen} onOpenChange={setCustomerOpen}>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="w-full justify-start h-9 text-sm text-muted-foreground font-normal">
+                    <User className="h-4 w-4 mr-2" />
+                    Select government customer…
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-80 p-0" align="start">
+                  <Command shouldFilter={false}>
+                    <CommandInput
+                      placeholder="Search by name…"
+                      value={customerSearch}
+                      onValueChange={setCustomerSearch}
+                    />
+                    <CommandList className="max-h-56">
+                      <CommandEmpty>
+                        No government customers found.{' '}
+                        <Link href="/customers" className="underline text-xs">Add one</Link>
+                      </CommandEmpty>
+                      <CommandGroup>
+                        {filteredCustomers.slice(0, 20).map((c: any) => (
+                          <CommandItem key={c.id} onSelect={() => selectCustomer(c)} className="cursor-pointer">
+                            <User className="h-4 w-4 mr-2 text-muted-foreground" />
+                            {c.name}
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+            )}
+          </div>
+
           <div className="space-y-1.5">
             <Label>Government Agency <span className="text-destructive">*</span></Label>
             <Input placeholder="e.g. DepEd Division Office Bukidnon" value={agency} onChange={e => setAgency(e.target.value)} />

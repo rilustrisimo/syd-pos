@@ -71,6 +71,16 @@ function NewGovernmentSaleInner() {
       if (c.government_agency) store.setGovernmentAgency(c.government_agency)
       if (c.po_number) store.setPoNumber(c.po_number)
       if (c.branch_id) store.setBranchId(c.branch_id)
+      if (c.customer && !store.customer) {
+        store.setCustomer({
+          id: c.customer.id,
+          name: c.customer.name,
+          phone: c.customer.phone || null,
+          customer_type: 'government',
+          credit_limit: 0,
+          outstanding_balance: 0,
+        })
+      }
     }
   }, [preloadCanvas])
 
@@ -98,6 +108,17 @@ function NewGovernmentSaleInner() {
     if (c.government_agency) store.setGovernmentAgency(c.government_agency)
     if (c.po_number) store.setPoNumber(c.po_number)
     if (c.branch_id && !store.branchId) store.setBranchId(c.branch_id)
+    // Auto-populate customer from canvass if one is linked and none is selected yet
+    if (c.customer && !store.customer) {
+      store.setCustomer({
+        id: c.customer.id,
+        name: c.customer.name,
+        phone: c.customer.phone || null,
+        customer_type: 'government',
+        credit_limit: 0,
+        outstanding_balance: 0,
+      })
+    }
     setCanvasOpen(false)
   }
 
