@@ -21,6 +21,12 @@ export interface Transaction {
   created_by: string
   created_at: string
   updated_at: string
+  // Government sale fields
+  is_government_sale: boolean
+  po_number: string | null
+  government_agency: string | null
+  withholding_rate: number
+  withholding_amount: number
   // Joined fields
   customer?: {
     id: string
@@ -67,10 +73,12 @@ export interface TransactionLine {
   }
 }
 
+export type PaymentMethod = 'cash' | 'gcash' | 'maya' | 'bank_transfer' | 'credit' | 'government_withholding'
+
 export interface TransactionPayment {
   id: string
   transaction_id: string
-  payment_method: 'cash' | 'gcash' | 'maya' | 'bank_transfer' | 'credit'
+  payment_method: PaymentMethod
   amount: number
   reference_number: string | null
   payment_date: string
@@ -111,6 +119,12 @@ export interface TransactionInput {
   transaction_date?: string | null
   referrer_id?: string | null
   commission_rate?: number | null
+  // Government sale fields
+  is_government_sale?: boolean
+  po_number?: string | null
+  government_agency?: string | null
+  withholding_rate?: number
+  withholding_amount?: number
 }
 
 export interface TransactionLineInput {
@@ -125,7 +139,7 @@ export interface TransactionLineInput {
 }
 
 export interface PaymentInput {
-  payment_method: 'cash' | 'gcash' | 'maya' | 'bank_transfer' | 'credit'
+  payment_method: PaymentMethod
   amount: number
   reference_number?: string | null
   notes?: string | null
@@ -377,7 +391,12 @@ export async function createTransaction(
     p_payment_status: paymentStatus,
     p_created_by: userId,
     p_lines: rpcLines,
-    p_payments: rpcPayments
+    p_payments: rpcPayments,
+    p_is_government_sale: input.is_government_sale || false,
+    p_po_number: input.po_number || null,
+    p_government_agency: input.government_agency || null,
+    p_withholding_rate: input.withholding_rate || 0,
+    p_withholding_amount: input.withholding_amount || 0,
   })
 
   if (error) {
@@ -477,6 +496,65 @@ export async function addPaymentToTransaction(
   if (payment.payment_method === 'credit') {
     await updateCustomerBalance(txn.customer_id, payment.amount)
   }
+
+  return getTransaction(transactionId)
+}
+
+// Record government cheque payment — creates two payment entries:
+// 1. net cheque amount (bank_transfer or cash)
+// 2. government_withholding for the withheld portion
+// Together they sum to the gross total_amount so payment_status becomes 'paid'.
+export async function recordGovernmentPayment(
+  transactionId: string,
+  netChequeAmount: number,
+  chequeMethod: 'bank_transfer' | 'cash' = 'bank_transfer',
+  referenceNumber: string | null,
+  userId: string
+) {
+  const supabase = createClient()
+
+  const { data: txn, error: txnError } = await supabase
+    .from('transactions')
+    .select('total_amount, amount_paid, withholding_amount, customer_id')
+    .eq('id', transactionId)
+    .eq('is_deleted', false)
+    .single()
+
+  if (txnError) throw txnError
+
+  const t = txn as any
+  const withholdingAmount = Number(t.withholding_amount) || 0
+  const newAmountPaid = Number(t.amount_paid) + netChequeAmount + withholdingAmount
+
+  // Insert cheque payment
+  const { error: e1 } = await supabase.from('transaction_payments').insert({
+    transaction_id: transactionId,
+    payment_method: chequeMethod,
+    amount: netChequeAmount,
+    reference_number: referenceNumber || null,
+    created_by: userId,
+  } as any)
+  if (e1) throw e1
+
+  // Insert withholding payment (records the tax deducted by government)
+  if (withholdingAmount > 0) {
+    const { error: e2 } = await supabase.from('transaction_payments').insert({
+      transaction_id: transactionId,
+      payment_method: 'government_withholding',
+      amount: withholdingAmount,
+      reference_number: null,
+      created_by: userId,
+    } as any)
+    if (e2) throw e2
+  }
+
+  const paymentStatus: 'paid' | 'partial' = newAmountPaid >= Number(t.total_amount) ? 'paid' : 'partial'
+
+  const { error: e3 } = await supabase
+    .from('transactions')
+    .update({ amount_paid: newAmountPaid, payment_status: paymentStatus } as any)
+    .eq('id', transactionId)
+  if (e3) throw e3
 
   return getTransaction(transactionId)
 }

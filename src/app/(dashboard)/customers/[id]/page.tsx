@@ -80,6 +80,7 @@ const customerTypeLabels: Record<string, string> = {
   credit: 'Credit',
   wholesale: 'Wholesale',
   retail: 'Retail',
+  government: 'Government',
 }
 
 const customerTypeIcons: Record<string, React.ReactNode> = {
@@ -87,6 +88,7 @@ const customerTypeIcons: Record<string, React.ReactNode> = {
   credit: <CreditCard className="h-3 w-3" />,
   wholesale: <Building className="h-3 w-3" />,
   retail: <User className="h-3 w-3" />,
+  government: <Building className="h-3 w-3" />,
 }
 
 const paymentStatusColors: Record<string, string> = {
@@ -223,6 +225,7 @@ function EditCustomerDialog({
                   <SelectItem value="credit">Credit</SelectItem>
                   <SelectItem value="wholesale">Wholesale</SelectItem>
                   <SelectItem value="retail">Retail</SelectItem>
+                  <SelectItem value="government">Government</SelectItem>
                 </SelectContent>
               </Select>
             </div>

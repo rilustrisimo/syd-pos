@@ -85,7 +85,7 @@ interface CustomerFormData {
   phone: string
   email: string
   address: string
-  customer_type: 'cash' | 'credit' | 'wholesale' | 'retail'
+  customer_type: 'cash' | 'credit' | 'wholesale' | 'retail' | 'government'
   credit_limit: string
   payment_terms: string
 }
@@ -105,6 +105,7 @@ const customerTypeLabels: Record<string, string> = {
   credit: 'Credit',
   wholesale: 'Wholesale',
   retail: 'Retail',
+  government: 'Government',
 }
 
 const customerTypeColors: Record<string, 'default' | 'secondary' | 'outline' | 'destructive'> = {
@@ -112,6 +113,7 @@ const customerTypeColors: Record<string, 'default' | 'secondary' | 'outline' | '
   credit: 'secondary',
   wholesale: 'outline',
   retail: 'outline',
+  government: 'outline',
 }
 
 function formatCurrency(amount: number): string {
@@ -327,6 +329,7 @@ export default function CustomersPage() {
                 <SelectItem value="credit">Credit</SelectItem>
                 <SelectItem value="wholesale">Wholesale</SelectItem>
                 <SelectItem value="retail">Retail</SelectItem>
+                <SelectItem value="government">Government</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -550,7 +553,7 @@ export default function CustomersPage() {
                   <Label htmlFor="customer_type">Customer Type</Label>
                   <Select
                     value={formData.customer_type}
-                    onValueChange={(value: 'cash' | 'credit' | 'wholesale' | 'retail') =>
+                    onValueChange={(value: 'cash' | 'credit' | 'wholesale' | 'retail' | 'government') =>
                       setFormData({ ...formData, customer_type: value })
                     }
                   >
@@ -562,6 +565,7 @@ export default function CustomersPage() {
                       <SelectItem value="credit">Credit</SelectItem>
                       <SelectItem value="wholesale">Wholesale</SelectItem>
                       <SelectItem value="retail">Retail</SelectItem>
+                      <SelectItem value="government">Government</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

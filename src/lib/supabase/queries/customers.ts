@@ -6,7 +6,7 @@ export interface Customer {
   phone: string | null
   email: string | null
   address: string | null
-  customer_type: 'cash' | 'credit' | 'wholesale' | 'retail'
+  customer_type: 'cash' | 'credit' | 'wholesale' | 'retail' | 'government'
   credit_limit: number
   outstanding_balance: number
   payment_terms: number | null
@@ -20,7 +20,7 @@ export interface CustomerInput {
   phone?: string | null
   email?: string | null
   address?: string | null
-  customer_type?: 'cash' | 'credit' | 'wholesale' | 'retail'
+  customer_type?: 'cash' | 'credit' | 'wholesale' | 'retail' | 'government'
   credit_limit?: number
   payment_terms?: number | null
   is_active?: boolean
@@ -368,7 +368,8 @@ export async function getCustomerStats() {
       cash: active.filter(c => c.customer_type === 'cash').length,
       credit: active.filter(c => c.customer_type === 'credit').length,
       wholesale: active.filter(c => c.customer_type === 'wholesale').length,
-      retail: active.filter(c => c.customer_type === 'retail').length
+      retail: active.filter(c => c.customer_type === 'retail').length,
+      government: active.filter(c => c.customer_type === 'government').length
     },
     totalOutstanding: active.reduce((sum, c) => sum + (c.outstanding_balance || 0), 0),
     customersWithBalance: active.filter(c => c.outstanding_balance > 0).length

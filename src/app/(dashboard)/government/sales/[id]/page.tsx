@@ -1,0 +1,372 @@
+'use client'
+
+import { useRef, useState } from 'react'
+import { useParams } from 'next/navigation'
+import Link from 'next/link'
+import { ArrowLeft, Printer, Loader2, CreditCard } from 'lucide-react'
+import { toast } from 'sonner'
+import { useAuthStore } from '@/lib/stores/auth'
+import { useGovernmentTransaction, useRecordGovernmentPayment } from '@/hooks/useGovernmentTransactions'
+import { GovernmentInvoiceTemplate } from '@/components/print/government-invoice-template'
+import type { GovInvoiceData } from '@/components/print/government-invoice-template'
+import { printElement } from '@/lib/utils/print'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Badge } from '@/components/ui/badge'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Separator } from '@/components/ui/separator'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+
+function fmt(n: number) {
+  return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: 2 }).format(n)
+}
+
+const paymentMethodLabels: Record<string, string> = {
+  cash: 'Cash',
+  gcash: 'GCash',
+  maya: 'Maya',
+  bank_transfer: 'Bank Transfer',
+  credit: 'Credit / AR',
+  government_withholding: "Gov't Withholding",
+}
+
+const statusConfig = {
+  paid:    { label: 'Paid',    variant: 'default'      as const },
+  partial: { label: 'Partial', variant: 'secondary'    as const },
+  unpaid:  { label: 'Unpaid',  variant: 'destructive'  as const },
+}
+
+export default function GovernmentSaleDetail() {
+  const { id } = useParams<{ id: string }>()
+  const { user } = useAuthStore()
+  const templateRef = useRef<HTMLDivElement>(null)
+
+  const { data: txn, isLoading } = useGovernmentTransaction(id)
+  const recordPayment = useRecordGovernmentPayment()
+
+  // Payment modal state
+  const [paymentOpen, setPaymentOpen] = useState(false)
+  const [chequeAmount, setChequeAmount] = useState('')
+  const [chequeMethod, setChequeMethod] = useState<'bank_transfer' | 'cash'>('bank_transfer')
+  const [chequeRef, setChequeRef] = useState('')
+
+  function buildInvoiceData(t: any): GovInvoiceData {
+    const gross = t.total_amount || 0
+    const withholding = t.withholding_amount || 0
+    const paid = t.amount_paid || 0
+    const net = gross - withholding
+    return {
+      transaction_number: t.transaction_number,
+      date: t.transaction_date,
+      time: '',
+      branch: t.branch?.name || '',
+      cashier: user?.fullName || user?.email || null,
+      government_agency: t.government_agency || t.customer?.name || '',
+      po_number: t.po_number || null,
+      contact_person: null,
+      customer: {
+        name: t.customer?.name || '',
+        phone: t.customer?.phone || null,
+        address: null,
+      },
+      items: (t.lines || []).map((l: any) => ({
+        code: l.product?.code || null,
+        name: l.product?.name || '—',
+        quantity: l.quantity,
+        uom: l.uom?.code || l.uom?.name || 'pc',
+        unit_price: l.unit_price,
+        discount: l.discount_amount || 0,
+        total: l.quantity * l.unit_price,
+      })),
+      subtotal: (t.lines || []).reduce((s: number, l: any) => s + l.quantity * l.unit_price, 0),
+      discount: t.discount_amount || 0,
+      delivery_fee: t.delivery_fee || 0,
+      other_fees: t.other_fees || 0,
+      other_fees_notes: t.other_fees_notes || null,
+      gross_total: gross,
+      withholding_rate: t.withholding_rate || 0,
+      withholding_amount: withholding,
+      net_receivable: net,
+      payments: (t.payments || []).map((p: any) => ({
+        method: p.payment_method,
+        amount: p.amount,
+        reference: p.reference_number || null,
+        date: p.payment_date || null,
+      })),
+      amount_paid: paid,
+      balance_due: Math.max(0, net - paid),
+      payment_status: t.payment_status,
+      notes: t.notes || null,
+    }
+  }
+
+  function handlePrint() {
+    if (!templateRef.current) return
+    printElement(templateRef.current, {
+      title: `Government Invoice ${txn?.transaction_number || ''}`,
+      paperSize: 'a4',
+    })
+  }
+
+  async function handleRecordPayment() {
+    if (!txn) return
+    const amount = parseFloat(chequeAmount)
+    if (!amount || amount <= 0) { toast.error('Enter a valid cheque amount'); return }
+    if (!chequeRef.trim()) { toast.error('Enter a cheque / reference number'); return }
+
+    try {
+      await recordPayment.mutateAsync({
+        transactionId: txn.id,
+        netChequeAmount: amount,
+        chequeMethod,
+        referenceNumber: chequeRef,
+        userId: user?.id || '',
+      })
+      toast.success('Payment recorded successfully!')
+      setPaymentOpen(false)
+      setChequeAmount('')
+      setChequeRef('')
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to record payment')
+    }
+  }
+
+  if (isLoading) {
+    return <div className="flex justify-center items-center h-64"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+  }
+
+  if (!txn) {
+    return (
+      <div className="p-6 text-center">
+        <p className="text-muted-foreground">Transaction not found.</p>
+        <Link href="/government/sales"><Button variant="link">Back to sales</Button></Link>
+      </div>
+    )
+  }
+
+  const t = txn as any
+  const gross = t.total_amount || 0
+  const withholding = t.withholding_amount || 0
+  const withholdingRate = t.withholding_rate || 0
+  const net = gross - withholding
+  const paid = t.amount_paid || 0
+  const balanceDue = Math.max(0, net - paid)
+  const status = statusConfig[t.payment_status as keyof typeof statusConfig] || statusConfig.unpaid
+
+  return (
+    <div className="p-6 max-w-4xl mx-auto space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Link href="/government/sales">
+            <Button variant="ghost" size="sm"><ArrowLeft className="h-4 w-4 mr-1" />Back</Button>
+          </Link>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl font-bold">{t.transaction_number}</h1>
+              <Badge variant={status.variant}>{status.label}</Badge>
+            </div>
+            <p className="text-sm text-muted-foreground">{t.transaction_date?.slice(0, 10)} · {t.government_agency || t.customer?.name}</p>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={handlePrint}>
+            <Printer className="h-4 w-4 mr-2" />Print Invoice
+          </Button>
+          {t.payment_status !== 'paid' && (
+            <Button onClick={() => setPaymentOpen(true)}>
+              <CreditCard className="h-4 w-4 mr-2" />Record Cheque
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Agency info */}
+      <Card>
+        <CardHeader><CardTitle className="text-base">Transaction Info</CardTitle></CardHeader>
+        <CardContent className="grid grid-cols-2 gap-4 text-sm">
+          <div>
+            <span className="text-muted-foreground">Government Agency</span>
+            <p className="font-semibold mt-0.5">{t.government_agency || '—'}</p>
+          </div>
+          <div>
+            <span className="text-muted-foreground">PO Number</span>
+            <p className="font-semibold mt-0.5">{t.po_number || <span className="text-muted-foreground italic text-xs">Not assigned</span>}</p>
+          </div>
+          <div>
+            <span className="text-muted-foreground">Customer Account</span>
+            <p className="font-semibold mt-0.5">{t.customer?.name || '—'}</p>
+          </div>
+          <div>
+            <span className="text-muted-foreground">Branch</span>
+            <p className="font-semibold mt-0.5">{t.branch?.name || '—'}</p>
+          </div>
+          {t.notes && (
+            <div className="col-span-2">
+              <span className="text-muted-foreground">Notes</span>
+              <p className="mt-0.5">{t.notes}</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Items */}
+      <Card>
+        <CardHeader><CardTitle className="text-base">Items</CardTitle></CardHeader>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Product</TableHead>
+                <TableHead className="text-center">Qty</TableHead>
+                <TableHead className="text-center">Unit</TableHead>
+                <TableHead className="text-right">Unit Price</TableHead>
+                <TableHead className="text-right">Amount</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {(t.lines || []).map((line: any) => (
+                <TableRow key={line.id}>
+                  <TableCell>
+                    {line.product?.code && <span className="font-mono text-xs text-muted-foreground mr-1.5">{line.product.code}</span>}
+                    {line.product?.name || '—'}
+                  </TableCell>
+                  <TableCell className="text-center">{line.quantity}</TableCell>
+                  <TableCell className="text-center text-sm text-muted-foreground">{line.uom?.code || line.uom?.name || 'pc'}</TableCell>
+                  <TableCell className="text-right">{fmt(line.unit_price)}</TableCell>
+                  <TableCell className="text-right font-medium">{fmt(line.quantity * line.unit_price)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+
+          {/* Totals breakdown */}
+          <div className="flex justify-end p-4">
+            <div className="w-64 space-y-1.5 text-sm">
+              <div className="flex justify-between"><span className="text-muted-foreground">Gross Total</span><span className="font-semibold">{fmt(gross)}</span></div>
+              <div className="flex justify-between text-red-600">
+                <span>Withholding ({withholdingRate}%)</span>
+                <span>−{fmt(withholding)}</span>
+              </div>
+              <Separator />
+              <div className="flex justify-between font-bold text-base text-blue-700">
+                <span>Net Receivable</span>
+                <span>{fmt(net)}</span>
+              </div>
+              <Separator />
+              <div className="flex justify-between"><span className="text-muted-foreground">Amount Paid</span><span>{fmt(paid)}</span></div>
+              <div className="flex justify-between font-bold">
+                <span>Balance Due</span>
+                <span className={balanceDue > 0 ? 'text-destructive' : 'text-green-600'}>{fmt(balanceDue)}</span>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Payments */}
+      {(t.payments || []).length > 0 && (
+        <Card>
+          <CardHeader><CardTitle className="text-base">Payments Received</CardTitle></CardHeader>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Method</TableHead>
+                  <TableHead>Reference</TableHead>
+                  <TableHead>Date</TableHead>
+                  <TableHead className="text-right">Amount</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {t.payments.map((p: any) => (
+                  <TableRow key={p.id}>
+                    <TableCell>{paymentMethodLabels[p.payment_method] || p.payment_method}</TableCell>
+                    <TableCell className="font-mono text-sm">{p.reference_number || '—'}</TableCell>
+                    <TableCell>{p.payment_date?.slice(0, 10)}</TableCell>
+                    <TableCell className="text-right font-medium">{fmt(p.amount)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Hidden print template */}
+      <div className="hidden">
+        <GovernmentInvoiceTemplate
+          ref={templateRef}
+          data={buildInvoiceData(t)}
+          logoUrl={typeof window !== 'undefined' ? window.location.origin + '/syd-logo.svg' : undefined}
+        />
+      </div>
+
+      {/* Record payment dialog */}
+      <Dialog open={paymentOpen} onOpenChange={setPaymentOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Record Cheque Payment</DialogTitle>
+            <DialogDescription>
+              Enter the net cheque amount received. The system will automatically add a withholding entry of {fmt(withholding)} to balance the gross total.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="bg-muted/50 rounded-lg p-3 text-sm space-y-1">
+              <div className="flex justify-between"><span className="text-muted-foreground">Gross Total</span><span>{fmt(gross)}</span></div>
+              <div className="flex justify-between text-red-600"><span>Withholding ({withholdingRate}%)</span><span>−{fmt(withholding)}</span></div>
+              <Separator className="my-1" />
+              <div className="flex justify-between font-bold"><span>Expected Cheque</span><span className="text-blue-700">{fmt(net)}</span></div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Cheque / Net Amount Received <span className="text-destructive">*</span></Label>
+              <Input
+                type="number"
+                value={chequeAmount}
+                onChange={e => setChequeAmount(e.target.value)}
+                placeholder={`Expected: ${fmt(net)}`}
+                min={0}
+                step="any"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Payment Method</Label>
+              <Select value={chequeMethod} onValueChange={v => setChequeMethod(v as any)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="bank_transfer">Bank Transfer / Cheque</SelectItem>
+                  <SelectItem value="cash">Cash</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Cheque / Reference Number <span className="text-destructive">*</span></Label>
+              <Input
+                value={chequeRef}
+                onChange={e => setChequeRef(e.target.value)}
+                placeholder="e.g. CHK-2026-001234"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPaymentOpen(false)}>Cancel</Button>
+            <Button onClick={handleRecordPayment} disabled={recordPayment.isPending}>
+              {recordPayment.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Record Payment
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}

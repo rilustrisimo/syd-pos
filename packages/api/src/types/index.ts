@@ -3,9 +3,9 @@
 // ============================================================================
 
 export type UserRole = 'admin' | 'manager' | 'cashier' | 'inventory_staff' | 'accountant'
-export type CustomerType = 'cash' | 'credit' | 'wholesale' | 'retail'
+export type CustomerType = 'cash' | 'credit' | 'wholesale' | 'retail' | 'government'
 export type DeliveryType = 'pickup' | 'delivery'
-export type PaymentMethod = 'cash' | 'gcash' | 'maya' | 'bank_transfer' | 'credit'
+export type PaymentMethod = 'cash' | 'gcash' | 'maya' | 'bank_transfer' | 'credit' | 'government_withholding'
 export type PaymentStatus = 'unpaid' | 'partial' | 'paid'
 export type POStatus = 'draft' | 'sent' | 'confirmed' | 'partially_received' | 'received' | 'cancelled'
 export type MovementType = 'purchase' | 'sale' | 'adjustment' | 'return' | 'transfer'
@@ -267,14 +267,16 @@ export interface CanvasLine {
   id: string
   canvas_id: string
   line_number: number
-  product_id: string
+  product_id: string | null
   quantity: number
-  uom_id: string
+  uom_id: string | null
   unit_price: number
   cogs_per_unit: number
   discount_amount: number
   line_total: number
   notes: string | null
+  line_description: string | null
+  unit_label: string | null
   created_at: string
   updated_at: string
   // Joined data
@@ -302,6 +304,10 @@ export interface Canvas {
   created_by: string
   created_at: string
   updated_at: string
+  is_government: boolean
+  po_number: string | null
+  government_agency: string | null
+  contact_person: string | null
   // Joined data
   customer?: Customer
   branch?: Branch
@@ -321,16 +327,22 @@ export interface CreateCanvasInput {
   other_fees_notes?: string | null
   total_amount: number
   canvas_date?: string
+  is_government?: boolean
+  po_number?: string | null
+  government_agency?: string | null
+  contact_person?: string | null
 }
 
 export interface CanvasLineInput {
-  product_id: string
+  product_id?: string | null
   quantity: number
-  uom_id: string
+  uom_id?: string | null
   unit_price: number
   cogs_per_unit: number
   discount_amount?: number
   notes?: string | null
+  line_description?: string | null
+  unit_label?: string | null
 }
 
 export interface CreateCanvasPayload {
