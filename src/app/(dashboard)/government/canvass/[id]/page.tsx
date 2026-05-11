@@ -89,36 +89,10 @@ export default function GovernmentCanvassDetail() {
 
   function handleConvertToSale() {
     if (!canvas) return
-    const inventoryLines = (canvas.lines || []).filter((l: any) => l.product_id)
-    if (inventoryLines.length === 0) {
-      toast.error('No inventory items to convert. Add products to the canvass first.')
-      return
-    }
-
+    // Reset any previous sale draft and navigate — the new sale page reads
+    // the ?canvas= param to pre-select this canvass as the budget reference.
     govStore.resetAll()
-    if (canvas.branch_id) govStore.setBranchId(canvas.branch_id)
-    if ((canvas as any).government_agency) govStore.setGovernmentAgency((canvas as any).government_agency)
-    if ((canvas as any).po_number) govStore.setPoNumber((canvas as any).po_number)
-    if (canvas.notes) govStore.setNotes(canvas.notes)
-
-    inventoryLines.forEach((l: any) => {
-      govStore.addItem({
-        product_id:    l.product_id,
-        product_code:  l.product?.code  || '',
-        product_name:  l.line_description || l.product?.name  || '—',
-        variant_id:    null,
-        variant_name:  null,
-        quantity:      l.quantity,
-        uom_id:        l.uom_id        || '',
-        uom_name:      l.unit_label || l.uom?.code  || l.uom?.name || 'pc',
-        unit_price:    l.unit_price,
-        cogs_per_unit: l.cogs_per_unit || 0,
-        discount_amount: l.discount_amount || 0,
-      })
-    })
-
-    toast.success('Items loaded into government sale')
-    router.push('/government/sales/new')
+    router.push(`/government/sales/new?canvas=${canvas.id}`)
   }
 
   if (isLoading) {

@@ -1,15 +1,16 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Loader2, Trash2, Search, User, Plus } from 'lucide-react'
+import { ArrowLeft, Loader2, Trash2, Search, User, ClipboardList, AlertTriangle, CheckCircle2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuthStore } from '@/lib/stores/auth'
 import { useBranches } from '@/hooks/useInventory'
 import { usePOSProductSearch } from '@/hooks/useTransactions'
 import { useAllActiveCustomers } from '@/hooks/useCustomers'
 import { useCreateGovernmentTransaction } from '@/hooks/useGovernmentTransactions'
+import { useGovernmentCanvases, useGovernmentCanvas } from '@/hooks/useGovernmentCanvases'
 import { useGovernmentSaleStore } from '@/lib/stores/governmentSaleStore'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -18,6 +19,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
   Command,
   CommandEmpty,
@@ -33,8 +35,11 @@ function fmt(n: number) {
   return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: 2 }).format(n)
 }
 
-export default function NewGovernmentSale() {
+function NewGovernmentSaleInner() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const fromCanvasId = searchParams.get('canvas')
+
   const { user } = useAuthStore()
   const store = useGovernmentSaleStore()
   const { data: branches = [] } = useBranches()
@@ -44,30 +49,70 @@ export default function NewGovernmentSale() {
   const [productSearch, setProductSearch] = useState('')
   const [customerOpen, setCustomerOpen] = useState(false)
   const [customerSearch, setCustomerSearch] = useState('')
+  const [canvasSearch, setCanvasSearch] = useState('')
+  const [canvasOpen, setCanvasOpen] = useState(false)
+
+  // Load canvasses for picker
+  const { data: canvasesData } = useGovernmentCanvases(1, 50)
+  const allCanvases = canvasesData?.data || []
+  const filteredCanvases = canvasSearch
+    ? allCanvases.filter((c: any) =>
+        c.canvas_number?.toLowerCase().includes(canvasSearch.toLowerCase()) ||
+        c.government_agency?.toLowerCase().includes(canvasSearch.toLowerCase())
+      )
+    : allCanvases
+
+  // If arriving from "Convert to Sale" on a canvass detail, pre-select that canvass
+  const { data: preloadCanvas } = useGovernmentCanvas(fromCanvasId || undefined)
+  useEffect(() => {
+    if (preloadCanvas && !store.canvasId) {
+      const c = preloadCanvas as any
+      store.setCanvasReference(c.id, c.canvas_number, c.total_amount)
+      if (c.government_agency) store.setGovernmentAgency(c.government_agency)
+      if (c.po_number) store.setPoNumber(c.po_number)
+      if (c.branch_id) store.setBranchId(c.branch_id)
+    }
+  }, [preloadCanvas])
 
   const govCustomers = (allCustomers as any[]).filter((c: any) => c.customer_type === 'government')
   const filteredCustomers = customerSearch
-    ? govCustomers.filter((c: any) => c.name.toLowerCase().includes(customerSearch.toLowerCase()) || (c.phone || '').includes(customerSearch))
+    ? govCustomers.filter((c: any) =>
+        c.name.toLowerCase().includes(customerSearch.toLowerCase()) ||
+        (c.phone || '').includes(customerSearch)
+      )
     : govCustomers
 
-  const { data: searchResults, isLoading: isSearching } = usePOSProductSearch(productSearch, store.branchId || '')
+  const { data: searchResults, isLoading: isSearching } = usePOSProductSearch(
+    productSearch,
+    store.branchId || ''
+  )
 
   const gross = store.getGrossTotal()
   const withholding = store.getWithholdingAmount()
   const net = store.getNetReceivable()
+  const budgetExceeded = store.isBudgetExceeded()
+  const remainingBudget = store.getRemainingBudget()
+
+  function selectCanvas(c: any) {
+    store.setCanvasReference(c.id, c.canvas_number, c.total_amount)
+    if (c.government_agency) store.setGovernmentAgency(c.government_agency)
+    if (c.po_number) store.setPoNumber(c.po_number)
+    if (c.branch_id && !store.branchId) store.setBranchId(c.branch_id)
+    setCanvasOpen(false)
+  }
 
   function handleAddProduct(p: any) {
     store.addItem({
-      product_id:    p.id,
-      product_code:  p.code,
-      product_name:  p.name,
-      variant_id:    null,
-      variant_name:  null,
-      quantity:      1,
-      uom_id:        p.selling_uom_id || p.base_uom_id,
-      uom_name:      p.uom?.code || 'pc',
-      unit_price:    p.current_selling_price || 0,
-      cogs_per_unit: p.latest_cogs || 0,
+      product_id:      p.id,
+      product_code:    p.code,
+      product_name:    p.name,
+      variant_id:      null,
+      variant_name:    null,
+      quantity:        1,
+      uom_id:          p.selling_uom_id || p.uom_id,
+      uom_name:        p.selling_uom_abbreviation || p.uom_abbreviation || 'pc',
+      unit_price:      p.unit_price || 0,
+      cogs_per_unit:   p.cogs || 0,
       discount_amount: 0,
     })
     setProductSearch('')
@@ -86,42 +131,48 @@ export default function NewGovernmentSale() {
   }
 
   async function handleSubmit() {
+    if (!store.canvasId) { toast.error('Select a canvass reference first'); return }
     if (!store.branchId) { toast.error('Select a branch'); return }
     if (!store.customer) { toast.error('Select a government customer'); return }
     if (!store.poNumber.trim()) { toast.error('PO Number is required'); return }
     if (store.items.length === 0) { toast.error('Add at least one item'); return }
+    if (budgetExceeded) {
+      toast.error(`Sale total (${fmt(gross)}) exceeds the canvass budget (${fmt(store.canvasTotalBudget)})`)
+      return
+    }
 
     try {
       const lines = store.items.map(item => ({
-        product_id:    item.product_id,
-        variant_id:    item.variant_id,
-        quantity:      item.quantity,
-        uom_id:        item.uom_id,
-        unit_price:    item.unit_price,
-        cogs_per_unit: item.cogs_per_unit,
+        product_id:      item.product_id,
+        variant_id:      item.variant_id,
+        quantity:        item.quantity,
+        uom_id:          item.uom_id,
+        unit_price:      item.unit_price,
+        cogs_per_unit:   item.cogs_per_unit,
         discount_amount: item.discount_amount,
       }))
 
       const txn = await createTxn.mutateAsync({
         input: {
-          branch_id:     store.branchId,
-          customer_id:   store.customer.id,
-          transaction_type: 'sale',
-          delivery_type: 'pickup',
-          notes:         store.notes || null,
-          transaction_date: store.saleDate,
-          subtotal:      gross,
-          discount_amount: store.items.reduce((s, i) => s + i.discount_amount, 0),
-          delivery_fee:  0,
-          other_fees:    0,
-          total_amount:  gross,
-          amount_paid:   0,
-          payment_status: 'unpaid',
+          branch_id:         store.branchId,
+          customer_id:       store.customer.id,
+          transaction_type:  'sale',
+          delivery_type:     'pickup',
+          notes:             store.notes || null,
+          transaction_date:  store.saleDate,
+          subtotal:          gross,
+          discount_amount:   store.items.reduce((s, i) => s + i.discount_amount, 0),
+          delivery_fee:      0,
+          other_fees:        0,
+          total_amount:      gross,
+          amount_paid:       0,
+          payment_status:    'unpaid',
           is_government_sale: true,
-          po_number:     store.poNumber,
+          po_number:         store.poNumber,
           government_agency: store.governmentAgency,
           withholding_rate:  store.withholdingRate,
           withholding_amount: withholding,
+          canvas_id:         store.canvasId,
         } as any,
         lines,
         payments: [],
@@ -138,7 +189,7 @@ export default function NewGovernmentSale() {
 
   return (
     <div className="flex h-[calc(100vh-64px)] overflow-hidden">
-      {/* Left: product search + cart */}
+      {/* Left: canvass picker + product search + cart */}
       <div className="flex-1 flex flex-col p-4 gap-4 overflow-y-auto border-r">
         <div className="flex items-center gap-2">
           <Link href="/government/sales">
@@ -146,6 +197,78 @@ export default function NewGovernmentSale() {
           </Link>
           <h1 className="text-lg font-bold">New Government Sale</h1>
         </div>
+
+        {/* ── Step 1: Canvass Reference (required) ── */}
+        <Card className={store.canvasId ? 'border-blue-200 bg-blue-50/40' : 'border-orange-200 bg-orange-50/40'}>
+          <CardHeader className="pb-2 pt-3 px-4">
+            <CardTitle className="text-sm flex items-center gap-1.5">
+              <ClipboardList className="h-4 w-4" />
+              Canvass Reference
+              <span className="text-destructive ml-0.5">*</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pb-3">
+            {store.canvasId ? (
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-semibold text-sm">{store.canvasNumber}</p>
+                  <p className="text-xs text-muted-foreground">Budget cap: {fmt(store.canvasTotalBudget)}</p>
+                </div>
+                <Button variant="ghost" size="sm" className="text-xs h-7" onClick={() => store.clearCanvasReference()}>
+                  Change
+                </Button>
+              </div>
+            ) : (
+              <Popover open={canvasOpen} onOpenChange={setCanvasOpen}>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="w-full justify-start h-9 text-sm text-muted-foreground">
+                    <ClipboardList className="h-4 w-4 mr-2" />
+                    Select a government canvass…
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-96 p-0" align="start">
+                  <Command shouldFilter={false}>
+                    <CommandInput
+                      placeholder="Search by canvass# or agency…"
+                      value={canvasSearch}
+                      onValueChange={setCanvasSearch}
+                    />
+                    <CommandList className="max-h-64">
+                      <CommandEmpty>
+                        No canvasses found.{' '}
+                        <Link href="/government/canvass/new" className="underline text-xs">Create one</Link>
+                      </CommandEmpty>
+                      <CommandGroup>
+                        {(filteredCanvases as any[]).map((c: any) => (
+                          <CommandItem key={c.id} onSelect={() => selectCanvas(c)} className="cursor-pointer">
+                            <div className="flex items-center justify-between w-full">
+                              <div>
+                                <p className="text-sm font-medium">{c.canvas_number}</p>
+                                <p className="text-xs text-muted-foreground">{c.government_agency}</p>
+                              </div>
+                              <span className="text-sm font-semibold">{fmt(c.total_amount)}</span>
+                            </div>
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Budget warning */}
+        {store.canvasId && budgetExceeded && (
+          <Alert variant="destructive" className="py-2">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription className="text-sm">
+              Sale total ({fmt(gross)}) exceeds canvass budget ({fmt(store.canvasTotalBudget)}) by {fmt(-remainingBudget)}.
+              Reduce item quantities or prices to proceed.
+            </AlertDescription>
+          </Alert>
+        )}
 
         {/* Branch + Date */}
         <div className="grid grid-cols-2 gap-3">
@@ -191,7 +314,7 @@ export default function NewGovernmentSale() {
                     <span className="font-mono text-xs text-muted-foreground mr-2">{p.code}</span>
                     {p.name}
                   </span>
-                  <span className="text-muted-foreground text-xs">{fmt(p.current_selling_price)}</span>
+                  <span className="text-muted-foreground text-xs">{fmt(p.unit_price)}</span>
                 </button>
               ))}
             </div>
@@ -201,7 +324,7 @@ export default function NewGovernmentSale() {
         {/* Cart items */}
         {store.items.length === 0 ? (
           <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
-            Search and add products above
+            {store.canvasId ? 'Search and add products above' : 'Select a canvass first, then add products'}
           </div>
         ) : (
           <div className="space-y-2 flex-1">
@@ -294,7 +417,7 @@ export default function NewGovernmentSale() {
         {/* PO Number */}
         <div className="space-y-1.5">
           <Label className="text-xs font-semibold">PO Number <span className="text-destructive">*</span></Label>
-          <Input className="h-8 text-sm" placeholder="Required for government sale" value={store.poNumber} onChange={e => store.setPoNumber(e.target.value)} />
+          <Input className="h-8 text-sm" placeholder="Required" value={store.poNumber} onChange={e => store.setPoNumber(e.target.value)} />
         </div>
 
         {/* Agency */}
@@ -325,7 +448,33 @@ export default function NewGovernmentSale() {
 
         <Separator />
 
-        {/* Totals breakdown */}
+        {/* Budget tracker */}
+        {store.canvasId && (
+          <div className="space-y-1 text-sm">
+            <div className="flex justify-between text-muted-foreground">
+              <span>Canvass budget</span>
+              <span>{fmt(store.canvasTotalBudget)}</span>
+            </div>
+            <div className="flex justify-between font-semibold">
+              <span>Sale total</span>
+              <span className={budgetExceeded ? 'text-destructive' : ''}>{fmt(gross)}</span>
+            </div>
+            <div className={`flex justify-between text-xs font-medium ${budgetExceeded ? 'text-destructive' : 'text-green-600'}`}>
+              <span>{budgetExceeded ? 'Over budget by' : 'Remaining budget'}</span>
+              <span>{budgetExceeded ? fmt(-remainingBudget) : fmt(remainingBudget)}</span>
+            </div>
+            <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden mt-1">
+              <div
+                className={`h-full rounded-full transition-all ${budgetExceeded ? 'bg-destructive' : 'bg-green-500'}`}
+                style={{ width: `${Math.min(100, store.canvasTotalBudget > 0 ? (gross / store.canvasTotalBudget) * 100 : 0)}%` }}
+              />
+            </div>
+          </div>
+        )}
+
+        <Separator />
+
+        {/* Withholding totals */}
         <div className="space-y-2 text-sm">
           <div className="flex justify-between">
             <span className="text-muted-foreground">Gross Total</span>
@@ -346,12 +495,20 @@ export default function NewGovernmentSale() {
           size="lg"
           className="w-full mt-auto"
           onClick={handleSubmit}
-          disabled={createTxn.isPending || store.items.length === 0}
+          disabled={createTxn.isPending || store.items.length === 0 || !store.canvasId || budgetExceeded}
         >
           {createTxn.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-          Create Government Sale
+          {budgetExceeded ? 'Budget Exceeded' : 'Create Government Sale'}
         </Button>
       </div>
     </div>
+  )
+}
+
+export default function NewGovernmentSale() {
+  return (
+    <Suspense>
+      <NewGovernmentSaleInner />
+    </Suspense>
   )
 }

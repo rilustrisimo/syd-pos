@@ -27,6 +27,7 @@ export interface Transaction {
   government_agency: string | null
   withholding_rate: number
   withholding_amount: number
+  canvas_id: string | null
   // Joined fields
   customer?: {
     id: string
@@ -125,6 +126,7 @@ export interface TransactionInput {
   government_agency?: string | null
   withholding_rate?: number
   withholding_amount?: number
+  canvas_id?: string | null
 }
 
 export interface TransactionLineInput {
@@ -397,6 +399,7 @@ export async function createTransaction(
     p_government_agency: input.government_agency || null,
     p_withholding_rate: input.withholding_rate || 0,
     p_withholding_amount: input.withholding_amount || 0,
+    p_canvas_id: input.canvas_id || null,
   })
 
   if (error) {

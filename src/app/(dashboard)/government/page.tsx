@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { Building2, ClipboardList, FileText, TrendingUp, AlertCircle, CheckCircle2, Clock } from 'lucide-react'
+import { Building2, ClipboardList, FileText, TrendingUp } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -37,15 +37,9 @@ export default function GovernmentDashboard() {
         </div>
         <div className="flex gap-2">
           <Link href="/government/canvass/new">
-            <Button variant="outline">
+            <Button>
               <ClipboardList className="h-4 w-4 mr-2" />
               New Canvass
-            </Button>
-          </Link>
-          <Link href="/government/sales/new">
-            <Button>
-              <FileText className="h-4 w-4 mr-2" />
-              New Sale
             </Button>
           </Link>
         </div>

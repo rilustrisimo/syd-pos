@@ -35,6 +35,11 @@ interface GovSaleState {
   notes: string
   saleDate: string
 
+  // Canvass reference — required before submitting a sale
+  canvasId: string | null
+  canvasNumber: string
+  canvasTotalBudget: number  // sale total must not exceed this
+
   // Actions
   addItem: (item: Omit<GovCartItem, 'id'>) => void
   updateItemQuantity: (id: string, quantity: number) => void
@@ -48,6 +53,8 @@ interface GovSaleState {
   setWithholdingRate: (rate: number) => void
   setNotes: (notes: string) => void
   setSaleDate: (date: string) => void
+  setCanvasReference: (canvasId: string, canvasNumber: string, totalBudget: number) => void
+  clearCanvasReference: () => void
   resetAll: () => void
 
   // Computed
@@ -55,6 +62,8 @@ interface GovSaleState {
   getGrossTotal: () => number
   getWithholdingAmount: () => number
   getNetReceivable: () => number
+  isBudgetExceeded: () => boolean
+  getRemainingBudget: () => number
 }
 
 function round2(n: number) {
@@ -74,10 +83,12 @@ export const useGovernmentSaleStore = create<GovSaleState>()(
       withholdingRate: DEFAULT_WITHHOLDING_RATE,
       notes: '',
       saleDate: new Date().toISOString().slice(0, 10),
+      canvasId: null,
+      canvasNumber: '',
+      canvasTotalBudget: 0,
 
       addItem: (item) =>
         set((state) => {
-          // Merge if same product+variant+uom already in cart
           const existing = state.items.find(
             (i) =>
               i.product_id === item.product_id &&
@@ -129,6 +140,12 @@ export const useGovernmentSaleStore = create<GovSaleState>()(
       setNotes: (notes) => set({ notes }),
       setSaleDate: (date) => set({ saleDate: date }),
 
+      setCanvasReference: (canvasId, canvasNumber, totalBudget) =>
+        set({ canvasId, canvasNumber, canvasTotalBudget: totalBudget }),
+
+      clearCanvasReference: () =>
+        set({ canvasId: null, canvasNumber: '', canvasTotalBudget: 0 }),
+
       resetAll: () =>
         set({
           items: [],
@@ -138,6 +155,9 @@ export const useGovernmentSaleStore = create<GovSaleState>()(
           withholdingRate: DEFAULT_WITHHOLDING_RATE,
           notes: '',
           saleDate: new Date().toISOString().slice(0, 10),
+          canvasId: null,
+          canvasNumber: '',
+          canvasTotalBudget: 0,
         }),
 
       getItemCount: () => get().items.reduce((s, i) => s + i.quantity, 0),
@@ -153,6 +173,18 @@ export const useGovernmentSaleStore = create<GovSaleState>()(
 
       getNetReceivable: () =>
         round2(get().getGrossTotal() - get().getWithholdingAmount()),
+
+      isBudgetExceeded: () => {
+        const { canvasTotalBudget } = get()
+        if (!canvasTotalBudget) return false
+        return get().getGrossTotal() > canvasTotalBudget
+      },
+
+      getRemainingBudget: () => {
+        const { canvasTotalBudget } = get()
+        if (!canvasTotalBudget) return 0
+        return round2(canvasTotalBudget - get().getGrossTotal())
+      },
     }),
     { name: 'gov-sale-store' }
   )

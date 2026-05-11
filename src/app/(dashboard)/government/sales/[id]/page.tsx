@@ -211,6 +211,16 @@ export default function GovernmentSaleDetail() {
             <span className="text-muted-foreground">Branch</span>
             <p className="font-semibold mt-0.5">{t.branch?.name || '—'}</p>
           </div>
+          <div>
+            <span className="text-muted-foreground">Canvass Reference</span>
+            {t.canvas_id ? (
+              <Link href={`/government/canvass/${t.canvas_id}`} className="block font-semibold mt-0.5 text-blue-600 hover:underline text-sm">
+                View linked canvass
+              </Link>
+            ) : (
+              <p className="text-muted-foreground italic text-xs mt-0.5">None</p>
+            )}
+          </div>
           {t.notes && (
             <div className="col-span-2">
               <span className="text-muted-foreground">Notes</span>
