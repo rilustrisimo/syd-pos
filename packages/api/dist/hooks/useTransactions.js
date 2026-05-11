@@ -14,6 +14,7 @@ export const useTransactions = (page = 1, limit = 20, options) => {
           lines:transaction_lines(*, product:products(id, code, name), uom:units_of_measure(id, name, code)),
           payments:transaction_payments(*)
         `, { count: 'exact' })
+                .eq('is_deleted', false)
                 .order('created_at', { ascending: false })
                 .range(offset, offset + limit - 1);
             if (error) {
@@ -48,6 +49,7 @@ export const useSearchTransactions = (query, options) => {
           lines:transaction_lines(*, product:products(id, code, name), uom:units_of_measure(id, name, code)),
           payments:transaction_payments(*)
         `)
+                .eq('is_deleted', false)
                 .or(`transaction_number.ilike.${searchTerm},customer.name.ilike.${searchTerm}`)
                 .limit(20);
             if (error) {
@@ -170,6 +172,7 @@ export const useCustomerTransactions = (customerId) => {
           payments:transaction_payments(*)
         `)
                 .eq('customer_id', customerId)
+                .eq('is_deleted', false)
                 .order('created_at', { ascending: false });
             if (error) {
                 throw new Error(`Failed to fetch customer transactions: ${error.message}`);

@@ -72,11 +72,11 @@ export default function NewGovernmentCanvass() {
       product_id: product.id,
       product_code: product.code,
       product_name: product.name,
-      uom_id: product.selling_uom_id || product.base_uom_id,
-      uom_name: product.uom?.code || 'pc',
-      cogs_per_unit: product.latest_cogs || 0,
+      uom_id: product.selling_uom_id || product.uom_id,
+      uom_name: product.selling_uom_abbreviation || product.uom_abbreviation || 'pc',
+      cogs_per_unit: product.cogs || 0,
       quantity: 1,
-      unit_price: product.current_selling_price || 0,
+      unit_price: product.unit_price || 0,
       discount_amount: 0,
     }])
     setProductSearch('')
@@ -228,7 +228,7 @@ export default function NewGovernmentCanvass() {
                           <span className="font-mono text-xs text-muted-foreground mr-2">{p.code}</span>
                           {p.name}
                         </span>
-                        <span className="text-muted-foreground text-xs">{fmt(p.current_selling_price)}</span>
+                        <span className="text-muted-foreground text-xs">{fmt(p.unit_price)}</span>
                       </button>
                     ))}
                   </div>
