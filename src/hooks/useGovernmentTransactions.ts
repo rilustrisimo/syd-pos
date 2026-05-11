@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import {
   createTransaction,
   recordGovernmentPayment,
+  softDeleteTransaction,
   type TransactionInput,
 } from '@/lib/supabase/queries/transactions'
 
@@ -124,6 +125,18 @@ export function useRecordGovernmentPayment() {
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: govTxnKeys.detail(variables.transactionId) })
       queryClient.invalidateQueries({ queryKey: govTxnKeys.lists() })
+    },
+  })
+}
+
+export function useDeleteGovernmentSale() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ transactionId, userId }: { transactionId: string; userId: string }) =>
+      softDeleteTransaction(transactionId, userId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: govTxnKeys.all })
     },
   })
 }

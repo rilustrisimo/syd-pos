@@ -191,11 +191,26 @@ export function useDeleteGovernmentCanvas() {
   return useMutation({
     mutationFn: async (id: string) => {
       const supabase = createClient()
+
+      // Block deletion if any active (non-deleted) sale is linked to this canvass
+      const { data: linked, error: checkError } = await supabase
+        .from('transactions')
+        .select('id, transaction_number')
+        .eq('canvas_id', id)
+        .eq('is_deleted', false)
+        .limit(1)
+      if (checkError) throw new Error(checkError.message)
+      if (linked && linked.length > 0) {
+        throw new Error(
+          `Cannot delete: canvass is linked to sale ${(linked[0] as any).transaction_number}. Delete the sale first.`
+        )
+      }
+
       const { error } = await supabase
         .from('canvases')
         .update({ is_deleted: true, deleted_at: new Date().toISOString() } as any)
         .eq('id', id)
-      if (error) throw new Error(`Failed to delete canvas: ${error.message}`)
+      if (error) throw new Error(`Failed to delete canvass: ${error.message}`)
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: govCanvasKeys.all })

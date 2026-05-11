@@ -2,14 +2,16 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { Plus, FileText, Loader2 } from 'lucide-react'
+import { Plus, FileText, Loader2, Trash2 } from 'lucide-react'
+import { toast } from 'sonner'
+import { useAuthStore } from '@/lib/stores/auth'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { useGovernmentTransactions } from '@/hooks/useGovernmentTransactions'
+import { useGovernmentTransactions, useDeleteGovernmentSale } from '@/hooks/useGovernmentTransactions'
 
 function fmt(n: number) {
   return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: 2 }).format(n)
@@ -22,10 +24,23 @@ const statusConfig: Record<string, { label: string; variant: 'default' | 'second
 }
 
 export default function GovernmentSalesList() {
+  const { user } = useAuthStore()
   const [page, setPage] = useState(1)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('')
   const limit = 20
+
+  const deleteSale = useDeleteGovernmentSale()
+
+  async function handleDelete(txnId: string, txnNumber: string) {
+    if (!confirm(`Delete sale ${txnNumber}? This will reverse inventory movements.`)) return
+    try {
+      await deleteSale.mutateAsync({ transactionId: txnId, userId: user?.id || '' })
+      toast.success('Sale deleted and inventory reversed.')
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to delete sale')
+    }
+  }
 
   const { data, isLoading } = useGovernmentTransactions({
     page,
@@ -96,6 +111,7 @@ export default function GovernmentSalesList() {
                     <TableHead className="text-right">Withholding</TableHead>
                     <TableHead className="text-right">Net</TableHead>
                     <TableHead className="text-center">Status</TableHead>
+                    <TableHead />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -120,6 +136,16 @@ export default function GovernmentSalesList() {
                           <Badge variant={statusConfig[txn.payment_status]?.variant ?? 'outline'}>
                             {statusConfig[txn.payment_status]?.label ?? txn.payment_status}
                           </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDelete(txn.id, txn.transaction_number)}
+                            disabled={deleteSale.isPending}
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
                         </TableCell>
                       </TableRow>
                     )

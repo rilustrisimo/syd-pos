@@ -3,10 +3,10 @@
 import { useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Printer, ShoppingCart, Loader2, Pencil, Check, X } from 'lucide-react'
+import { ArrowLeft, Printer, ShoppingCart, Loader2, Pencil, Check, X, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuthStore } from '@/lib/stores/auth'
-import { useGovernmentCanvas, useUpdateGovernmentCanvas } from '@/hooks/useGovernmentCanvases'
+import { useGovernmentCanvas, useUpdateGovernmentCanvas, useDeleteGovernmentCanvas } from '@/hooks/useGovernmentCanvases'
 import { useGovernmentSaleStore } from '@/lib/stores/governmentSaleStore'
 import { GovernmentCanvasTemplate } from '@/components/print/government-canvas-template'
 import type { GovCanvasTemplateData } from '@/components/print/government-canvas-template'
@@ -17,6 +17,16 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Separator } from '@/components/ui/separator'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 
 function fmt(n: number) {
   return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: 2 }).format(n)
@@ -30,10 +40,12 @@ export default function GovernmentCanvassDetail() {
 
   const { data: canvas, isLoading } = useGovernmentCanvas(id)
   const updateCanvas = useUpdateGovernmentCanvas()
+  const deleteCanvas = useDeleteGovernmentCanvas()
   const govStore = useGovernmentSaleStore()
 
   const [editingPO, setEditingPO] = useState(false)
   const [poInput, setPoInput] = useState('')
+  const [deleteOpen, setDeleteOpen] = useState(false)
 
   function buildTemplateData(c: any): GovCanvasTemplateData {
     return {
@@ -95,6 +107,18 @@ export default function GovernmentCanvassDetail() {
     router.push(`/government/sales/new?canvas=${canvas.id}`)
   }
 
+  async function handleDelete() {
+    if (!canvas) return
+    try {
+      await deleteCanvas.mutateAsync(canvas.id)
+      toast.success('Canvass deleted')
+      router.push('/government/canvass')
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to delete canvass')
+    }
+    setDeleteOpen(false)
+  }
+
   if (isLoading) {
     return <div className="flex justify-center items-center h-64"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
   }
@@ -123,6 +147,9 @@ export default function GovernmentCanvassDetail() {
           </div>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={() => setDeleteOpen(true)} className="text-destructive hover:text-destructive">
+            <Trash2 className="h-4 w-4 mr-1" />Delete
+          </Button>
           <Button variant="outline" onClick={handlePrint}>
             <Printer className="h-4 w-4 mr-2" />Print
           </Button>
@@ -236,6 +263,30 @@ export default function GovernmentCanvassDetail() {
           logoUrl={typeof window !== 'undefined' ? window.location.origin + '/syd-logo.svg' : undefined}
         />
       </div>
+
+      {/* Delete confirmation */}
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Canvass?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete canvass <strong>{c.canvas_number}</strong>.
+              If this canvass is linked to a sale, deletion will be blocked — delete the sale first.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              disabled={deleteCanvas.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleteCanvas.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Delete Canvass
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

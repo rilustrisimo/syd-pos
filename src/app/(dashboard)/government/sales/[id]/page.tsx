@@ -1,12 +1,12 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Printer, Loader2, CreditCard } from 'lucide-react'
+import { ArrowLeft, Printer, Loader2, CreditCard, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuthStore } from '@/lib/stores/auth'
-import { useGovernmentTransaction, useRecordGovernmentPayment } from '@/hooks/useGovernmentTransactions'
+import { useGovernmentTransaction, useRecordGovernmentPayment, useDeleteGovernmentSale } from '@/hooks/useGovernmentTransactions'
 import { GovernmentInvoiceTemplate } from '@/components/print/government-invoice-template'
 import type { GovInvoiceData } from '@/components/print/government-invoice-template'
 import { printElement } from '@/lib/utils/print'
@@ -25,6 +25,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 function fmt(n: number) {
@@ -48,17 +58,20 @@ const statusConfig = {
 
 export default function GovernmentSaleDetail() {
   const { id } = useParams<{ id: string }>()
+  const router = useRouter()
   const { user } = useAuthStore()
   const templateRef = useRef<HTMLDivElement>(null)
 
   const { data: txn, isLoading } = useGovernmentTransaction(id)
   const recordPayment = useRecordGovernmentPayment()
+  const deleteSale = useDeleteGovernmentSale()
 
   // Payment modal state
   const [paymentOpen, setPaymentOpen] = useState(false)
   const [chequeAmount, setChequeAmount] = useState('')
   const [chequeMethod, setChequeMethod] = useState<'bank_transfer' | 'cash'>('bank_transfer')
   const [chequeRef, setChequeRef] = useState('')
+  const [deleteOpen, setDeleteOpen] = useState(false)
 
   function buildInvoiceData(t: any): GovInvoiceData {
     const gross = t.total_amount || 0
@@ -116,6 +129,18 @@ export default function GovernmentSaleDetail() {
       title: `Government Invoice ${txn?.transaction_number || ''}`,
       paperSize: 'a4',
     })
+  }
+
+  async function handleDelete() {
+    if (!txn) return
+    try {
+      await deleteSale.mutateAsync({ transactionId: (txn as any).id, userId: user?.id || '' })
+      toast.success('Sale deleted and inventory reversed.')
+      router.push('/government/sales')
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to delete sale')
+    }
+    setDeleteOpen(false)
   }
 
   async function handleRecordPayment() {
@@ -180,6 +205,9 @@ export default function GovernmentSaleDetail() {
           </div>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={() => setDeleteOpen(true)} className="text-destructive hover:text-destructive">
+            <Trash2 className="h-4 w-4 mr-1" />Delete
+          </Button>
           <Button variant="outline" onClick={handlePrint}>
             <Printer className="h-4 w-4 mr-2" />Print Invoice
           </Button>
@@ -377,6 +405,30 @@ export default function GovernmentSaleDetail() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete confirmation */}
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Government Sale?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete sale <strong>{t.transaction_number}</strong> and reverse all inventory movements.
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              disabled={deleteSale.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleteSale.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Delete Sale
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

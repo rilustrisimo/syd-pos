@@ -24,8 +24,8 @@ export default function GovernmentCanvassList() {
     try {
       await deleteMutation.mutateAsync(id)
       toast.success('Canvass deleted')
-    } catch {
-      toast.error('Failed to delete canvass')
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to delete canvass')
     }
   }
 
