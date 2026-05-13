@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
 import {
   createTransaction,
+  deliverGovernmentSale,
   recordGovernmentPayment,
   softDeleteTransaction,
   type TransactionInput,
@@ -122,6 +123,19 @@ export function useRecordGovernmentPayment() {
       referenceNumber?: string | null
       userId: string
     }) => recordGovernmentPayment(transactionId, netChequeAmount, chequeMethod, referenceNumber ?? null, userId),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: govTxnKeys.detail(variables.transactionId) })
+      queryClient.invalidateQueries({ queryKey: govTxnKeys.lists() })
+    },
+  })
+}
+
+export function useDeliverGovernmentSale() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ transactionId, userId }: { transactionId: string; userId: string }) =>
+      deliverGovernmentSale(transactionId, userId),
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: govTxnKeys.detail(variables.transactionId) })
       queryClient.invalidateQueries({ queryKey: govTxnKeys.lists() })

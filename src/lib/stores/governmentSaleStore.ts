@@ -59,9 +59,10 @@ interface GovSaleState {
 
   // Computed
   getItemCount: () => number
-  getGrossTotal: () => number
-  getWithholdingAmount: () => number
-  getNetReceivable: () => number
+  getGrossTotal: () => number        // actual items sold
+  getWithholdingAmount: () => number // PO amount × rate
+  getNetReceivable: () => number     // PO amount − withholding = cheque expected
+  getSpread: () => number            // cheque − actual items (profit/commission)
   isBudgetExceeded: () => boolean
   getRemainingBudget: () => number
 }
@@ -168,11 +169,17 @@ export const useGovernmentSaleStore = create<GovSaleState>()(
           0
         ),
 
+      // Withholding is based on the canvass PO amount, not the actual items sold
       getWithholdingAmount: () =>
-        round2((get().getGrossTotal() * get().withholdingRate) / 100),
+        round2((get().canvasTotalBudget * get().withholdingRate) / 100),
 
+      // Net receivable = cheque expected = PO amount − withholding
       getNetReceivable: () =>
-        round2(get().getGrossTotal() - get().getWithholdingAmount()),
+        round2(get().canvasTotalBudget - get().getWithholdingAmount()),
+
+      // Spread = cheque received − actual items sold (profit/commission/difference)
+      getSpread: () =>
+        round2(get().getNetReceivable() - get().getGrossTotal()),
 
       isBudgetExceeded: () => {
         const { canvasTotalBudget } = get()

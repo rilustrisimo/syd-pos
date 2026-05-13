@@ -3,10 +3,10 @@
 import { useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Printer, Loader2, CreditCard, Trash2 } from 'lucide-react'
+import { ArrowLeft, Printer, Loader2, CreditCard, Trash2, Truck } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuthStore } from '@/lib/stores/auth'
-import { useGovernmentTransaction, useRecordGovernmentPayment, useDeleteGovernmentSale } from '@/hooks/useGovernmentTransactions'
+import { useGovernmentTransaction, useRecordGovernmentPayment, useDeleteGovernmentSale, useDeliverGovernmentSale } from '@/hooks/useGovernmentTransactions'
 import { GovernmentInvoiceTemplate } from '@/components/print/government-invoice-template'
 import type { GovInvoiceData } from '@/components/print/government-invoice-template'
 import { printElement } from '@/lib/utils/print'
@@ -65,6 +65,7 @@ export default function GovernmentSaleDetail() {
   const { data: txn, isLoading } = useGovernmentTransaction(id)
   const recordPayment = useRecordGovernmentPayment()
   const deleteSale = useDeleteGovernmentSale()
+  const deliverSale = useDeliverGovernmentSale()
 
   // Payment modal state
   const [paymentOpen, setPaymentOpen] = useState(false)
@@ -72,6 +73,7 @@ export default function GovernmentSaleDetail() {
   const [chequeMethod, setChequeMethod] = useState<'bank_transfer' | 'cash'>('bank_transfer')
   const [chequeRef, setChequeRef] = useState('')
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const [deliverOpen, setDeliverOpen] = useState(false)
 
   function buildInvoiceData(t: any): GovInvoiceData {
     const gross = t.total_amount || 0
@@ -131,11 +133,23 @@ export default function GovernmentSaleDetail() {
     })
   }
 
-  async function handleDelete() {
+  async function handleDeliver() {
     if (!txn) return
     try {
+      await deliverSale.mutateAsync({ transactionId: (txn as any).id, userId: user?.id || '' })
+      toast.success('Sale marked as delivered. Inventory has been updated.')
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to mark as delivered')
+    }
+    setDeliverOpen(false)
+  }
+
+  async function handleDelete() {
+    if (!txn) return
+    const isDelivered = (txn as any).is_delivered
+    try {
       await deleteSale.mutateAsync({ transactionId: (txn as any).id, userId: user?.id || '' })
-      toast.success('Sale deleted and inventory reversed.')
+      toast.success(isDelivered ? 'Sale deleted and inventory reversed.' : 'Sale deleted.')
       router.push('/government/sales')
     } catch (err: any) {
       toast.error(err.message || 'Failed to delete sale')
@@ -180,12 +194,15 @@ export default function GovernmentSaleDetail() {
   }
 
   const t = txn as any
-  const gross = t.total_amount || 0
+  const isDelivered: boolean = t.is_delivered || false
+  const poAmount = t.total_amount || 0
+  const itemsTotal = t.subtotal || 0
   const withholding = t.withholding_amount || 0
   const withholdingRate = t.withholding_rate || 0
-  const net = gross - withholding
+  const chequeExpected = poAmount - withholding
+  const spread = chequeExpected - itemsTotal
   const paid = t.amount_paid || 0
-  const balanceDue = Math.max(0, net - paid)
+  const balanceDue = Math.max(0, poAmount - paid)
   const status = statusConfig[t.payment_status as keyof typeof statusConfig] || statusConfig.unpaid
 
   return (
@@ -200,6 +217,9 @@ export default function GovernmentSaleDetail() {
             <div className="flex items-center gap-2">
               <h1 className="text-xl font-bold">{t.transaction_number}</h1>
               <Badge variant={status.variant}>{status.label}</Badge>
+              <Badge variant={isDelivered ? 'default' : 'secondary'} className={isDelivered ? 'bg-green-600' : ''}>
+                {isDelivered ? 'Delivered' : 'Pending Delivery'}
+              </Badge>
             </div>
             <p className="text-sm text-muted-foreground">{t.transaction_date?.slice(0, 10)} · {t.government_agency || t.customer?.name}</p>
           </div>
@@ -211,6 +231,11 @@ export default function GovernmentSaleDetail() {
           <Button variant="outline" onClick={handlePrint}>
             <Printer className="h-4 w-4 mr-2" />Print Invoice
           </Button>
+          {!isDelivered && (
+            <Button onClick={() => setDeliverOpen(true)} variant="outline" className="text-green-700 border-green-600 hover:bg-green-50">
+              <Truck className="h-4 w-4 mr-1" />Mark as Delivered
+            </Button>
+          )}
           {t.payment_status !== 'paid' && (
             <Button onClick={() => setPaymentOpen(true)}>
               <CreditCard className="h-4 w-4 mr-2" />Record Cheque
@@ -247,6 +272,16 @@ export default function GovernmentSaleDetail() {
               </Link>
             ) : (
               <p className="text-muted-foreground italic text-xs mt-0.5">None</p>
+            )}
+          </div>
+          <div>
+            <span className="text-muted-foreground">Delivery Status</span>
+            {isDelivered ? (
+              <p className="font-semibold mt-0.5 text-green-700">
+                Delivered {t.delivered_at ? `on ${t.delivered_at.slice(0, 10)}` : ''}
+              </p>
+            ) : (
+              <p className="text-amber-600 font-semibold mt-0.5">Pending Delivery — inventory not yet moved</p>
             )}
           </div>
           {t.notes && (
@@ -290,18 +325,35 @@ export default function GovernmentSaleDetail() {
 
           {/* Totals breakdown */}
           <div className="flex justify-end p-4">
-            <div className="w-64 space-y-1.5 text-sm">
-              <div className="flex justify-between"><span className="text-muted-foreground">Gross Total</span><span className="font-semibold">{fmt(gross)}</span></div>
+            <div className="w-72 space-y-1.5 text-sm">
+              {/* PO billing section */}
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Billing (PO)</p>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">PO / Canvass Amount</span>
+                <span className="font-semibold">{fmt(poAmount)}</span>
+              </div>
               <div className="flex justify-between text-red-600">
-                <span>Withholding ({withholdingRate}%)</span>
+                <span>Withholding ({withholdingRate}% of PO)</span>
                 <span>−{fmt(withholding)}</span>
               </div>
               <Separator />
               <div className="flex justify-between font-bold text-base text-blue-700">
-                <span>Net Receivable</span>
-                <span>{fmt(net)}</span>
+                <span>Cheque Expected</span>
+                <span>{fmt(chequeExpected)}</span>
               </div>
               <Separator />
+              {/* Actual items + spread */}
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide pt-1">Actual Sale</p>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Items Total</span>
+                <span className="font-semibold">{fmt(itemsTotal)}</span>
+              </div>
+              <div className={`flex justify-between font-semibold ${spread >= 0 ? 'text-green-600' : 'text-destructive'}`}>
+                <span>{spread >= 0 ? 'Spread (Profit / Commission)' : 'Shortfall'}</span>
+                <span>{spread >= 0 ? '+' : ''}{fmt(spread)}</span>
+              </div>
+              <Separator />
+              {/* Payment status */}
               <div className="flex justify-between"><span className="text-muted-foreground">Amount Paid</span><span>{fmt(paid)}</span></div>
               <div className="flex justify-between font-bold">
                 <span>Balance Due</span>
@@ -356,23 +408,23 @@ export default function GovernmentSaleDetail() {
           <DialogHeader>
             <DialogTitle>Record Cheque Payment</DialogTitle>
             <DialogDescription>
-              Enter the net cheque amount received. The system will automatically add a withholding entry of {fmt(withholding)} to balance the gross total.
+              Enter the cheque amount received. The system will automatically add a withholding entry of {fmt(withholding)} to settle the PO balance.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="bg-muted/50 rounded-lg p-3 text-sm space-y-1">
-              <div className="flex justify-between"><span className="text-muted-foreground">Gross Total</span><span>{fmt(gross)}</span></div>
-              <div className="flex justify-between text-red-600"><span>Withholding ({withholdingRate}%)</span><span>−{fmt(withholding)}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">PO / Canvass Amount</span><span>{fmt(poAmount)}</span></div>
+              <div className="flex justify-between text-red-600"><span>Withholding ({withholdingRate}% of PO)</span><span>−{fmt(withholding)}</span></div>
               <Separator className="my-1" />
-              <div className="flex justify-between font-bold"><span>Expected Cheque</span><span className="text-blue-700">{fmt(net)}</span></div>
+              <div className="flex justify-between font-bold"><span>Expected Cheque</span><span className="text-blue-700">{fmt(chequeExpected)}</span></div>
             </div>
             <div className="space-y-1.5">
-              <Label>Cheque / Net Amount Received <span className="text-destructive">*</span></Label>
+              <Label>Cheque Amount Received <span className="text-destructive">*</span></Label>
               <Input
                 type="number"
                 value={chequeAmount}
                 onChange={e => setChequeAmount(e.target.value)}
-                placeholder={`Expected: ${fmt(net)}`}
+                placeholder={`Expected: ${fmt(chequeExpected)}`}
                 min={0}
                 step="any"
               />
@@ -406,14 +458,40 @@ export default function GovernmentSaleDetail() {
         </DialogContent>
       </Dialog>
 
+      {/* Deliver confirmation */}
+      <AlertDialog open={deliverOpen} onOpenChange={setDeliverOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm Delivery?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Marking <strong>{t.transaction_number}</strong> as delivered will immediately deduct the sold items from branch inventory.
+              This cannot be undone without deleting the sale.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeliver}
+              disabled={deliverSale.isPending}
+              className="bg-green-600 text-white hover:bg-green-700"
+            >
+              {deliverSale.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Confirm Delivery
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Delete confirmation */}
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Government Sale?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete sale <strong>{t.transaction_number}</strong> and reverse all inventory movements.
-              This action cannot be undone.
+              {isDelivered
+                ? <>This will permanently delete <strong>{t.transaction_number}</strong> and reverse all inventory movements. This cannot be undone.</>
+                : <>This will permanently delete <strong>{t.transaction_number}</strong>. No inventory was moved (goods not yet delivered), so no reversal is needed.</>
+              }
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

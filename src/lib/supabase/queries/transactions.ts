@@ -28,6 +28,10 @@ export interface Transaction {
   withholding_rate: number
   withholding_amount: number
   canvas_id: string | null
+  // Delivery tracking (government sales)
+  is_delivered: boolean
+  delivered_at: string | null
+  delivered_by: string | null
   // Joined fields
   customer?: {
     id: string
@@ -981,6 +985,20 @@ export async function getReturns(filters: TransactionFilters = {}) {
     ...filters,
     transaction_type: 'return'
   })
+}
+
+// ============================================
+// DELIVER GOVERNMENT SALE
+// ============================================
+
+export async function deliverGovernmentSale(transactionId: string, userId: string) {
+  const supabase = createClient()
+  const { data, error } = await supabase.rpc('deliver_government_sale', {
+    p_transaction_id: transactionId,
+    p_delivered_by: userId,
+  })
+  if (error) throw new Error(error.message)
+  return data
 }
 
 // ============================================

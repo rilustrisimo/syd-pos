@@ -100,9 +100,10 @@ function NewGovernmentSaleInner() {
     store.branchId || ''
   )
 
-  const gross = store.getGrossTotal()
-  const withholding = store.getWithholdingAmount()
-  const net = store.getNetReceivable()
+  const gross = store.getGrossTotal()           // actual items sold
+  const withholding = store.getWithholdingAmount() // PO × rate
+  const net = store.getNetReceivable()           // PO − withholding = cheque
+  const spread = store.getSpread()               // cheque − items
   const budgetExceeded = store.isBudgetExceeded()
   const remainingBudget = store.getRemainingBudget()
 
@@ -184,11 +185,11 @@ function NewGovernmentSaleInner() {
           delivery_type:     'pickup',
           notes:             store.notes || null,
           transaction_date:  store.saleDate,
-          subtotal:          gross,
+          subtotal:          gross,            // actual items sold
           discount_amount:   store.items.reduce((s, i) => s + i.discount_amount, 0),
           delivery_fee:      0,
           other_fees:        0,
-          total_amount:      gross,
+          total_amount:      store.canvasTotalBudget,  // PO amount — withholding is based on this
           amount_paid:       0,
           payment_status:    'unpaid',
           is_government_sale: true,
@@ -330,12 +331,12 @@ function NewGovernmentSaleInner() {
               </div>
             )}
 
-            {/* Branch + Date + Product search on one row */}
-            <div className="flex items-end gap-2">
-              <div className="space-y-1 w-44">
+            {/* Branch + Date on their own row */}
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
                 <Label className="text-xs">Branch <span className="text-destructive">*</span></Label>
                 <Select value={store.branchId || ''} onValueChange={store.setBranchId}>
-                  <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Select" /></SelectTrigger>
+                  <SelectTrigger className="h-8 text-sm truncate"><SelectValue placeholder="Select branch" /></SelectTrigger>
                   <SelectContent>
                     {(branches as any[]).map((b: any) => (
                       <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
@@ -343,42 +344,43 @@ function NewGovernmentSaleInner() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-1 w-36">
+              <div className="space-y-1">
                 <Label className="text-xs">Sale Date</Label>
                 <Input type="date" className="h-8 text-sm" value={store.saleDate} onChange={e => store.setSaleDate(e.target.value)} />
               </div>
-              <div className="space-y-1 flex-1 relative">
-                <Label className="text-xs">Add Product</Label>
-                <div className="relative">
-                  <Search className="absolute left-2.5 top-2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    className="pl-8 h-8 text-sm"
-                    placeholder={store.branchId ? 'Search by name or code…' : 'Select branch first'}
-                    value={productSearch}
-                    onChange={e => setProductSearch(e.target.value)}
-                    disabled={!store.branchId || !store.canvasId}
-                  />
-                  {isSearching && <Loader2 className="absolute right-2.5 top-2 h-4 w-4 animate-spin text-muted-foreground" />}
-                  {searchResults && searchResults.length > 0 && productSearch.length >= 2 && (
-                    <div className="absolute z-20 top-full mt-1 w-full bg-popover border rounded-md shadow-lg max-h-56 overflow-auto">
-                      {(searchResults as any[]).map((p: any) => (
-                        <button
-                          key={p.id}
-                          type="button"
-                          className="flex w-full items-center justify-between px-3 py-2 text-sm hover:bg-muted/60 text-left"
-                          onClick={() => handleAddProduct(p)}
-                        >
-                          <span>
-                            <span className="font-mono text-xs text-muted-foreground mr-2">{p.code}</span>
-                            {p.name}
-                          </span>
-                          <span className="text-muted-foreground text-xs ml-4">{fmt(p.unit_price)}</span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                {!store.canvasId && <p className="text-xs text-muted-foreground mt-0.5">Select a canvass first.</p>}
+            </div>
+
+            {/* Product search — full width */}
+            <div className="space-y-1 relative">
+              <Label className="text-xs">Add Product</Label>
+              <div className="relative">
+                <Search className="absolute left-2.5 top-2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  className="pl-8 h-8 text-sm"
+                  placeholder={!store.canvasId ? 'Select a canvass first' : !store.branchId ? 'Select a branch first' : 'Search by name or code…'}
+                  value={productSearch}
+                  onChange={e => setProductSearch(e.target.value)}
+                  disabled={!store.branchId || !store.canvasId}
+                />
+                {isSearching && <Loader2 className="absolute right-2.5 top-2 h-4 w-4 animate-spin text-muted-foreground" />}
+                {searchResults && searchResults.length > 0 && productSearch.length >= 2 && (
+                  <div className="absolute z-20 top-full mt-1 w-full bg-popover border rounded-md shadow-lg max-h-56 overflow-auto">
+                    {(searchResults as any[]).map((p: any) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        className="flex w-full items-center justify-between px-3 py-2 text-sm hover:bg-muted/60 text-left"
+                        onClick={() => handleAddProduct(p)}
+                      >
+                        <span>
+                          <span className="font-mono text-xs text-muted-foreground mr-2">{p.code}</span>
+                          {p.name}
+                        </span>
+                        <span className="text-muted-foreground text-xs ml-4">{fmt(p.unit_price)}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -520,21 +522,45 @@ function NewGovernmentSaleInner() {
 
         <Separator />
 
-        {/* Withholding totals */}
-        <div className="space-y-2 text-sm">
+        {/* Billing breakdown */}
+        <div className="space-y-1.5 text-sm">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Billing (based on PO)</p>
           <div className="flex justify-between">
-            <span className="text-muted-foreground">Gross Total</span>
-            <span className="font-semibold">{fmt(gross)}</span>
+            <span className="text-muted-foreground">PO / Canvass Amount</span>
+            <span className="font-semibold">{fmt(store.canvasTotalBudget)}</span>
           </div>
           <div className="flex justify-between text-red-600">
-            <span>Withholding ({store.withholdingRate}%)</span>
+            <span>Withholding ({store.withholdingRate}% of PO)</span>
             <span>−{fmt(withholding)}</span>
           </div>
           <Separator />
-          <div className="flex justify-between text-base font-bold">
-            <span>Net Receivable</span>
+          <div className="flex justify-between font-bold text-base">
+            <span>Cheque Expected</span>
             <span className="text-blue-700">{fmt(net)}</span>
           </div>
+        </div>
+
+        <Separator />
+
+        {/* Actual items + spread */}
+        <div className="space-y-1.5 text-sm">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Actual Sale</p>
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Items Total</span>
+            <span className="font-semibold">{fmt(gross)}</span>
+          </div>
+          <Separator />
+          <div className={`flex justify-between font-bold ${spread >= 0 ? 'text-green-600' : 'text-destructive'}`}>
+            <span>{spread >= 0 ? 'Spread (Profit / Commission)' : 'Shortfall'}</span>
+            <span>{spread >= 0 ? '+' : ''}{fmt(spread)}</span>
+          </div>
+          {spread !== 0 && (
+            <p className="text-xs text-muted-foreground">
+              {spread > 0
+                ? 'Cheque exceeds actual items — difference is available as profit or commission.'
+                : 'Items exceed cheque — you will absorb the shortfall.'}
+            </p>
+          )}
         </div>
 
         <Button
