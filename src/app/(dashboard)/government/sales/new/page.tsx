@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Loader2, Trash2, Search, User, ClipboardList, AlertTriangle, CheckCircle2 } from 'lucide-react'
+import { ArrowLeft, Loader2, Trash2, Search, User, ClipboardList, AlertTriangle, CheckCircle2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuthStore } from '@/lib/stores/auth'
 import { useBranches } from '@/hooks/useInventory'
@@ -51,6 +51,9 @@ function NewGovernmentSaleInner() {
   const [customerSearch, setCustomerSearch] = useState('')
   const [canvasSearch, setCanvasSearch] = useState('')
   const [canvasOpen, setCanvasOpen] = useState(false)
+  // Draft detection — evaluated once on mount before effects run
+  const [showResumeBanner, setShowResumeBanner] = useState(() => store.items.length > 0)
+  const hasDraft = store.items.length > 0 || !!store.canvasId
 
   // Load canvasses for picker
   const { data: canvasesData } = useGovernmentCanvases(1, 50)
@@ -210,198 +213,246 @@ function NewGovernmentSaleInner() {
 
   return (
     <div className="flex h-[calc(100vh-64px)] overflow-hidden">
-      {/* Left: canvass picker + product search + cart */}
-      <div className="flex-1 flex flex-col p-4 gap-4 overflow-y-auto border-r">
-        <div className="flex items-center gap-2">
-          <Link href="/government/sales">
-            <Button variant="ghost" size="sm"><ArrowLeft className="h-4 w-4 mr-1" />Back</Button>
-          </Link>
-          <h1 className="text-lg font-bold">New Government Sale</h1>
-        </div>
+      {/* ── LEFT PANEL ── */}
+      <div className="flex-1 flex flex-col overflow-hidden border-r">
 
-        {/* ── Step 1: Canvass Reference (required) ── */}
-        <Card className={store.canvasId ? 'border-blue-200 bg-blue-50/40' : 'border-orange-200 bg-orange-50/40'}>
-          <CardHeader className="pb-2 pt-3 px-4">
-            <CardTitle className="text-sm flex items-center gap-1.5">
-              <ClipboardList className="h-4 w-4" />
-              Canvass Reference
-              <span className="text-destructive ml-0.5">*</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="px-4 pb-3">
-            {store.canvasId ? (
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-semibold text-sm">{store.canvasNumber}</p>
-                  <p className="text-xs text-muted-foreground">Budget cap: {fmt(store.canvasTotalBudget)}</p>
-                </div>
-                <Button variant="ghost" size="sm" className="text-xs h-7" onClick={() => store.clearCanvasReference()}>
-                  Change
+        {/* ── STICKY ZONE: canvass + branch + search — never scrolls ── */}
+        <div className="flex-shrink-0 bg-background border-b">
+
+          {/* Header row */}
+          <div className="flex items-center justify-between px-4 py-2.5 border-b">
+            <div className="flex items-center gap-2">
+              <Link href="/government/sales">
+                <Button variant="ghost" size="sm"><ArrowLeft className="h-4 w-4 mr-1" />Back</Button>
+              </Link>
+              <h1 className="text-base font-bold">New Government Sale</h1>
+              {store.items.length > 0 && (
+                <span className="text-xs bg-blue-100 text-blue-700 font-semibold px-1.5 py-0.5 rounded-full">
+                  {store.items.length} item{store.items.length !== 1 ? 's' : ''}
+                </span>
+              )}
+            </div>
+            {hasDraft && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground flex items-center gap-1">
+                  <CheckCircle2 className="h-3 w-3 text-green-500" />
+                  Draft auto-saved
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs text-destructive hover:text-destructive"
+                  onClick={() => { store.resetAll(); setShowResumeBanner(false); toast.info('Draft cleared') }}
+                >
+                  <X className="h-3 w-3 mr-1" />Discard
                 </Button>
               </div>
-            ) : (
-              <Popover open={canvasOpen} onOpenChange={setCanvasOpen}>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" className="w-full justify-start h-9 text-sm text-muted-foreground">
-                    <ClipboardList className="h-4 w-4 mr-2" />
-                    Select a government canvass…
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-96 p-0" align="start">
-                  <Command shouldFilter={false}>
-                    <CommandInput
-                      placeholder="Search by canvass# or agency…"
-                      value={canvasSearch}
-                      onValueChange={setCanvasSearch}
-                    />
-                    <CommandList className="max-h-64">
-                      <CommandEmpty>
-                        No canvasses found.{' '}
-                        <Link href="/government/canvass/new" className="underline text-xs">Create one</Link>
-                      </CommandEmpty>
-                      <CommandGroup>
-                        {(filteredCanvases as any[]).map((c: any) => (
-                          <CommandItem key={c.id} onSelect={() => selectCanvas(c)} className="cursor-pointer">
-                            <div className="flex items-center justify-between w-full">
-                              <div>
-                                <p className="text-sm font-medium">{c.canvas_number}</p>
-                                <p className="text-xs text-muted-foreground">{c.government_agency}</p>
-                              </div>
-                              <span className="text-sm font-semibold">{fmt(c.total_amount)}</span>
-                            </div>
-                          </CommandItem>
-                        ))}
-                      </CommandGroup>
-                    </CommandList>
-                  </Command>
-                </PopoverContent>
-              </Popover>
             )}
-          </CardContent>
-        </Card>
-
-        {/* Budget warning */}
-        {store.canvasId && budgetExceeded && (
-          <Alert variant="destructive" className="py-2">
-            <AlertTriangle className="h-4 w-4" />
-            <AlertDescription className="text-sm">
-              Sale total ({fmt(gross)}) exceeds canvass budget ({fmt(store.canvasTotalBudget)}) by {fmt(-remainingBudget)}.
-              Reduce item quantities or prices to proceed.
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {/* Branch + Date */}
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-1">
-            <Label className="text-xs">Branch</Label>
-            <Select value={store.branchId || ''} onValueChange={store.setBranchId}>
-              <SelectTrigger className="h-8"><SelectValue placeholder="Select branch" /></SelectTrigger>
-              <SelectContent>
-                {(branches as any[]).map((b: any) => (
-                  <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
           </div>
-          <div className="space-y-1">
-            <Label className="text-xs">Sale Date</Label>
-            <Input type="date" className="h-8 text-sm" value={store.saleDate} onChange={e => store.setSaleDate(e.target.value)} />
+
+          {/* Resume draft banner */}
+          {showResumeBanner && (
+            <div className="flex items-center justify-between px-4 py-2 bg-amber-50 border-b border-amber-200 text-sm">
+              <span className="text-amber-800">
+                You have an unfinished draft with <strong>{store.items.length}</strong> item{store.items.length !== 1 ? 's' : ''}. Resume it or discard to start fresh.
+              </span>
+              <Button variant="ghost" size="sm" className="h-6 text-xs ml-3 flex-shrink-0" onClick={() => setShowResumeBanner(false)}>
+                Dismiss
+              </Button>
+            </div>
+          )}
+
+          <div className="px-4 py-3 space-y-3">
+            {/* Canvass picker (compact inline) */}
+            <div className={`flex items-center gap-3 rounded-lg border px-3 py-2 ${store.canvasId ? 'border-blue-200 bg-blue-50/40' : 'border-orange-200 bg-orange-50/40'}`}>
+              <ClipboardList className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+              {store.canvasId ? (
+                <div className="flex-1 flex items-center justify-between min-w-0">
+                  <div className="min-w-0">
+                    <span className="font-semibold text-sm">{store.canvasNumber}</span>
+                    <span className="text-xs text-muted-foreground ml-2">Budget: {fmt(store.canvasTotalBudget)}</span>
+                    {store.canvasId && (
+                      <span className={`text-xs ml-2 font-medium ${budgetExceeded ? 'text-destructive' : 'text-green-600'}`}>
+                        ({budgetExceeded ? `over by ${fmt(-remainingBudget)}` : `${fmt(remainingBudget)} left`})
+                      </span>
+                    )}
+                  </div>
+                  <Button variant="ghost" size="sm" className="text-xs h-6 flex-shrink-0" onClick={() => store.clearCanvasReference()}>
+                    Change
+                  </Button>
+                </div>
+              ) : (
+                <Popover open={canvasOpen} onOpenChange={setCanvasOpen}>
+                  <PopoverTrigger asChild>
+                    <Button variant="ghost" className="flex-1 justify-start h-7 text-sm text-muted-foreground p-0 hover:bg-transparent">
+                      Select a government canvass… <span className="text-destructive ml-1">*</span>
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-96 p-0" align="start">
+                    <Command shouldFilter={false}>
+                      <CommandInput
+                        placeholder="Search by canvass# or agency…"
+                        value={canvasSearch}
+                        onValueChange={setCanvasSearch}
+                      />
+                      <CommandList className="max-h-64">
+                        <CommandEmpty>
+                          No canvasses found.{' '}
+                          <Link href="/government/canvass/new" className="underline text-xs">Create one</Link>
+                        </CommandEmpty>
+                        <CommandGroup>
+                          {(filteredCanvases as any[]).map((c: any) => (
+                            <CommandItem key={c.id} onSelect={() => selectCanvas(c)} className="cursor-pointer">
+                              <div className="flex items-center justify-between w-full">
+                                <div>
+                                  <p className="text-sm font-medium">{c.canvas_number}</p>
+                                  <p className="text-xs text-muted-foreground">{c.government_agency}</p>
+                                </div>
+                                <span className="text-sm font-semibold ml-4">{fmt(c.total_amount)}</span>
+                              </div>
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+              )}
+            </div>
+
+            {/* Budget bar */}
+            {store.canvasId && (
+              <div className="w-full h-1 bg-muted rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all ${budgetExceeded ? 'bg-destructive' : 'bg-green-500'}`}
+                  style={{ width: `${Math.min(100, store.canvasTotalBudget > 0 ? (gross / store.canvasTotalBudget) * 100 : 0)}%` }}
+                />
+              </div>
+            )}
+
+            {/* Branch + Date + Product search on one row */}
+            <div className="flex items-end gap-2">
+              <div className="space-y-1 w-44">
+                <Label className="text-xs">Branch <span className="text-destructive">*</span></Label>
+                <Select value={store.branchId || ''} onValueChange={store.setBranchId}>
+                  <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Select" /></SelectTrigger>
+                  <SelectContent>
+                    {(branches as any[]).map((b: any) => (
+                      <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1 w-36">
+                <Label className="text-xs">Sale Date</Label>
+                <Input type="date" className="h-8 text-sm" value={store.saleDate} onChange={e => store.setSaleDate(e.target.value)} />
+              </div>
+              <div className="space-y-1 flex-1 relative">
+                <Label className="text-xs">Add Product</Label>
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    className="pl-8 h-8 text-sm"
+                    placeholder={store.branchId ? 'Search by name or code…' : 'Select branch first'}
+                    value={productSearch}
+                    onChange={e => setProductSearch(e.target.value)}
+                    disabled={!store.branchId || !store.canvasId}
+                  />
+                  {isSearching && <Loader2 className="absolute right-2.5 top-2 h-4 w-4 animate-spin text-muted-foreground" />}
+                  {searchResults && searchResults.length > 0 && productSearch.length >= 2 && (
+                    <div className="absolute z-20 top-full mt-1 w-full bg-popover border rounded-md shadow-lg max-h-56 overflow-auto">
+                      {(searchResults as any[]).map((p: any) => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          className="flex w-full items-center justify-between px-3 py-2 text-sm hover:bg-muted/60 text-left"
+                          onClick={() => handleAddProduct(p)}
+                        >
+                          <span>
+                            <span className="font-mono text-xs text-muted-foreground mr-2">{p.code}</span>
+                            {p.name}
+                          </span>
+                          <span className="text-muted-foreground text-xs ml-4">{fmt(p.unit_price)}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                {!store.canvasId && <p className="text-xs text-muted-foreground mt-0.5">Select a canvass first.</p>}
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* Product search */}
-        <div className="relative">
-          <Search className="absolute left-2.5 top-2 h-4 w-4 text-muted-foreground" />
-          <Input
-            className="pl-8"
-            placeholder="Search product…"
-            value={productSearch}
-            onChange={e => setProductSearch(e.target.value)}
-            disabled={!store.branchId}
-          />
-          {!store.branchId && <p className="text-xs text-muted-foreground mt-1">Select a branch first.</p>}
-          {isSearching && <Loader2 className="absolute right-3 top-2.5 h-4 w-4 animate-spin text-muted-foreground" />}
-          {searchResults && searchResults.length > 0 && productSearch.length >= 2 && (
-            <div className="absolute z-10 mt-1 w-full bg-popover border rounded-md shadow-md max-h-56 overflow-auto">
-              {(searchResults as any[]).map((p: any) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  className="flex w-full items-center justify-between px-3 py-2 text-sm hover:bg-muted/60 text-left"
-                  onClick={() => handleAddProduct(p)}
+        {/* ── SCROLLABLE ITEMS ZONE ── */}
+        <div className="flex-1 overflow-y-auto">
+          {store.items.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-muted-foreground text-sm gap-2">
+              <Search className="h-8 w-8 opacity-20" />
+              {store.canvasId ? 'Search and add products above' : 'Select a canvass reference first, then add products'}
+            </div>
+          ) : (
+            <div className="p-4">
+              {/* Column headers */}
+              <div className="grid gap-2 text-xs font-medium text-muted-foreground mb-2 px-1"
+                style={{ gridTemplateColumns: '20px 1fr 72px 44px 90px 78px 80px 28px' }}>
+                <span>#</span>
+                <span>Product</span>
+                <span className="text-center">Qty</span>
+                <span className="text-center">Unit</span>
+                <span className="text-right">Unit Price</span>
+                <span className="text-right">Discount</span>
+                <span className="text-right">Total</span>
+                <span />
+              </div>
+              {/* Item rows */}
+              {store.items.map((item, idx) => (
+                <div
+                  key={item.id}
+                  className="grid gap-2 items-center py-2 border-b last:border-0"
+                  style={{ gridTemplateColumns: '20px 1fr 72px 44px 90px 78px 80px 28px' }}
                 >
-                  <span>
-                    <span className="font-mono text-xs text-muted-foreground mr-2">{p.code}</span>
-                    {p.name}
+                  <span className="text-xs text-muted-foreground">{idx + 1}</span>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate leading-tight">{item.product_name}</p>
+                    <p className="text-xs text-muted-foreground font-mono">{item.product_code}</p>
+                  </div>
+                  <Input
+                    type="number"
+                    className="h-7 text-sm text-center px-1"
+                    value={item.quantity}
+                    min={0.01}
+                    step="any"
+                    onChange={e => store.updateItemQuantity(item.id, parseFloat(e.target.value) || 0)}
+                  />
+                  <span className="text-xs text-muted-foreground text-center">{item.uom_name}</span>
+                  <Input
+                    type="number"
+                    className="h-7 text-sm text-right px-1"
+                    value={item.unit_price}
+                    min={0}
+                    step="any"
+                    onChange={e => store.updateItemUnitPrice(item.id, parseFloat(e.target.value) || 0)}
+                  />
+                  <Input
+                    type="number"
+                    className="h-7 text-sm text-right px-1"
+                    value={item.discount_amount}
+                    min={0}
+                    step="any"
+                    onChange={e => store.updateItemDiscount(item.id, parseFloat(e.target.value) || 0)}
+                  />
+                  <span className="text-sm font-semibold text-right">
+                    {fmt(round2(item.quantity * item.unit_price - item.discount_amount))}
                   </span>
-                  <span className="text-muted-foreground text-xs">{fmt(p.unit_price)}</span>
-                </button>
+                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => store.removeItem(item.id)}>
+                    <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                  </Button>
+                </div>
               ))}
             </div>
           )}
         </div>
-
-        {/* Cart items */}
-        {store.items.length === 0 ? (
-          <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
-            {store.canvasId ? 'Search and add products above' : 'Select a canvass first, then add products'}
-          </div>
-        ) : (
-          <div className="space-y-2 flex-1">
-            {store.items.map(item => (
-              <Card key={item.id} className="p-3">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{item.product_name}</p>
-                    <p className="text-xs text-muted-foreground">{item.product_code}</p>
-                  </div>
-                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0 flex-shrink-0" onClick={() => store.removeItem(item.id)}>
-                    <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                  </Button>
-                </div>
-                <div className="mt-2 grid grid-cols-3 gap-2">
-                  <div className="space-y-0.5">
-                    <Label className="text-xs">Qty ({item.uom_name})</Label>
-                    <Input
-                      type="number"
-                      className="h-7 text-sm"
-                      value={item.quantity}
-                      min={0.01}
-                      step="any"
-                      onChange={e => store.updateItemQuantity(item.id, parseFloat(e.target.value) || 0)}
-                    />
-                  </div>
-                  <div className="space-y-0.5">
-                    <Label className="text-xs">Unit Price</Label>
-                    <Input
-                      type="number"
-                      className="h-7 text-sm"
-                      value={item.unit_price}
-                      min={0}
-                      step="any"
-                      onChange={e => store.updateItemUnitPrice(item.id, parseFloat(e.target.value) || 0)}
-                    />
-                  </div>
-                  <div className="space-y-0.5">
-                    <Label className="text-xs">Discount</Label>
-                    <Input
-                      type="number"
-                      className="h-7 text-sm"
-                      value={item.discount_amount}
-                      min={0}
-                      step="any"
-                      onChange={e => store.updateItemDiscount(item.id, parseFloat(e.target.value) || 0)}
-                    />
-                  </div>
-                </div>
-                <div className="mt-1.5 text-right text-sm font-bold">
-                  {fmt(round2(item.quantity * item.unit_price - item.discount_amount))}
-                </div>
-              </Card>
-            ))}
-          </div>
-        )}
       </div>
 
       {/* Right: customer + gov fields + totals */}
@@ -466,32 +517,6 @@ function NewGovernmentSaleInner() {
           <Label className="text-xs font-semibold">Notes</Label>
           <Input className="h-8 text-sm" placeholder="Optional" value={store.notes} onChange={e => store.setNotes(e.target.value)} />
         </div>
-
-        <Separator />
-
-        {/* Budget tracker */}
-        {store.canvasId && (
-          <div className="space-y-1 text-sm">
-            <div className="flex justify-between text-muted-foreground">
-              <span>Canvass budget</span>
-              <span>{fmt(store.canvasTotalBudget)}</span>
-            </div>
-            <div className="flex justify-between font-semibold">
-              <span>Sale total</span>
-              <span className={budgetExceeded ? 'text-destructive' : ''}>{fmt(gross)}</span>
-            </div>
-            <div className={`flex justify-between text-xs font-medium ${budgetExceeded ? 'text-destructive' : 'text-green-600'}`}>
-              <span>{budgetExceeded ? 'Over budget by' : 'Remaining budget'}</span>
-              <span>{budgetExceeded ? fmt(-remainingBudget) : fmt(remainingBudget)}</span>
-            </div>
-            <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden mt-1">
-              <div
-                className={`h-full rounded-full transition-all ${budgetExceeded ? 'bg-destructive' : 'bg-green-500'}`}
-                style={{ width: `${Math.min(100, store.canvasTotalBudget > 0 ? (gross / store.canvasTotalBudget) * 100 : 0)}%` }}
-              />
-            </div>
-          </div>
-        )}
 
         <Separator />
 
