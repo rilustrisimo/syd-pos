@@ -7,7 +7,9 @@ import {
   deliverGovernmentSale,
   recordGovernmentPayment,
   softDeleteTransaction,
+  updateGovernmentSale,
   type TransactionInput,
+  type GovSaleLineInput,
 } from '@/lib/supabase/queries/transactions'
 
 // ── Query keys ────────────────────────────────────────────────────────────────
@@ -123,6 +125,26 @@ export function useRecordGovernmentPayment() {
       referenceNumber?: string | null
       userId: string
     }) => recordGovernmentPayment(transactionId, netChequeAmount, chequeMethod, referenceNumber ?? null, userId),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: govTxnKeys.detail(variables.transactionId) })
+      queryClient.invalidateQueries({ queryKey: govTxnKeys.lists() })
+    },
+  })
+}
+
+export function useUpdateGovernmentSale() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({
+      transactionId,
+      header,
+      lines,
+    }: {
+      transactionId: string
+      header: Parameters<typeof updateGovernmentSale>[1]
+      lines: GovSaleLineInput[]
+    }) => updateGovernmentSale(transactionId, header, lines),
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: govTxnKeys.detail(variables.transactionId) })
       queryClient.invalidateQueries({ queryKey: govTxnKeys.lists() })

@@ -1,12 +1,13 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useRef, useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Printer, Loader2, CreditCard, Trash2, Truck } from 'lucide-react'
+import { ArrowLeft, Printer, Loader2, CreditCard, Trash2, Truck, Pencil, X, Plus, Search } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuthStore } from '@/lib/stores/auth'
-import { useGovernmentTransaction, useRecordGovernmentPayment, useDeleteGovernmentSale, useDeliverGovernmentSale } from '@/hooks/useGovernmentTransactions'
+import { useGovernmentTransaction, useRecordGovernmentPayment, useDeleteGovernmentSale, useDeliverGovernmentSale, useUpdateGovernmentSale } from '@/hooks/useGovernmentTransactions'
+import { usePOSProductSearch } from '@/hooks/useTransactions'
 import { GovernmentInvoiceTemplate } from '@/components/print/government-invoice-template'
 import type { GovInvoiceData } from '@/components/print/government-invoice-template'
 import { printElement } from '@/lib/utils/print'
@@ -66,6 +67,7 @@ export default function GovernmentSaleDetail() {
   const recordPayment = useRecordGovernmentPayment()
   const deleteSale = useDeleteGovernmentSale()
   const deliverSale = useDeliverGovernmentSale()
+  const updateSale = useUpdateGovernmentSale()
 
   // Payment modal state
   const [paymentOpen, setPaymentOpen] = useState(false)
@@ -74,6 +76,110 @@ export default function GovernmentSaleDetail() {
   const [chequeRef, setChequeRef] = useState('')
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deliverOpen, setDeliverOpen] = useState(false)
+
+  // Edit mode state
+  const [editMode, setEditMode] = useState(false)
+  const [editAgency, setEditAgency] = useState('')
+  const [editPoNumber, setEditPoNumber] = useState('')
+  const [editNotes, setEditNotes] = useState('')
+  const [editWithholdingRate, setEditWithholdingRate] = useState(5)
+  const [editSaleDate, setEditSaleDate] = useState('')
+  const [editItems, setEditItems] = useState<any[]>([])
+  const [productSearch, setProductSearch] = useState('')
+  const branchId = (txn as any)?.branch_id || ''
+  const { data: searchResults = [] } = usePOSProductSearch(productSearch, branchId)
+
+  function enterEditMode() {
+    if (!txn) return
+    const t = txn as any
+    setEditAgency(t.government_agency || '')
+    setEditPoNumber(t.po_number || '')
+    setEditNotes(t.notes || '')
+    setEditWithholdingRate(t.withholding_rate || 5)
+    setEditSaleDate(t.transaction_date?.slice(0, 10) || '')
+    setEditItems((t.lines || []).map((l: any) => ({
+      id: l.id,
+      product_id: l.product_id,
+      product_code: l.product?.code || '',
+      product_name: l.product?.name || '',
+      variant_id: l.variant_id || null,
+      quantity: l.quantity,
+      uom_id: l.uom_id,
+      uom_name: l.uom?.code || l.uom?.name || 'pc',
+      unit_price: l.unit_price,
+      cogs_per_unit: l.cogs_per_unit || 0,
+      discount_amount: l.discount_amount || 0,
+    })))
+    setProductSearch('')
+    setEditMode(true)
+  }
+
+  function cancelEditMode() {
+    setEditMode(false)
+    setProductSearch('')
+  }
+
+  function addProductToEdit(product: any) {
+    const existing = editItems.find(
+      i => i.product_id === product.id && i.uom_id === (product.selling_uom_id || product.uom_id)
+    )
+    if (existing) {
+      setEditItems(prev => prev.map(i =>
+        i === existing ? { ...i, quantity: Math.round((i.quantity + 1) * 100) / 100 } : i
+      ))
+    } else {
+      setEditItems(prev => [...prev, {
+        id: `new-${Date.now()}`,
+        product_id: product.id,
+        product_code: product.code || '',
+        product_name: product.name,
+        variant_id: null,
+        quantity: 1,
+        uom_id: product.selling_uom_id || product.uom_id,
+        uom_name: product.selling_uom_abbreviation || product.uom_abbreviation || 'pc',
+        unit_price: product.unit_price || 0,
+        cogs_per_unit: product.cogs || 0,
+        discount_amount: 0,
+      }])
+    }
+    setProductSearch('')
+  }
+
+  const editGrossTotal = editItems.reduce((s, i) => s + Math.round((i.quantity * i.unit_price - i.discount_amount) * 100) / 100, 0)
+  const editWithholding = Math.round(((txn as any)?.total_amount || 0) * editWithholdingRate / 100 * 100) / 100
+
+  async function handleSaveEdit() {
+    if (!txn) return
+    if (editItems.length === 0) { toast.error('Add at least one item'); return }
+    try {
+      await updateSale.mutateAsync({
+        transactionId: (txn as any).id,
+        header: {
+          government_agency: editAgency,
+          po_number: editPoNumber || null,
+          notes: editNotes || null,
+          withholding_rate: editWithholdingRate,
+          withholding_amount: editWithholding,
+          subtotal: editGrossTotal,
+          total_amount: (txn as any).total_amount || 0,
+          transaction_date: editSaleDate,
+        },
+        lines: editItems.map(i => ({
+          product_id: i.product_id,
+          variant_id: i.variant_id,
+          quantity: i.quantity,
+          uom_id: i.uom_id,
+          unit_price: i.unit_price,
+          cogs_per_unit: i.cogs_per_unit,
+          discount_amount: i.discount_amount,
+        })),
+      })
+      toast.success('Sale updated successfully')
+      setEditMode(false)
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to save changes')
+    }
+  }
 
   function buildInvoiceData(t: any): GovInvoiceData {
     const gross = t.total_amount || 0
@@ -231,7 +337,17 @@ export default function GovernmentSaleDetail() {
           <Button variant="outline" onClick={handlePrint}>
             <Printer className="h-4 w-4 mr-2" />Print Invoice
           </Button>
-          {!isDelivered && (
+          {!isDelivered && !editMode && (
+            <Button onClick={enterEditMode} variant="outline" size="sm">
+              <Pencil className="h-4 w-4 mr-1" />Edit Sale
+            </Button>
+          )}
+          {editMode && (
+            <Button onClick={cancelEditMode} variant="outline" size="sm">
+              <X className="h-4 w-4 mr-1" />Cancel
+            </Button>
+          )}
+          {!isDelivered && !editMode && (
             <Button onClick={() => setDeliverOpen(true)} variant="outline" className="text-green-700 border-green-600 hover:bg-green-50">
               <Truck className="h-4 w-4 mr-1" />Mark as Delivered
             </Button>
@@ -244,28 +360,47 @@ export default function GovernmentSaleDetail() {
         </div>
       </div>
 
-      {/* Agency info */}
+      {/* Transaction Info */}
       <Card>
-        <CardHeader><CardTitle className="text-base">Transaction Info</CardTitle></CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between pb-3">
+          <CardTitle className="text-base">Transaction Info</CardTitle>
+          {editMode && <span className="text-xs text-amber-600 font-medium">Editing — unsaved changes</span>}
+        </CardHeader>
         <CardContent className="grid grid-cols-2 gap-4 text-sm">
           <div>
-            <span className="text-muted-foreground">Government Agency</span>
-            <p className="font-semibold mt-0.5">{t.government_agency || '—'}</p>
+            <Label className="text-muted-foreground text-xs">Government Agency</Label>
+            {editMode
+              ? <Input className="mt-1 h-8 text-sm" value={editAgency} onChange={e => setEditAgency(e.target.value)} />
+              : <p className="font-semibold mt-0.5">{t.government_agency || '—'}</p>}
           </div>
           <div>
-            <span className="text-muted-foreground">PO Number</span>
-            <p className="font-semibold mt-0.5">{t.po_number || <span className="text-muted-foreground italic text-xs">Not assigned</span>}</p>
+            <Label className="text-muted-foreground text-xs">PO Number</Label>
+            {editMode
+              ? <Input className="mt-1 h-8 text-sm" value={editPoNumber} onChange={e => setEditPoNumber(e.target.value)} placeholder="e.g. PO-2026-001" />
+              : <p className="font-semibold mt-0.5">{t.po_number || <span className="text-muted-foreground italic text-xs">Not assigned</span>}</p>}
           </div>
           <div>
-            <span className="text-muted-foreground">Customer Account</span>
+            <Label className="text-muted-foreground text-xs">Sale Date</Label>
+            {editMode
+              ? <Input type="date" className="mt-1 h-8 text-sm" value={editSaleDate} onChange={e => setEditSaleDate(e.target.value)} />
+              : <p className="font-semibold mt-0.5">{t.transaction_date?.slice(0, 10) || '—'}</p>}
+          </div>
+          <div>
+            <Label className="text-muted-foreground text-xs">Withholding Rate (%)</Label>
+            {editMode
+              ? <Input type="number" className="mt-1 h-8 text-sm" value={editWithholdingRate} onChange={e => setEditWithholdingRate(Number(e.target.value))} min={0} max={100} step="0.01" />
+              : <p className="font-semibold mt-0.5">{t.withholding_rate}%</p>}
+          </div>
+          <div>
+            <span className="text-muted-foreground text-xs">Customer Account</span>
             <p className="font-semibold mt-0.5">{t.customer?.name || '—'}</p>
           </div>
           <div>
-            <span className="text-muted-foreground">Branch</span>
+            <span className="text-muted-foreground text-xs">Branch</span>
             <p className="font-semibold mt-0.5">{t.branch?.name || '—'}</p>
           </div>
           <div>
-            <span className="text-muted-foreground">Canvass Reference</span>
+            <span className="text-muted-foreground text-xs">Canvass Reference</span>
             {t.canvas_id ? (
               <Link href={`/government/canvass/${t.canvas_id}`} className="block font-semibold mt-0.5 text-blue-600 hover:underline text-sm">
                 View linked canvass
@@ -275,7 +410,7 @@ export default function GovernmentSaleDetail() {
             )}
           </div>
           <div>
-            <span className="text-muted-foreground">Delivery Status</span>
+            <span className="text-muted-foreground text-xs">Delivery Status</span>
             {isDelivered ? (
               <p className="font-semibold mt-0.5 text-green-700">
                 Delivered {t.delivered_at ? `on ${t.delivered_at.slice(0, 10)}` : ''}
@@ -284,40 +419,111 @@ export default function GovernmentSaleDetail() {
               <p className="text-amber-600 font-semibold mt-0.5">Pending Delivery — inventory not yet moved</p>
             )}
           </div>
-          {t.notes && (
-            <div className="col-span-2">
-              <span className="text-muted-foreground">Notes</span>
-              <p className="mt-0.5">{t.notes}</p>
-            </div>
-          )}
+          <div className="col-span-2">
+            <Label className="text-muted-foreground text-xs">Notes</Label>
+            {editMode
+              ? <Input className="mt-1 h-8 text-sm" value={editNotes} onChange={e => setEditNotes(e.target.value)} placeholder="Optional notes" />
+              : <p className="mt-0.5">{t.notes || <span className="text-muted-foreground italic text-xs">None</span>}</p>}
+          </div>
         </CardContent>
       </Card>
 
       {/* Items */}
       <Card>
-        <CardHeader><CardTitle className="text-base">Items</CardTitle></CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between pb-3">
+          <CardTitle className="text-base">Items</CardTitle>
+          {editMode && (
+            <Button onClick={handleSaveEdit} disabled={updateSale.isPending} size="sm" className="bg-green-600 hover:bg-green-700">
+              {updateSale.isPending && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+              Save Changes
+            </Button>
+          )}
+        </CardHeader>
+
+        {/* Product search (edit mode only) */}
+        {editMode && (
+          <div className="px-6 pb-3 relative">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                className="pl-8 h-9"
+                placeholder="Search product to add…"
+                value={productSearch}
+                onChange={e => setProductSearch(e.target.value)}
+              />
+            </div>
+            {productSearch.length >= 2 && searchResults.length > 0 && (
+              <div className="absolute z-50 left-6 right-6 top-full mt-1 bg-white border rounded-md shadow-lg max-h-56 overflow-y-auto">
+                {searchResults.map((p: any) => (
+                  <button
+                    key={p.id}
+                    onClick={() => addProductToEdit(p)}
+                    className="w-full text-left px-3 py-2 hover:bg-muted text-sm flex justify-between items-center gap-2"
+                  >
+                    <span>
+                      {p.code && <span className="font-mono text-xs text-muted-foreground mr-1.5">{p.code}</span>}
+                      {p.name}
+                    </span>
+                    <span className="text-muted-foreground text-xs shrink-0">{fmt(p.unit_price || 0)} / {p.selling_uom_abbreviation || p.uom_abbreviation || 'pc'}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         <CardContent className="p-0">
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Product</TableHead>
-                <TableHead className="text-center">Qty</TableHead>
-                <TableHead className="text-center">Unit</TableHead>
-                <TableHead className="text-right">Unit Price</TableHead>
-                <TableHead className="text-right">Amount</TableHead>
+                <TableHead className="text-center w-24">Qty</TableHead>
+                <TableHead className="text-center w-16">Unit</TableHead>
+                <TableHead className="text-right w-32">Unit Price</TableHead>
+                <TableHead className="text-right w-28">Amount</TableHead>
+                {editMode && <TableHead className="w-10" />}
               </TableRow>
             </TableHeader>
             <TableBody>
-              {(t.lines || []).map((line: any) => (
+              {(editMode ? editItems : (t.lines || [])).map((line: any) => (
                 <TableRow key={line.id}>
                   <TableCell>
-                    {line.product?.code && <span className="font-mono text-xs text-muted-foreground mr-1.5">{line.product.code}</span>}
-                    {line.product?.name || '—'}
+                    {(line.product?.code || line.product_code) && <span className="font-mono text-xs text-muted-foreground mr-1.5">{line.product?.code || line.product_code}</span>}
+                    {line.product?.name || line.product_name || '—'}
                   </TableCell>
-                  <TableCell className="text-center">{line.quantity}</TableCell>
-                  <TableCell className="text-center text-sm text-muted-foreground">{line.uom?.code || line.uom?.name || 'pc'}</TableCell>
-                  <TableCell className="text-right">{fmt(line.unit_price)}</TableCell>
+                  <TableCell className="text-center">
+                    {editMode
+                      ? <Input
+                          type="number"
+                          className="h-7 text-sm text-center w-20 mx-auto"
+                          value={line.quantity}
+                          min={0.01}
+                          step="any"
+                          onChange={e => setEditItems(prev => prev.map(i => i.id === line.id ? { ...i, quantity: Number(e.target.value) } : i))}
+                        />
+                      : line.quantity}
+                  </TableCell>
+                  <TableCell className="text-center text-sm text-muted-foreground">{line.uom?.code || line.uom?.name || line.uom_name || 'pc'}</TableCell>
+                  <TableCell className="text-right">
+                    {editMode
+                      ? <Input
+                          type="number"
+                          className="h-7 text-sm text-right w-28 ml-auto"
+                          value={line.unit_price}
+                          min={0}
+                          step="any"
+                          onChange={e => setEditItems(prev => prev.map(i => i.id === line.id ? { ...i, unit_price: Number(e.target.value) } : i))}
+                        />
+                      : fmt(line.unit_price)}
+                  </TableCell>
                   <TableCell className="text-right font-medium">{fmt(line.quantity * line.unit_price)}</TableCell>
+                  {editMode && (
+                    <TableCell>
+                      <button onClick={() => setEditItems(prev => prev.filter(i => i.id !== line.id))} className="text-muted-foreground hover:text-destructive p-1">
+                        <X className="h-4 w-4" />
+                      </button>
+                    </TableCell>
+                  )}
                 </TableRow>
               ))}
             </TableBody>

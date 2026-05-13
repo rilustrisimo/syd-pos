@@ -988,6 +988,80 @@ export async function getReturns(filters: TransactionFilters = {}) {
 }
 
 // ============================================
+// UPDATE GOVERNMENT SALE (header + lines, only when not yet delivered)
+// ============================================
+
+export interface GovSaleLineInput {
+  product_id: string
+  variant_id: string | null
+  quantity: number
+  uom_id: string
+  unit_price: number
+  cogs_per_unit: number
+  discount_amount: number
+}
+
+export async function updateGovernmentSale(
+  transactionId: string,
+  header: {
+    government_agency: string
+    po_number: string | null
+    notes: string | null
+    withholding_rate: number
+    withholding_amount: number
+    subtotal: number
+    total_amount: number
+    transaction_date: string
+  },
+  lines: GovSaleLineInput[]
+) {
+  const supabase = createClient()
+
+  const { error: headerError } = await supabase
+    .from('transactions')
+    .update({
+      government_agency: header.government_agency,
+      po_number: header.po_number || null,
+      notes: header.notes || null,
+      withholding_rate: header.withholding_rate,
+      withholding_amount: header.withholding_amount,
+      subtotal: header.subtotal,
+      total_amount: header.total_amount,
+      transaction_date: new Date(header.transaction_date).toISOString(),
+    } as any)
+    .eq('id', transactionId)
+    .eq('is_delivered', false)
+
+  if (headerError) throw new Error(headerError.message)
+
+  const { error: deleteError } = await supabase
+    .from('transaction_lines')
+    .delete()
+    .eq('transaction_id', transactionId)
+
+  if (deleteError) throw new Error(deleteError.message)
+
+  if (lines.length > 0) {
+    const { error: insertError } = await supabase
+      .from('transaction_lines')
+      .insert(
+        lines.map((l, i) => ({
+          transaction_id: transactionId,
+          line_number: i + 1,
+          product_id: l.product_id,
+          variant_id: l.variant_id,
+          quantity: l.quantity,
+          uom_id: l.uom_id,
+          unit_price: l.unit_price,
+          cogs_per_unit: l.cogs_per_unit,
+          discount_amount: l.discount_amount,
+        }))
+      )
+    if (insertError) throw new Error(insertError.message)
+  }
+}
+
+// ============================================
 // DELIVER GOVERNMENT SALE
 // ============================================
 
