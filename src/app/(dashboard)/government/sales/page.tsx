@@ -107,18 +107,21 @@ export default function GovernmentSalesList() {
                     <TableHead>Agency</TableHead>
                     <TableHead>PO Number</TableHead>
                     <TableHead>Date</TableHead>
-                    <TableHead className="text-right">Gross</TableHead>
-                    <TableHead className="text-right">Withholding</TableHead>
-                    <TableHead className="text-right">Net</TableHead>
+                    <TableHead className="text-right">Materials</TableHead>
+                    <TableHead className="text-right">Profit</TableHead>
+                    <TableHead className="text-center">Delivery</TableHead>
                     <TableHead className="text-center">Status</TableHead>
                     <TableHead />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {data.data.map((txn: any) => {
-                    const gross = txn.total_amount || 0
-                    const withholding = txn.withholding_amount || 0
-                    const net = gross - withholding
+                    const materials = txn.subtotal || 0
+                    const cogs = (txn.lines || []).reduce(
+                      (s: number, l: any) => s + (Number(l.quantity) * Number(l.cogs_per_unit || 0)),
+                      0
+                    )
+                    const profit = materials - cogs
                     return (
                       <TableRow key={txn.id} className="cursor-pointer hover:bg-muted/40">
                         <TableCell>
@@ -129,9 +132,16 @@ export default function GovernmentSalesList() {
                         <TableCell className="font-medium">{txn.government_agency || txn.customer?.name || '—'}</TableCell>
                         <TableCell>{txn.po_number ? `PO# ${txn.po_number}` : <span className="text-muted-foreground text-xs italic">None</span>}</TableCell>
                         <TableCell>{txn.transaction_date?.slice(0, 10)}</TableCell>
-                        <TableCell className="text-right">{fmt(gross)}</TableCell>
-                        <TableCell className="text-right text-red-600">−{fmt(withholding)}</TableCell>
-                        <TableCell className="text-right font-semibold">{fmt(net)}</TableCell>
+                        <TableCell className="text-right font-medium">{fmt(materials)}</TableCell>
+                        <TableCell className={`text-right font-semibold ${profit >= 0 ? 'text-green-600' : 'text-destructive'}`}>
+                          {profit >= 0 ? '+' : ''}{fmt(profit)}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Badge variant={txn.is_delivered ? 'default' : 'secondary'}
+                                 className={txn.is_delivered ? 'bg-green-600' : ''}>
+                            {txn.is_delivered ? 'Delivered' : 'Pending'}
+                          </Badge>
+                        </TableCell>
                         <TableCell className="text-center">
                           <Badge variant={statusConfig[txn.payment_status]?.variant ?? 'outline'}>
                             {statusConfig[txn.payment_status]?.label ?? txn.payment_status}
