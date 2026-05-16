@@ -100,10 +100,10 @@ function NewGovernmentSaleInner() {
     store.branchId || ''
   )
 
-  const gross = store.getGrossTotal()           // actual items sold
-  const withholding = store.getWithholdingAmount() // PO × rate
-  const net = store.getNetReceivable()           // PO − withholding = cheque
-  const spread = store.getSpread()               // cheque − items
+  const gross = store.getGrossTotal()           // actual materials total
+  const withholding = store.getWithholdingAmount() // canvas × rate
+  const net = store.getNetReceivable()           // canvas − withholding = cheque
+  const spread = store.getSpread()               // canvas − materials (procurement surplus)
   const budgetExceeded = store.isBudgetExceeded()
   const remainingBudget = store.getRemainingBudget()
 
@@ -522,15 +522,15 @@ function NewGovernmentSaleInner() {
 
         <Separator />
 
-        {/* Billing breakdown */}
+        {/* Canvas / PO billing */}
         <div className="space-y-1.5 text-sm">
-          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Billing (based on PO)</p>
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Canvass (PO Billing)</p>
           <div className="flex justify-between">
-            <span className="text-muted-foreground">PO / Canvass Amount</span>
+            <span className="text-muted-foreground">Canvas Total</span>
             <span className="font-semibold">{fmt(store.canvasTotalBudget)}</span>
           </div>
           <div className="flex justify-between text-red-600">
-            <span>Withholding ({store.withholdingRate}% of PO)</span>
+            <span>Withholding ({store.withholdingRate}% of Canvas)</span>
             <span>−{fmt(withholding)}</span>
           </div>
           <Separator />
@@ -542,23 +542,22 @@ function NewGovernmentSaleInner() {
 
         <Separator />
 
-        {/* Actual items + spread */}
+        {/* Actual materials + spread */}
         <div className="space-y-1.5 text-sm">
-          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Actual Sale</p>
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Actual Materials</p>
           <div className="flex justify-between">
-            <span className="text-muted-foreground">Items Total</span>
+            <span className="text-muted-foreground">Materials Total</span>
             <span className="font-semibold">{fmt(gross)}</span>
           </div>
-          <Separator />
           <div className={`flex justify-between font-bold ${spread >= 0 ? 'text-green-600' : 'text-destructive'}`}>
-            <span>{spread >= 0 ? 'Spread (Profit / Commission)' : 'Shortfall'}</span>
+            <span>{spread >= 0 ? 'Procurement Surplus' : 'Procurement Shortfall'}</span>
             <span>{spread >= 0 ? '+' : ''}{fmt(spread)}</span>
           </div>
           {spread !== 0 && (
             <p className="text-xs text-muted-foreground">
               {spread > 0
-                ? 'Cheque exceeds actual items — difference is available as profit or commission.'
-                : 'Items exceed cheque — you will absorb the shortfall.'}
+                ? 'Canvas − Materials: available for commission &amp; withholding.'
+                : 'Materials exceed canvas — sale will run at a loss.'}
             </p>
           )}
         </div>

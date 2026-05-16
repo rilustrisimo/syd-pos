@@ -301,14 +301,20 @@ export default function GovernmentSaleDetail() {
 
   const t = txn as any
   const isDelivered: boolean = t.is_delivered || false
-  const poAmount = t.total_amount || 0
-  const itemsTotal = t.subtotal || 0
-  const withholding = t.withholding_amount || 0
-  const withholdingRate = t.withholding_rate || 0
-  const chequeExpected = poAmount - withholding
-  const spread = chequeExpected - itemsTotal
-  const paid = t.amount_paid || 0
-  const balanceDue = Math.max(0, poAmount - paid)
+  // Canvas total comes from the linked canvass record; fall back to transaction total_amount
+  const canvasTotal: number = Number(t.canvas?.total_amount ?? t.total_amount) || 0
+  const itemsTotal: number = t.subtotal || 0
+  const withholding: number = t.withholding_amount || 0
+  const withholdingRate: number = t.withholding_rate || 0
+  const chequeExpected: number = Math.round((canvasTotal - withholding) * 100) / 100
+  // Spread = canvas total − actual materials (procurement surplus before withholding)
+  const spread: number = Math.round((canvasTotal - itemsTotal) * 100) / 100
+  const paid: number = t.amount_paid || 0
+  // Balance due = cheque still outstanding (exclude withholding entries from paid tally)
+  const chequePaid: number = (t.payments || [])
+    .filter((p: any) => p.payment_method !== 'government_withholding')
+    .reduce((s: number, p: any) => s + Number(p.amount), 0)
+  const balanceDue: number = Math.max(0, Math.round((chequeExpected - chequePaid) * 100) / 100)
   const status = statusConfig[t.payment_status as keyof typeof statusConfig] || statusConfig.unpaid
 
   return (
@@ -531,15 +537,19 @@ export default function GovernmentSaleDetail() {
 
           {/* Totals breakdown */}
           <div className="flex justify-end p-4">
-            <div className="w-72 space-y-1.5 text-sm">
-              {/* PO billing section */}
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Billing (PO)</p>
+            <div className="w-80 space-y-1.5 text-sm">
+
+              {/* Canvas / PO billing */}
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Canvass (PO Billing)</p>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">PO / Canvass Amount</span>
-                <span className="font-semibold">{fmt(poAmount)}</span>
+                <span className="text-muted-foreground">
+                  Canvas Total
+                  {t.canvas?.canvas_number && <span className="ml-1 font-mono text-xs">#{t.canvas.canvas_number}</span>}
+                </span>
+                <span className="font-semibold">{fmt(canvasTotal)}</span>
               </div>
               <div className="flex justify-between text-red-600">
-                <span>Withholding ({withholdingRate}% of PO)</span>
+                <span>Withholding ({withholdingRate}% of Canvas)</span>
                 <span>−{fmt(withholding)}</span>
               </div>
               <Separator />
@@ -547,22 +557,27 @@ export default function GovernmentSaleDetail() {
                 <span>Cheque Expected</span>
                 <span>{fmt(chequeExpected)}</span>
               </div>
-              <Separator />
-              {/* Actual items + spread */}
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide pt-1">Actual Sale</p>
+
+              <Separator className="my-1" />
+
+              {/* Actual materials */}
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide pt-0.5">Actual Materials Delivered</p>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Items Total</span>
+                <span className="text-muted-foreground">Materials Total</span>
                 <span className="font-semibold">{fmt(itemsTotal)}</span>
               </div>
               <div className={`flex justify-between font-semibold ${spread >= 0 ? 'text-green-600' : 'text-destructive'}`}>
-                <span>{spread >= 0 ? 'Spread (Profit / Commission)' : 'Shortfall'}</span>
+                <span>{spread >= 0 ? 'Procurement Surplus' : 'Procurement Shortfall'}</span>
                 <span>{spread >= 0 ? '+' : ''}{fmt(spread)}</span>
               </div>
-              <Separator />
-              {/* Payment status */}
-              <div className="flex justify-between"><span className="text-muted-foreground">Amount Paid</span><span>{fmt(paid)}</span></div>
+              <p className="text-xs text-muted-foreground">(Canvas − Materials: available for commission &amp; withholding)</p>
+
+              <Separator className="my-1" />
+
+              {/* Cheque payment status */}
+              <div className="flex justify-between"><span className="text-muted-foreground">Cheque Received</span><span>{fmt(chequePaid)}</span></div>
               <div className="flex justify-between font-bold">
-                <span>Balance Due</span>
+                <span>Balance Due (Cheque)</span>
                 <span className={balanceDue > 0 ? 'text-destructive' : 'text-green-600'}>{fmt(balanceDue)}</span>
               </div>
             </div>
@@ -619,8 +634,8 @@ export default function GovernmentSaleDetail() {
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="bg-muted/50 rounded-lg p-3 text-sm space-y-1">
-              <div className="flex justify-between"><span className="text-muted-foreground">PO / Canvass Amount</span><span>{fmt(poAmount)}</span></div>
-              <div className="flex justify-between text-red-600"><span>Withholding ({withholdingRate}% of PO)</span><span>−{fmt(withholding)}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Canvas Total</span><span>{fmt(canvasTotal)}</span></div>
+              <div className="flex justify-between text-red-600"><span>Withholding ({withholdingRate}%)</span><span>−{fmt(withholding)}</span></div>
               <Separator className="my-1" />
               <div className="flex justify-between font-bold"><span>Expected Cheque</span><span className="text-blue-700">{fmt(chequeExpected)}</span></div>
             </div>

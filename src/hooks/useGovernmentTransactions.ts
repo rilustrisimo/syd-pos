@@ -24,6 +24,7 @@ const GOV_TXN_SELECT = `
   *,
   customer:customers(id, name, phone),
   branch:branches(id, name),
+  canvas:canvases(id, canvas_number, total_amount),
   lines:transaction_lines(
     *,
     product:products(id, code, name),

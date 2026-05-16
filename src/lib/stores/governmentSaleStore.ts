@@ -177,9 +177,9 @@ export const useGovernmentSaleStore = create<GovSaleState>()(
       getNetReceivable: () =>
         round2(get().canvasTotalBudget - get().getWithholdingAmount()),
 
-      // Spread = cheque received − actual items sold (profit/commission/difference)
+      // Spread = canvas PO total − actual items (procurement surplus before withholding)
       getSpread: () =>
-        round2(get().getNetReceivable() - get().getGrossTotal()),
+        round2(get().canvasTotalBudget - get().getGrossTotal()),
 
       isBudgetExceeded: () => {
         const { canvasTotalBudget } = get()
