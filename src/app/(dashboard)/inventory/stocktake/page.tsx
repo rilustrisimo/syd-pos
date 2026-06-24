@@ -394,11 +394,21 @@ export default function StocktakePage() {
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Import Count CSV</CardTitle>
-              <CardDescription>
-                Upload a CSV with at least two columns: one for the product SKU/code and one for
-                the physically counted quantity (in base units).
-              </CardDescription>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <CardTitle className="text-base">Import Count CSV</CardTitle>
+                  <CardDescription className="mt-1">
+                    Upload a CSV with at least two columns: one for the product SKU/code and one for
+                    the physically counted quantity (in base units).
+                  </CardDescription>
+                </div>
+                <a href="/sample-stocktake.csv" download>
+                  <Button variant="outline" size="sm" className="gap-2 shrink-0">
+                    <Download className="h-4 w-4" />
+                    Sample CSV
+                  </Button>
+                </a>
+              </div>
             </CardHeader>
             <CardContent className="space-y-4">
               <div
