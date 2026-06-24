@@ -79,6 +79,8 @@ type FilterMode = 'all' | 'variances'
 function parseCSV(text: string): string[][] {
   return text
     .trim()
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
     .split('\n')
     .map((line) =>
       line
@@ -438,7 +440,7 @@ export default function StocktakePage() {
                     <Select value={skuCol} onValueChange={setSkuCol}>
                       <SelectTrigger><SelectValue placeholder="Select column…" /></SelectTrigger>
                       <SelectContent>
-                        {csvHeaders.map((h) => <SelectItem key={h} value={h}>{h}</SelectItem>)}
+                        {csvHeaders.filter((h) => h !== '').map((h, i) => <SelectItem key={`${h}-${i}`} value={h}>{h}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </div>
@@ -447,8 +449,8 @@ export default function StocktakePage() {
                     <Select value={qtyCol} onValueChange={setQtyCol}>
                       <SelectTrigger><SelectValue placeholder="Select column…" /></SelectTrigger>
                       <SelectContent>
-                        {csvHeaders.map((h) => (
-                          <SelectItem key={h} value={h} disabled={h === skuCol}>{h}</SelectItem>
+                        {csvHeaders.filter((h) => h !== '').map((h, i) => (
+                          <SelectItem key={`${h}-${i}`} value={h} disabled={h === skuCol}>{h}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
