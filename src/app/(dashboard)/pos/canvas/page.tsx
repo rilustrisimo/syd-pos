@@ -10,6 +10,7 @@ import { useAllActiveCustomers, useCreateCustomer } from '@/hooks/useCustomers'
 import { useBranches } from '@/hooks/useInventory'
 import { useDiscountRules } from '@/hooks/useDiscountRules'
 import { useCanvases, useCreateCanvas, useDeleteCanvas } from '@/hooks/useCanvases'
+import { useProductSellingUnits } from '@/hooks/useProductSellingUnits'
 import { getProductSellingUnits } from '@/lib/supabase/queries/product-selling-units'
 import { getStandardDiscountForMarkup } from '@/lib/supabase/queries/discount-rules'
 import { getTodayPH, createTimestampPH } from '@/lib/utils/datetime'
@@ -202,17 +203,27 @@ export default function CanvasPage() {
   const createCustomer = useCreateCustomer()
 
   // Selling units for selected product (for multi-unit dialog)
-  const [sellingUnits, setSellingUnits] = useState<any[]>([])
-  const [isLoadingUnits, setIsLoadingUnits] = useState(false)
+  const { data: sellingUnits = [], isLoading: isLoadingUnits } = useProductSellingUnits(selectedProduct?.id)
 
+  // Auto-select primary unit when selling units are loaded
   useEffect(() => {
-    if (!selectedProduct) return
-    setIsLoadingUnits(true)
-    getProductSellingUnits(selectedProduct.id)
-      .then(setSellingUnits)
-      .catch(() => setSellingUnits([]))
-      .finally(() => setIsLoadingUnits(false))
-  }, [selectedProduct?.id])
+    if (sellingUnits.length > 0 && !selectedUnitId && selectedProduct) {
+      const primaryUnit = sellingUnits.find((su: any) => su.is_primary && su.is_active)
+      if (primaryUnit) {
+        setSelectedUnitId(primaryUnit.uom_id)
+      } else {
+        const hasProductPrimaryOption =
+          selectedProduct.selling_uom_id &&
+          !sellingUnits.some((su: any) => su.uom_id === selectedProduct.selling_uom_id && su.is_active)
+        if (hasProductPrimaryOption) {
+          setSelectedUnitId(selectedProduct.selling_uom_id)
+        } else {
+          const firstActive = sellingUnits.find((su: any) => su.is_active)
+          if (firstActive) setSelectedUnitId(firstActive.uom_id)
+        }
+      }
+    }
+  }, [sellingUnits, selectedUnitId, selectedProduct])
 
   // ── Init ──────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -274,7 +285,13 @@ export default function CanvasPage() {
         const units = await getProductSellingUnits(product.id)
         const activeUnits = units.filter((u) => u.is_active)
 
-        if (activeUnits.length <= 1) {
+        // Show unit selector when there are multiple options OR when the single
+        // active unit differs from the product's primary selling UOM (both are valid).
+        const hasMultipleOptions =
+          activeUnits.length > 1 ||
+          (activeUnits.length === 1 && activeUnits[0].uom_id !== product.selling_uom_id)
+
+        if (!hasMultipleOptions) {
           const unit = activeUnits[0]
           if (!unit) {
             addItem({
@@ -294,10 +311,15 @@ export default function CanvasPage() {
               available_stock: product.available_stock ?? 0,
             })
           } else {
-            const stale =
+            const unitIsStaleBaseEntry =
               unit.uom_id === product.uom_id &&
               product.selling_uom_id &&
               product.selling_uom_id !== product.uom_id
+            const cogsCost = unitIsStaleBaseEntry
+              ? product.cogs
+              : unit.uom_id !== product.uom_id && unit.conversion_factor && unit.conversion_factor !== 1
+                ? product.cogs / unit.conversion_factor
+                : product.cogs
             addItem({
               product_id: product.id,
               product_code: product.code,
@@ -305,13 +327,13 @@ export default function CanvasPage() {
               variant_id: null,
               variant_name: null,
               quantity: 1,
-              uom_id: stale ? product.selling_uom_id : unit.uom_id,
-              uom_name: stale
-                ? product.selling_uom_abbreviation || product.selling_uom_name || ''
-                : unit.uom?.code || unit.uom?.name || '',
-              unit_price: stale ? product.unit_price : unit.selling_price,
-              cogs_per_unit: stale ? product.cogs : product.cogs / unit.conversion_factor,
-              markup_percentage: stale
+              uom_id: unitIsStaleBaseEntry ? product.selling_uom_id : unit.uom_id,
+              uom_name: unitIsStaleBaseEntry
+                ? product.selling_uom_abbreviation || product.selling_uom_name || product.uom_abbreviation || ''
+                : unit.uom?.code || unit.uom?.name || product.selling_uom_abbreviation || product.uom_abbreviation || '',
+              unit_price: unitIsStaleBaseEntry ? product.unit_price : unit.selling_price,
+              cogs_per_unit: cogsCost,
+              markup_percentage: unitIsStaleBaseEntry
                 ? (product.markup_percentage ?? 0)
                 : unit.markup_percentage,
               discount_amount: 0,
@@ -349,8 +371,48 @@ export default function CanvasPage() {
 
   const handleAddWithUnit = useCallback(() => {
     if (!selectedProduct || !selectedUnitId) return
-    const su = sellingUnits.find((u) => u.uom_id === selectedUnitId)
-    if (!su) { toast.error('Please select a unit'); return }
+
+    const su = sellingUnits.find((u: any) => u.uom_id === selectedUnitId)
+
+    if (!su) {
+      // User picked the product's primary selling unit (not stored in product_selling_units)
+      if (selectedUnitId === selectedProduct.selling_uom_id) {
+        addItem({
+          product_id: selectedProduct.id,
+          product_code: selectedProduct.code,
+          product_name: selectedProduct.name,
+          variant_id: null,
+          variant_name: null,
+          quantity: 1,
+          uom_id: selectedProduct.selling_uom_id || selectedProduct.uom_id,
+          uom_name:
+            selectedProduct.selling_uom_abbreviation ||
+            selectedProduct.uom_abbreviation ||
+            selectedProduct.uom_name,
+          unit_price: selectedProduct.unit_price,
+          cogs_per_unit: selectedProduct.cogs,
+          markup_percentage: selectedProduct.markup_percentage ?? 0,
+          discount_amount: 0,
+          available_stock: selectedProduct.available_stock ?? 0,
+        })
+        setProductSearch('')
+        setIsUnitSelectorOpen(false)
+        setSelectedProduct(null)
+        setSelectedUnitId('')
+        toast.success(`Added ${selectedProduct.name}`)
+      } else {
+        toast.error('Please select a valid unit')
+      }
+      return
+    }
+
+    // Only divide COGS by conversion_factor when the unit is genuinely larger than
+    // the base unit (avoids incorrectly halving COGS when factor = 1 or same UOM).
+    const cogsCost =
+      su.uom_id !== selectedProduct.uom_id && su.conversion_factor && su.conversion_factor !== 1
+        ? selectedProduct.cogs / su.conversion_factor
+        : selectedProduct.cogs
+
     addItem({
       product_id: selectedProduct.id,
       product_code: selectedProduct.code,
@@ -361,7 +423,7 @@ export default function CanvasPage() {
       uom_id: su.uom_id,
       uom_name: su.uom?.code || su.uom?.name || '',
       unit_price: su.selling_price,
-      cogs_per_unit: selectedProduct.cogs / su.conversion_factor,
+      cogs_per_unit: cogsCost,
       markup_percentage: su.markup_percentage,
       discount_amount: 0,
       available_stock: selectedProduct.available_stock ?? 0,
@@ -1130,51 +1192,94 @@ export default function CanvasPage() {
 
       {/* ── Unit selector dialog ─────────────────────────────────────────── */}
       <Dialog open={isUnitSelectorOpen} onOpenChange={setIsUnitSelectorOpen}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Select Unit</DialogTitle>
             <DialogDescription>
-              {selectedProduct?.name} — choose how you want to sell it
+              {selectedProduct?.name} can be added in multiple units. Choose one:
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-2">
+          <div className="space-y-4 py-2">
             {isLoadingUnits ? (
-              <div className="flex justify-center py-4">
-                <Loader2 className="h-5 w-5 animate-spin" />
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
               </div>
             ) : (
-              sellingUnits
-                .filter((u) => u.is_active)
-                .map((unit) => (
-                  <div
-                    key={unit.uom_id}
-                    className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-colors ${
-                      selectedUnitId === unit.uom_id
-                        ? 'border-blue-500 bg-blue-50'
-                        : 'hover:bg-slate-50'
-                    }`}
-                    onClick={() => setSelectedUnitId(unit.uom_id)}
-                  >
-                    <div>
-                      <p className="text-sm font-medium">{unit.uom?.name || unit.uom_id}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {unit.conversion_factor > 1
-                          ? `1 ${unit.uom?.code || ''} = ${unit.conversion_factor} ${selectedProduct?.selling_uom_abbreviation || ''}`
-                          : unit.uom?.code}
-                      </p>
-                    </div>
-                    <span className="font-bold text-blue-600">
-                      {formatCurrency(unit.selling_price)}
-                    </span>
-                  </div>
-                ))
+              <div className="grid gap-2">
+                {/* Product's primary selling unit — shown when not already in sellingUnits */}
+                {selectedProduct &&
+                  !sellingUnits.some(
+                    (su: any) => su.uom_id === selectedProduct.selling_uom_id && su.is_active
+                  ) && (
+                    <Button
+                      key="primary"
+                      type="button"
+                      variant={selectedUnitId === selectedProduct.selling_uom_id ? 'default' : 'outline'}
+                      className="w-full justify-start h-auto py-3"
+                      onClick={() => setSelectedUnitId(selectedProduct.selling_uom_id)}
+                    >
+                      <div className="flex flex-col items-start w-full">
+                        <div className="flex items-center justify-between w-full">
+                          <span className="font-medium">
+                            {selectedProduct.selling_uom_name || selectedProduct.uom_name}{' '}
+                            ({selectedProduct.selling_uom_abbreviation || selectedProduct.uom_abbreviation})
+                            <Badge variant="secondary" className="ml-2">Primary</Badge>
+                          </span>
+                          <span className="font-bold">
+                            {formatCurrency(selectedProduct.unit_price)}
+                          </span>
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-1">
+                          Product default selling unit
+                        </div>
+                      </div>
+                    </Button>
+                  )}
+
+                {/* Additional selling units from product_selling_units */}
+                {sellingUnits
+                  .filter((u: any) => u.is_active)
+                  .map((unit: any) => (
+                    <Button
+                      key={unit.uom_id}
+                      type="button"
+                      variant={selectedUnitId === unit.uom_id ? 'default' : 'outline'}
+                      className="w-full justify-start h-auto py-3"
+                      onClick={() => setSelectedUnitId(unit.uom_id)}
+                    >
+                      <div className="flex flex-col items-start w-full">
+                        <div className="flex items-center justify-between w-full">
+                          <span className="font-medium">
+                            {unit.uom?.name} ({unit.uom?.code})
+                            {unit.is_primary && (
+                              <Badge variant="secondary" className="ml-2">Primary</Badge>
+                            )}
+                          </span>
+                          <span className="font-bold">
+                            {formatCurrency(unit.selling_price)}
+                          </span>
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-1">
+                          {unit.conversion_factor} {unit.uom?.code} per base unit
+                        </div>
+                      </div>
+                    </Button>
+                  ))}
+              </div>
             )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setIsUnitSelectorOpen(false); setSelectedProduct(null) }}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsUnitSelectorOpen(false)
+                setSelectedProduct(null)
+                setSelectedUnitId('')
+              }}
+            >
               Cancel
             </Button>
-            <Button onClick={handleAddWithUnit} disabled={!selectedUnitId}>
+            <Button onClick={handleAddWithUnit} disabled={!selectedUnitId || isLoadingUnits}>
               Add to Canvas
             </Button>
           </DialogFooter>
