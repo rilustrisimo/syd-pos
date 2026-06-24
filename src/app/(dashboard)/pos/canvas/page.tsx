@@ -34,6 +34,7 @@ import {
   FileText,
   Eye,
   Printer,
+  AlertTriangle,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -175,6 +176,7 @@ export default function CanvasPage() {
   const [selectedUnitId, setSelectedUnitId] = useState<string>('')
   const [listPage, setListPage] = useState(1)
   const [viewCanvas, setViewCanvas] = useState<any>(null)
+  const [convertCanvas, setConvertCanvas] = useState<any>(null)
 
   // Local string state for fee inputs — allows intermediate typing like "1." or "150.5"
   const [deliveryFeeStr, setDeliveryFeeStr] = useState('')
@@ -1061,7 +1063,7 @@ export default function CanvasPage() {
                             variant="outline"
                             size="sm"
                             className="h-7 text-xs px-2 text-blue-600 border-blue-200 hover:bg-blue-50"
-                            onClick={() => handleConvertToSale(canvas)}
+                            onClick={() => setConvertCanvas(canvas)}
                           >
                             <ChevronRight className="h-3 w-3 mr-1" />
                             Convert
@@ -1320,6 +1322,81 @@ export default function CanvasPage() {
         </DialogContent>
       </Dialog>
 
+      {/* ── Convert to Sale confirmation dialog ─────────────────────────── */}
+      <Dialog open={!!convertCanvas} onOpenChange={(open) => { if (!open) setConvertCanvas(null) }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-amber-600">
+              <AlertTriangle className="h-5 w-5" />
+              Convert to Sale
+            </DialogTitle>
+            <DialogDescription asChild>
+              <div className="space-y-1">
+                <p>
+                  Please review the quantities and units below before proceeding.
+                  Converting will load these items into the POS — verify that everything is correct.
+                </p>
+                <p className="font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2 text-xs">
+                  Caution: Once converted, this will overwrite any items currently in the POS cart.
+                </p>
+              </div>
+            </DialogDescription>
+          </DialogHeader>
+
+          {convertCanvas && (
+            <div className="border rounded-md overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-slate-50 text-xs">
+                    <TableHead className="py-2">Product</TableHead>
+                    <TableHead className="py-2 text-center w-24">Qty</TableHead>
+                    <TableHead className="py-2 w-20">Unit</TableHead>
+                    <TableHead className="py-2 text-right w-28">Price</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(convertCanvas.lines || []).map((line: any, idx: number) => (
+                    <TableRow key={idx} className="text-sm">
+                      <TableCell className="py-2 font-medium leading-tight">
+                        {line.product?.name || line.product_id}
+                      </TableCell>
+                      <TableCell className="py-2 text-center font-mono font-semibold">
+                        {line.quantity}
+                      </TableCell>
+                      <TableCell className="py-2 text-muted-foreground text-xs">
+                        {line.uom?.code || line.uom?.name || 'pc'}
+                      </TableCell>
+                      <TableCell className="py-2 text-right">
+                        {formatCurrency(line.unit_price)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConvertCanvas(null)}>
+              Cancel
+            </Button>
+            <Button
+              className="bg-blue-600 hover:bg-blue-700"
+              onClick={() => {
+                if (convertCanvas) {
+                  handleConvertToSale(convertCanvas)
+                  setConvertCanvas(null)
+                  setViewCanvas(null)
+                }
+              }}
+            >
+              <ChevronRight className="h-4 w-4 mr-1" />
+              Yes, Convert to Sale
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* ── View canvas detail dialog ────────────────────────────────────── */}
       <Dialog open={!!viewCanvas} onOpenChange={(open) => { if (!open) setViewCanvas(null) }}>
         <DialogContent className="max-w-5xl max-h-[92vh] flex flex-col p-0 gap-0">
@@ -1348,7 +1425,7 @@ export default function CanvasPage() {
                 size="sm"
                 variant="outline"
                 className="gap-2 text-blue-600 border-blue-200 hover:bg-blue-50"
-                onClick={() => { if (viewCanvas) { handleConvertToSale(viewCanvas); setViewCanvas(null) } }}
+                onClick={() => { if (viewCanvas) setConvertCanvas(viewCanvas) }}
               >
                 <ChevronRight className="h-4 w-4" />
                 Convert to Sale
