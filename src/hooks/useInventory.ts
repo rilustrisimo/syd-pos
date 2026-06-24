@@ -9,6 +9,7 @@ import {
   getLowStockAlerts,
   adjustInventory,
   getInventorySummary,
+  bulkAdjustInventory,
 } from '@/lib/supabase/queries/inventory'
 
 // Branches hooks
@@ -68,6 +69,33 @@ export function useInventorySummary(branchId?: string) {
   return useQuery({
     queryKey: ['inventory-summary', branchId],
     queryFn: () => getInventorySummary(branchId),
+  })
+}
+
+// Bulk inventory adjustment mutation (used by stocktake)
+export function useBulkAdjustInventory() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (params: {
+      adjustments: Array<{
+        product_id: string
+        variant_id: string | null
+        branch_id: string
+        quantity_change: number
+        uom_id: string
+        notes: string
+      }>
+      reason: string
+      userId: string
+    }) => bulkAdjustInventory(params),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['branch-inventory'] })
+      queryClient.invalidateQueries({ queryKey: ['product-inventory'] })
+      queryClient.invalidateQueries({ queryKey: ['inventory-movements'] })
+      queryClient.invalidateQueries({ queryKey: ['low-stock-alerts'] })
+      queryClient.invalidateQueries({ queryKey: ['inventory-summary'] })
+    },
   })
 }
 

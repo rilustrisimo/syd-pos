@@ -36,6 +36,7 @@ import {
   UserCheck,
   Building2,
   FileText,
+  ScanLine,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
@@ -59,7 +60,18 @@ const navigation = [
     ],
   },
   { name: 'Products', href: '/products', icon: Package },
-  { name: 'Inventory', href: '/inventory', icon: Boxes },
+  {
+    name: 'Inventory',
+    href: '/inventory',
+    icon: Boxes,
+    children: [
+      { name: 'All Stock', href: '/inventory', icon: Boxes },
+      { name: 'Stock Count', href: '/inventory/stocktake', icon: ScanLine },
+      { name: 'Adjust Stock', href: '/inventory/adjust', icon: TrendingDown },
+      { name: 'Low Stock Alerts', href: '/inventory/alerts', icon: FileWarning },
+      { name: 'Movement History', href: '/inventory/movements', icon: History },
+    ],
+  },
   { name: 'Purchases', href: '/purchases', icon: ClipboardList },
   { name: 'Customers', href: '/customers', icon: Users },
   {

@@ -323,6 +323,93 @@ export async function adjustInventory(params: {
   return data
 }
 
+// Fetch products by SKU codes with their current inventory for a branch (used by stocktake)
+export async function getProductsByCodesWithInventory(
+  branchId: string,
+  codes: string[]
+): Promise<Array<{
+  product_id: string
+  product_code: string
+  product_name: string
+  base_uom_id: string
+  base_uom_code: string
+  quantity_on_hand: number
+  allow_negative_inventory: boolean
+}>> {
+  const supabase = getClient()
+
+  const { data: products, error: productsError } = await supabase
+    .from('products')
+    .select(`
+      id,
+      code,
+      name,
+      base_uom_id,
+      allow_negative_inventory,
+      base_uom:units_of_measure!products_base_uom_id_fkey(code, name)
+    `)
+    .in('code', codes)
+    .eq('is_active', true)
+
+  if (productsError) throw productsError
+  if (!products || products.length === 0) return []
+
+  const productIds = products.map((p: any) => p.id)
+
+  const { data: inventory, error: inventoryError } = await supabase
+    .from('branch_inventory')
+    .select('product_id, quantity_on_hand')
+    .eq('branch_id', branchId)
+    .in('product_id', productIds)
+
+  if (inventoryError) throw inventoryError
+
+  const inventoryMap = new Map(
+    (inventory || []).map((inv: any) => [inv.product_id, inv.quantity_on_hand])
+  )
+
+  return products.map((product: any) => ({
+    product_id: product.id,
+    product_code: product.code,
+    product_name: product.name,
+    base_uom_id: product.base_uom_id,
+    base_uom_code: (product.base_uom as any)?.code || (product.base_uom as any)?.name || 'unit',
+    quantity_on_hand: Number(inventoryMap.get(product.id) ?? 0),
+    allow_negative_inventory: product.allow_negative_inventory ?? false,
+  }))
+}
+
+// Bulk inventory adjustment — wraps the bulk_adjust_inventory RPC (used by stocktake)
+export async function bulkAdjustInventory(params: {
+  adjustments: Array<{
+    product_id: string
+    variant_id: string | null
+    branch_id: string
+    quantity_change: number
+    uom_id: string
+    notes: string
+  }>
+  reason: string
+  userId: string
+}): Promise<{
+  success: boolean
+  success_count: number
+  error_count: number
+  errors: any[]
+}> {
+  const supabase = createClient()
+  const { adjustments, reason, userId } = params
+
+  const { data, error } = await supabase.rpc('bulk_adjust_inventory', {
+    p_adjustments: adjustments,
+    p_reason: reason,
+    p_user_id: userId,
+  })
+
+  if (error) throw error
+  return data
+}
+
 // Get inventory summary (total value, items count, etc.)
 export async function getInventorySummary(branchId?: string) {
   const supabase = getClient()
