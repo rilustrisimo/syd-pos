@@ -24,10 +24,12 @@ LANGUAGE sql STABLE AS $$
 $$;
 
 -- ─── 2. Total cash actually collected from customers in period ────────────────
+-- Uses LEAST(amount_paid, total_amount) to exclude change given back to customers
+-- (amount_paid stores cash tendered, not net cash received)
 CREATE OR REPLACE FUNCTION get_pl_collections(p_date_from date, p_date_to date)
 RETURNS TABLE (total_collections numeric)
 LANGUAGE sql STABLE AS $$
-  SELECT COALESCE(SUM(amount_paid), 0) AS total_collections
+  SELECT COALESCE(SUM(LEAST(amount_paid, total_amount)), 0) AS total_collections
   FROM transactions
   WHERE is_deleted = FALSE
     AND (transaction_date AT TIME ZONE 'Asia/Manila')::date BETWEEN p_date_from AND p_date_to;
