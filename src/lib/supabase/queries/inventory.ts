@@ -200,6 +200,24 @@ export async function getProductInventory(productId: string) {
   return data
 }
 
+// Get total quantity_change per branch for a product (no limit — used for audit accuracy)
+export async function getMovementTotals(productId: string): Promise<Map<string, number>> {
+  const supabase = getClient()
+
+  const { data, error } = await supabase
+    .from('inventory_movements')
+    .select('branch_id, quantity_change')
+    .eq('product_id', productId)
+
+  if (error) throw error
+
+  const totals = new Map<string, number>()
+  for (const row of data ?? []) {
+    totals.set(row.branch_id, (totals.get(row.branch_id) ?? 0) + Number(row.quantity_change))
+  }
+  return totals
+}
+
 // Get inventory movements/history
 export async function getInventoryMovements(params?: {
   branchId?: string

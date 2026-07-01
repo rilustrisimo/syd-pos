@@ -7,7 +7,7 @@ import Image from 'next/image'
 import { useProduct, useDeleteProduct, useActivateProduct } from '@/hooks/useProducts'
 import { useProductPurchaseHistory } from '@/hooks/usePurchases'
 import { useProductSalesHistory } from '@/hooks/useTransactions'
-import { useProductInventory, useInventoryMovements } from '@/hooks/useInventory'
+import { useProductInventory, useInventoryMovements, useMovementTotals } from '@/hooks/useInventory'
 import { formatCurrency } from '@/lib/utils/formatting'
 import { toast } from 'sonner'
 import {
@@ -99,6 +99,7 @@ export default function ProductDetailPage({ params }: ProductDetailPageProps) {
   const { data: branchInventory = [], isLoading: inventoryLoading } = useProductInventory(id)
   const { data: movementsResult, isLoading: movementsLoading } = useInventoryMovements({ productId: id, limit: 200 })
   const allMovements: any[] = movementsResult?.data ?? []
+  const { data: movementTotals, isLoading: auditLoading } = useMovementTotals(id)
 
   // Filter and paginate Purchase History
   const filteredPurchaseHistory = useMemo(() => {
@@ -606,8 +607,7 @@ export default function ProductDetailPage({ params }: ProductDetailPageProps) {
                 </TableHeader>
                 <TableBody>
                   {(branchInventory as any[]).map((inv) => {
-                    const branchMovements = allMovements.filter((m: any) => m.branch_id === inv.branch_id)
-                    const movementTotal = branchMovements.reduce((sum: number, m: any) => sum + Number(m.quantity_change), 0)
+                    const movementTotal = movementTotals?.get(inv.branch_id) ?? 0
                     const discrepancy = Number(inv.quantity_on_hand) - movementTotal
                     const hasDiscrepancy = Math.abs(discrepancy) > 0.01
                     const isLowStock = Number(inv.quantity_on_hand) <= Number(product.reorder_point)
@@ -631,10 +631,10 @@ export default function ProductDetailPage({ params }: ProductDetailPageProps) {
                           )}
                         </TableCell>
                         <TableCell className="text-right font-mono text-sm text-muted-foreground">
-                          {movementsLoading ? '…' : movementTotal.toLocaleString(undefined, { maximumFractionDigits: 4 })}
+                          {auditLoading ? '…' : movementTotal.toLocaleString(undefined, { maximumFractionDigits: 4 })}
                         </TableCell>
                         <TableCell>
-                          {movementsLoading ? (
+                          {auditLoading ? (
                             <span className="text-muted-foreground text-sm">Loading…</span>
                           ) : hasDiscrepancy ? (
                             <div className="flex items-center gap-1.5 text-amber-600">

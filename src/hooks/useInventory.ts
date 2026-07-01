@@ -6,6 +6,7 @@ import {
   getBranchInventory,
   getProductInventory,
   getInventoryMovements,
+  getMovementTotals,
   getLowStockAlerts,
   adjustInventory,
   getInventorySummary,
@@ -38,6 +39,15 @@ export function useProductInventory(productId: string) {
   return useQuery({
     queryKey: ['product-inventory', productId],
     queryFn: () => getProductInventory(productId),
+    enabled: !!productId,
+  })
+}
+
+// Server-side movement totals per branch — used for audit (no record limit)
+export function useMovementTotals(productId: string) {
+  return useQuery({
+    queryKey: ['movement-totals', productId],
+    queryFn: () => getMovementTotals(productId),
     enabled: !!productId,
   })
 }
