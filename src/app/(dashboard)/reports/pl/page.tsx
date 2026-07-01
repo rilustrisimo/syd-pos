@@ -25,6 +25,8 @@ import {
   BarChart3,
   Download,
   ChevronDown,
+  ShoppingCart,
+  Wallet,
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -36,8 +38,10 @@ import { downloadCSV } from '@/lib/utils/export'
 import { toast } from 'sonner'
 import {
   ResponsiveContainer,
+  ComposedChart,
   AreaChart,
   Area,
+  Line,
   BarChart,
   Bar,
   Cell,
@@ -45,6 +49,7 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
+  Legend,
 } from 'recharts'
 
 // ─── Date preset helpers (same as sales report) ───────────────────────────────
@@ -201,6 +206,22 @@ export default function PLReportPage() {
   const isProfit = (report?.net_profit ?? 0) >= 0
   const isGrossProfit = (report?.gross_profit ?? 0) >= 0
 
+  // Cash flow calculations
+  const netCashFlow = (report?.total_collections ?? 0)
+    - (report?.total_purchases ?? 0)
+    - (report?.total_expenses ?? 0)
+  const isPositiveCashFlow = netCashFlow >= 0
+
+  // Purchases vs COGS subtitle
+  const purchaseDiff = (report?.total_purchases ?? 0) - (report?.cogs ?? 0)
+  const purchasesSubtitle = report
+    ? Math.abs(purchaseDiff) < 0.01
+      ? 'Stock neutral vs COGS'
+      : purchaseDiff > 0
+        ? `Building stock (+${formatCurrency(purchaseDiff)})`
+        : `Drawing stock (${formatCurrency(purchaseDiff)})`
+    : undefined
+
   const [isExporting, setIsExporting] = useState(false)
 
   const handleExportDaily = () => {
@@ -211,6 +232,7 @@ export default function PLReportPage() {
       gross_profit: d.gross_profit,
       total_expenses: d.expenses,
       net_profit: d.net_profit,
+      inventory_purchases: d.purchases,
     }))
     downloadCSV(rows as any[], `pl_daily_${dateFrom}_${dateTo}.csv`)
     toast.success(`Exported ${rows.length} days`)
@@ -325,6 +347,12 @@ export default function PLReportPage() {
               icon={TrendingUp}
             />
             <StatCard
+              title="Inventory Purchases"
+              value={formatCurrency(report?.total_purchases ?? 0)}
+              subtitle={purchasesSubtitle}
+              icon={ShoppingCart}
+            />
+            <StatCard
               title="Operating Expenses"
               value={formatCurrency(report?.total_expenses ?? 0)}
               subtitle={`${report?.expenses_by_category.length ?? 0} categories`}
@@ -400,6 +428,49 @@ export default function PLReportPage() {
             </CardContent>
           </Card>
 
+          {/* Cash Flow Summary */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Wallet className="h-5 w-5 text-muted-foreground" />
+                Cash Flow Summary
+              </CardTitle>
+              <CardDescription>
+                Actual cash in vs. cash out — distinct from accrual-based Net Profit above
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-1 font-mono text-sm max-w-lg">
+                <div className="flex justify-between py-1 text-muted-foreground">
+                  <span className="font-semibold text-foreground">Cash In</span>
+                </div>
+                <div className="flex justify-between py-0.5 pl-4 text-muted-foreground">
+                  <span>Collections from customers</span>
+                  <span className="text-foreground font-medium">{formatCurrency(report?.total_collections ?? 0)}</span>
+                </div>
+                <div className="flex justify-between py-1 text-muted-foreground mt-1">
+                  <span className="font-semibold text-foreground">Cash Out</span>
+                </div>
+                <div className="flex justify-between py-0.5 pl-4 text-muted-foreground">
+                  <span>− Inventory Purchases (POs received)</span>
+                  <span>({formatCurrency(report?.total_purchases ?? 0)})</span>
+                </div>
+                <div className="flex justify-between py-0.5 pl-4 text-muted-foreground">
+                  <span>− Operating Expenses</span>
+                  <span>({formatCurrency(report?.total_expenses ?? 0)})</span>
+                </div>
+                <div className="flex justify-between py-2 border-t-2 font-bold text-base mt-1">
+                  <span className={isPositiveCashFlow ? 'text-green-700' : 'text-red-700'}>
+                    = Net Cash Flow
+                  </span>
+                  <span className={isPositiveCashFlow ? 'text-green-700' : 'text-red-700'}>
+                    {formatCurrency(netCashFlow)}
+                  </span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
           {/* Daily Trend Chart */}
           {(report?.daily_trend?.length ?? 0) > 1 && (
             <Card>
@@ -410,7 +481,7 @@ export default function PLReportPage() {
               <CardContent>
                 <div className="h-[280px]">
                   <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={report?.daily_trend ?? []}>
+                    <ComposedChart data={report?.daily_trend ?? []}>
                       <defs>
                         <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.15} />
@@ -429,7 +500,7 @@ export default function PLReportPage() {
                       <XAxis
                         dataKey="date"
                         tick={{ fontSize: 11 }}
-                        tickFormatter={(v) => v.slice(5)} // MM-DD
+                        tickFormatter={(v) => v.slice(5)}
                       />
                       <YAxis
                         tick={{ fontSize: 11 }}
@@ -437,6 +508,7 @@ export default function PLReportPage() {
                         width={55}
                       />
                       <Tooltip content={<ChartTooltip />} />
+                      <Legend wrapperStyle={{ fontSize: 11 }} />
                       <Area
                         type="monotone"
                         dataKey="revenue"
@@ -464,7 +536,16 @@ export default function PLReportPage() {
                         strokeWidth={2}
                         dot={false}
                       />
-                    </AreaChart>
+                      <Line
+                        type="monotone"
+                        dataKey="purchases"
+                        name="Purchases"
+                        stroke="#f59e0b"
+                        strokeWidth={2}
+                        strokeDasharray="4 2"
+                        dot={false}
+                      />
+                    </ComposedChart>
                   </ResponsiveContainer>
                 </div>
               </CardContent>

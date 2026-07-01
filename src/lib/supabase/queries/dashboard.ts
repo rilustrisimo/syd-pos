@@ -885,6 +885,7 @@ export interface DailyPLPoint {
   gross_profit: number
   expenses: number
   net_profit: number
+  purchases: number
 }
 
 export interface PLReport {
@@ -902,6 +903,10 @@ export interface PLReport {
   net_profit: number
   net_margin: number     // %
 
+  // Cash flow additions
+  total_purchases: number     // inventory cost from received POs in period
+  total_collections: number   // cash actually collected from customers
+
   // Daily trend (for chart)
   daily_trend: DailyPLPoint[]
 }
@@ -909,13 +914,17 @@ export interface PLReport {
 export async function getPLReport(dateFrom: string, dateTo: string): Promise<PLReport> {
   const supabase = createClient()
 
-  // ── 1 & 2. Revenue/COGS and Expenses via RPC (no PostgREST row-limit) ──────
-  const [revResult, expResult] = await Promise.all([
+  // ── 1–4. Revenue/COGS, Expenses, Purchases, Collections via RPC ─────────────
+  const [revResult, expResult, purchResult, collResult] = await Promise.all([
     supabase.rpc('get_pl_revenue_cogs_daily', { p_date_from: dateFrom, p_date_to: dateTo }),
     supabase.rpc('get_pl_expenses',           { p_date_from: dateFrom, p_date_to: dateTo }),
+    supabase.rpc('get_pl_purchases_daily',    { p_date_from: dateFrom, p_date_to: dateTo }),
+    supabase.rpc('get_pl_collections',        { p_date_from: dateFrom, p_date_to: dateTo }),
   ])
-  if (revResult.error) throw revResult.error
-  if (expResult.error) throw expResult.error
+  if (revResult.error)  throw revResult.error
+  if (expResult.error)  throw expResult.error
+  if (purchResult.error) throw purchResult.error
+  if (collResult.error)  throw collResult.error
 
   // Build daily revenue/COGS map from aggregated RPC rows
   const dailyRevenueMap = new Map<string, { revenue: number; gross_profit: number }>()
@@ -963,7 +972,20 @@ export async function getPLReport(dateFrom: string, dateTo: string): Promise<PLR
   const expensesByCategory = Array.from(categoryMap.values())
     .sort((a, b) => b.total_amount - a.total_amount)
 
-  // ── 2b. Loan interest expense ───────────────────────────────────────────────
+  // ── 2b. Purchases map ──────────────────────────────────────────────────────
+  const dailyPurchaseMap = new Map<string, number>()
+  let totalPurchases = 0
+
+  for (const row of (purchResult.data as any[]) || []) {
+    const amount  = Number(row.total_purchases) || 0
+    const phDate  = typeof row.ph_date === 'string' ? row.ph_date : String(row.ph_date)
+    dailyPurchaseMap.set(phDate, (dailyPurchaseMap.get(phDate) || 0) + amount)
+    totalPurchases += amount
+  }
+
+  const totalCollections = Number((collResult.data as any[])?.[0]?.total_collections) || 0
+
+  // ── 2c. Loan interest expense ───────────────────────────────────────────────
   const { data: interestData } = await supabase
     .from('liability_loan_payments')
     .select('amount, liability_loan_schedule(interest_portion, scheduled_amount)')
@@ -993,14 +1015,16 @@ export async function getPLReport(dateFrom: string, dateTo: string): Promise<PLR
   const dailyTrend: DailyPLPoint[] = []
   let current = dateFrom
   while (current <= dateTo) {
-    const rev = dailyRevenueMap.get(current) || { revenue: 0, gross_profit: 0 }
-    const exp = dailyExpenseMap.get(current) || 0
+    const rev  = dailyRevenueMap.get(current)  || { revenue: 0, gross_profit: 0 }
+    const exp  = dailyExpenseMap.get(current)  || 0
+    const purch = dailyPurchaseMap.get(current) || 0
     dailyTrend.push({
       date:         current,
       revenue:      rev.revenue,
       gross_profit: rev.gross_profit,
       expenses:     exp,
       net_profit:   rev.gross_profit - exp,
+      purchases:    purch,
     })
     const d = new Date(current + 'T00:00:00Z')
     d.setUTCDate(d.getUTCDate() + 1)
@@ -1021,6 +1045,8 @@ export async function getPLReport(dateFrom: string, dateTo: string): Promise<PLR
     expenses_by_category:  expensesByCategory,
     net_profit:            netProfit,
     net_margin:            totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0,
+    total_purchases:       totalPurchases,
+    total_collections:     totalCollections,
     daily_trend:           dailyTrend,
   }
 }

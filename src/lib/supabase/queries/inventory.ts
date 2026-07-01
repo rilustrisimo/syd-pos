@@ -428,52 +428,22 @@ export async function bulkAdjustInventory(params: {
   return data
 }
 
-// Get inventory summary (total value, items count, etc.)
+// Get inventory summary — uses server-side RPC to avoid PostgREST's 1,000-row default cap
 export async function getInventorySummary(branchId?: string) {
   const supabase = getClient()
 
-  let query = supabase
-    .from('branch_inventory')
-    .select(`
-      *,
-      product:products(
-        latest_cogs,
-        current_selling_price,
-        reorder_point
-      )
-    `)
-
-  if (branchId) {
-    query = query.eq('branch_id', branchId)
-  }
-
-  const { data, error } = await query
+  const { data, error } = await supabase
+    .rpc('get_inventory_summary', { p_branch_id: branchId ?? null })
+    .single()
 
   if (error) throw error
 
-  const summary = {
-    // Count distinct products (a product in 2 branches should count as 1)
-    totalItems: new Set(data?.map((item: any) => item.product_id) || []).size,
-    totalQuantity: data?.reduce((sum: number, item: any) => sum + Number(item.quantity_on_hand), 0) || 0,
-    totalValue: data?.reduce((sum: number, item: any) =>
-      sum + (Number(item.quantity_on_hand) * Number(item.product?.latest_cogs || 0)), 0
-    ) || 0,
-    potentialProfit: data?.reduce((sum: number, item: any) => {
-      const qty = Number(item.quantity_on_hand)
-      if (qty <= 0) return sum
-      const price = Number(item.product?.current_selling_price || 0)
-      const cost = Number(item.product?.latest_cogs || 0)
-      return sum + (qty * (price - cost))
-    }, 0) || 0,
-    // Low stock: above zero but at or below reorder point (excludes out-of-stock)
-    lowStockItems: data?.filter((item: any) => {
-      const qty = Number(item.quantity_on_hand)
-      const reorder = Number(item.product?.reorder_point || 0)
-      return qty > 0 && qty <= reorder
-    }).length || 0,
-    // Out of stock: zero or negative (negative = oversold / data error)
-    outOfStockItems: data?.filter((item: any) => Number(item.quantity_on_hand) <= 0).length || 0,
+  return {
+    totalItems:      Number((data as any).total_items),
+    totalQuantity:   Number((data as any).total_quantity),
+    totalValue:      Number((data as any).total_value),
+    potentialProfit: Number((data as any).potential_profit),
+    lowStockItems:   Number((data as any).low_stock_count),
+    outOfStockItems: Number((data as any).out_of_stock_count),
   }
-
-  return summary
 }
