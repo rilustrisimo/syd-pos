@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
 import { useProduct, useDeleteProduct, useActivateProduct } from '@/hooks/useProducts'
+import { PageTitle } from '@/components/page-title'
 import { useProductPurchaseHistory } from '@/hooks/usePurchases'
 import { useProductSalesHistory } from '@/hooks/useTransactions'
 import { useProductInventory, useInventoryMovements, useMovementTotals } from '@/hooks/useInventory'
@@ -225,6 +226,7 @@ export default function ProductDetailPage({ params }: ProductDetailPageProps) {
 
   return (
     <div className="space-y-6">
+      <PageTitle title={product ? `${product.name} · Products` : 'Products'} />
       {/* Page header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">

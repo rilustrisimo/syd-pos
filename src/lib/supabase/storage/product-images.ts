@@ -230,9 +230,9 @@ export function validateImageFile(file: File): string | null {
  */
 export async function compressImage(
   file: File,
-  maxWidth: number = 1200,
-  maxHeight: number = 1200,
-  quality: number = 0.85
+  maxWidth: number = 1000,
+  maxHeight: number = 1000,
+  quality: number = 0.75
 ): Promise<File> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()

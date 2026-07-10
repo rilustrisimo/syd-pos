@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import {
   LayoutDashboard,
@@ -37,6 +37,7 @@ import {
   Building2,
   FileText,
   ScanLine,
+  ShoppingBag,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
@@ -44,6 +45,7 @@ import { getClient } from '@/lib/supabase/client'
 import { useAuthStore, clearAllAuthData } from '@/lib/stores/auth'
 import { toast } from 'sonner'
 import { useQueryClient } from '@tanstack/react-query'
+import { useOnlineOrderNotifications } from '@/lib/stores/onlineOrderNotifications'
 
 const navigation = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
@@ -72,6 +74,7 @@ const navigation = [
       { name: 'Movement History', href: '/inventory/movements', icon: History },
     ],
   },
+  { name: 'Online Orders', href: '/orders/online', icon: ShoppingBag },
   { name: 'Purchases', href: '/purchases', icon: ClipboardList },
   { name: 'Customers', href: '/customers', icon: Users },
   {
@@ -130,9 +133,9 @@ const bottomNavigation = [
 
 export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname()
-  const router = useRouter()
   const queryClient = useQueryClient()
   const [isSigningOut, setIsSigningOut] = useState(false)
+  const { unreadCount: onlineOrderUnread, markAllRead } = useOnlineOrderNotifications()
 
   const handleSignOut = async () => {
     if (isSigningOut) return // Prevent double-click
@@ -230,11 +233,17 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
             )
           }
 
+          const isOnlineOrders = item.href === '/orders/online'
+          const showBadge = isOnlineOrders && onlineOrderUnread > 0
+
           return (
             <Link
               key={item.name}
               href={item.href}
-              onClick={onNavigate}
+              onClick={() => {
+                if (isOnlineOrders) markAllRead()
+                onNavigate?.()
+              }}
               className={cn(
                 'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
                 isActive
@@ -244,6 +253,11 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
             >
               <item.icon className="h-5 w-5" />
               {item.name}
+              {showBadge && (
+                <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                  {onlineOrderUnread > 99 ? '99+' : onlineOrderUnread}
+                </span>
+              )}
             </Link>
           )
         })}

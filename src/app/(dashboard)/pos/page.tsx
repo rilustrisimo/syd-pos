@@ -1,10 +1,11 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { usePOSStore } from '@/lib/stores/posStore'
 import { useAuthStore } from '@/lib/stores/auth'
 import { usePOSProductSearch, useCreateTransaction, useTodaysSummary } from '@/hooks/useTransactions'
 import { getCustomerDeliveryPhones } from '@/lib/supabase/queries/transactions'
+import { getClient } from '@/lib/supabase/client'
 import { useSearchCustomers, useAllActiveCustomers, useCreateCustomer } from '@/hooks/useCustomers'
 import { useAllActiveReferrers } from '@/hooks/useReferrers'
 import { useBranches } from '@/hooks/useInventory'
@@ -124,6 +125,7 @@ export default function POSPage() {
   const [referrerSearch, setReferrerSearch] = useState('')
   const [isReferrerOpen, setIsReferrerOpen] = useState(false)
   const [isMounted, setIsMounted] = useState(false)
+  const [pendingOnlineOrderId, setPendingOnlineOrderId] = useState<string | null>(null)
   const [isUnitSelectorOpen, setIsUnitSelectorOpen] = useState(false)
   const [selectedProduct, setSelectedProduct] = useState<any>(null)
   const [selectedUnitId, setSelectedUnitId] = useState<string>('')
@@ -270,6 +272,103 @@ export default function POSPage() {
     // Initialize sale date to today in Philippine timezone
     setSaleDate(getTodayPH())
   }, [])
+
+  // Pre-fill cart from an online order when ?from_order=<id> is in the URL
+  const fromOrderHandled = useRef(false)
+  useEffect(() => {
+    const fromOrderId = new URLSearchParams(window.location.search).get('from_order')
+    if (!fromOrderId || fromOrderHandled.current || !isMounted) return
+    fromOrderHandled.current = true
+
+    async function prefillFromOrder() {
+      const supabase = getClient()
+
+      // Fetch the online order with lines and customer
+      const { data: order, error } = await supabase
+        .from('online_orders')
+        .select('*, lines:online_order_lines(*)')
+        .eq('id', fromOrderId)
+        .single()
+
+      if (error || !order) {
+        toast.error('Could not load online order')
+        return
+      }
+
+      // Set the linked customer (if matched) or walk-in
+      if (order.customer_id) {
+        const { data: customer } = await supabase
+          .from('customers')
+          .select('id, name, phone, customer_type, credit_limit, outstanding_balance')
+          .eq('id', order.customer_id)
+          .single()
+
+        if (customer) {
+          setCustomer({
+            id: customer.id,
+            name: customer.name,
+            phone: customer.phone,
+            customer_type: customer.customer_type as any,
+            credit_limit: Number(customer.credit_limit ?? 0),
+            outstanding_balance: Number(customer.outstanding_balance ?? 0),
+          })
+        }
+      }
+
+      // Fetch product details for each line to get uom_id, cogs, etc.
+      const lines: any[] = order.lines ?? []
+      const productIds = lines.map((l: any) => l.product_id).filter(Boolean)
+
+      let productMap = new Map<string, any>()
+      if (productIds.length > 0) {
+        const { data: products } = await supabase
+          .from('products')
+          .select('id, selling_uom_id, base_uom_id, latest_cogs, markup_percentage, units_of_measure!products_base_uom_id_fkey(name, code)')
+          .in('id', productIds)
+
+        // Also fetch selling UOM names
+        const sellingUomIds = (products ?? []).map((p: any) => p.selling_uom_id).filter(Boolean)
+        let sellingUomMap = new Map<string, any>()
+        if (sellingUomIds.length > 0) {
+          const { data: uoms } = await supabase
+            .from('units_of_measure')
+            .select('id, name, code')
+            .in('id', sellingUomIds)
+          sellingUomMap = new Map((uoms ?? []).map((u: any) => [u.id, u]))
+        }
+
+        productMap = new Map((products ?? []).map((p: any) => {
+          const sellingUom = sellingUomMap.get(p.selling_uom_id)
+          return [p.id, { ...p, sellingUom }]
+        }))
+      }
+
+      // Add each line to the cart
+      for (const line of lines) {
+        const product = productMap.get(line.product_id)
+        addItem({
+          product_id: line.product_id ?? line.product_code,
+          product_code: line.product_code,
+          product_name: line.product_name,
+          variant_id: null,
+          variant_name: null,
+          quantity: Number(line.quantity),
+          uom_id: product?.selling_uom_id ?? product?.base_uom_id ?? '',
+          uom_name: product?.sellingUom?.code ?? product?.sellingUom?.name ?? line.unit_label,
+          unit_price: Number(line.unit_price),
+          cogs_per_unit: Number(product?.latest_cogs ?? 0),
+          markup_percentage: Number(product?.markup_percentage ?? 0),
+          discount_amount: 0,
+          available_stock: 9999,
+        })
+      }
+
+      setPendingOnlineOrderId(fromOrderId)
+      toast.success(`Loaded order ${order.order_number} — review and complete the transaction`)
+    }
+
+    prefillFromOrder()
+  }, [isMounted, addItem, setCustomer])
 
   // Set default branch and walk-in customer
   useEffect(() => {
@@ -734,6 +833,19 @@ export default function POSPage() {
 
       toast.success('Transaction completed successfully!')
       setIsCheckoutOpen(false)
+
+      // Mark linked online order as fulfilled
+      if (pendingOnlineOrderId) {
+        const supabase = getClient()
+        await supabase
+          .from('online_orders')
+          .update({
+            transaction_id: result.id,
+            status: 'delivered',
+          })
+          .eq('id', pendingOnlineOrderId)
+        setPendingOnlineOrderId(null)
+      }
 
       // Reset POS immediately so the next transaction can start
       resetAll()

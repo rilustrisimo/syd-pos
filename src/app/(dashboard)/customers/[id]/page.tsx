@@ -3,6 +3,7 @@
 import { use, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { PageTitle } from '@/components/page-title'
 import {
   useCustomer,
   useCustomerPurchaseStats,
@@ -317,6 +318,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
 
   return (
     <div className="space-y-6">
+      <PageTitle title={customer ? `${customer.name} · Customers` : 'Customers'} />
       {/* ── Back nav + header ──────────────────────────────────────────── */}
       <div>
         <Link

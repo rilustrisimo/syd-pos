@@ -3,6 +3,8 @@ import { Header } from '@/components/layout/header'
 import { AuthProvider } from '@/components/providers/auth-provider'
 import { MobileSidebar } from '@/components/layout/mobile-sidebar'
 import { BottomNav } from '@/components/layout/bottom-nav'
+import { OrderNotificationListener } from '@/components/notifications/order-notification-listener'
+import { NavTitleSync } from '@/components/nav-title-sync'
 
 export default function DashboardLayout({
   children,
@@ -11,6 +13,8 @@ export default function DashboardLayout({
 }) {
   return (
     <AuthProvider>
+      <NavTitleSync />
+      <OrderNotificationListener />
       <div className="flex h-screen overflow-hidden">
         {/* Desktop sidebar - hidden on mobile */}
         <Sidebar />
