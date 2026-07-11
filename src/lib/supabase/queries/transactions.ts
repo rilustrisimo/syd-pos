@@ -131,6 +131,9 @@ export interface TransactionInput {
   withholding_rate?: number
   withholding_amount?: number
   canvas_id?: string | null
+  delivery_latitude?: number | null
+  delivery_longitude?: number | null
+  delivery_distance_km?: number | null
 }
 
 export interface TransactionLineInput {
@@ -418,6 +421,18 @@ export async function createTransaction(
   const creditPayment = payments.find(p => p.payment_method === 'credit')
   if (creditPayment) {
     await updateCustomerBalance(input.customer_id, creditPayment.amount)
+  }
+
+  // Persist delivery coordinates if captured from the map
+  if (input.delivery_latitude != null && input.delivery_longitude != null) {
+    await supabase
+      .from('transactions')
+      .update({
+        delivery_latitude: input.delivery_latitude,
+        delivery_longitude: input.delivery_longitude,
+        delivery_distance_km: input.delivery_distance_km ?? null,
+      } as any)
+      .eq('id', data.id)
   }
 
   // Tag referrer if provided

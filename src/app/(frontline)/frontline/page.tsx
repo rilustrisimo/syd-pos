@@ -101,6 +101,13 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
+import dynamic from 'next/dynamic'
+import type { MapSuggestResult } from '@/components/pos/delivery-map-picker'
+
+const DeliveryMapPicker = dynamic(
+  () => import('@/components/pos/delivery-map-picker').then(m => ({ default: m.DeliveryMapPicker })),
+  { ssr: false, loading: () => <div className="w-full h-52 rounded-xl bg-slate-100 animate-pulse border border-slate-200" /> }
+)
 
 function formatCurrency(amount: number): string {
   return new Intl.NumberFormat('en-PH', {
@@ -222,6 +229,7 @@ export default function FrontlinePOSPage() {
   const [savingDelivery, setSavingDelivery] = useState(false)
   const [deliveryPhoneHistory, setDeliveryPhoneHistory] = useState<string[]>([])
   const [deliveryPhoneHistoryLoading, setDeliveryPhoneHistoryLoading] = useState(false)
+  const [deliveryCoords, setDeliveryCoords] = useState<{ lat: number; lng: number; distanceKm: number } | null>(null)
 
   const { data: historyData, isLoading: isLoadingHistory, refetch: refetchHistory } = useTransactions({
     branch_id: branchId || undefined,
@@ -820,6 +828,9 @@ export default function FrontlinePOSPage() {
           delivery_address: deliveryAddress || null,
           delivery_phone: deliveryPhone.trim() || null,
           delivery_fee: deliveryFee || 0,
+          delivery_latitude: deliveryCoords?.lat ?? null,
+          delivery_longitude: deliveryCoords?.lng ?? null,
+          delivery_distance_km: deliveryCoords?.distanceKm ?? null,
           other_fees: otherFees || 0,
           other_fees_notes: otherFeesNotes || null,
           discount_amount: getTotalDiscount(),
@@ -850,6 +861,7 @@ export default function FrontlinePOSPage() {
       setIsCheckoutOpen(false)
 
       resetAll()
+      setDeliveryCoords(null)
       setSaleDate(getTodayPH())
       setDiscountInput('')
       setCustomer(WALK_IN_CUSTOMER)
@@ -1818,8 +1830,23 @@ export default function FrontlinePOSPage() {
                     <p className="text-xs text-red-500">Contact number is required for delivery</p>
                   )}
                 </div>
+                {/* Delivery map — pin customer location for auto-calculated fee */}
                 <div className="space-y-1">
-                  <Label>Delivery Fee <span className="text-red-500">*</span> <span className="text-xs text-muted-foreground font-normal">(enter 0 if free)</span></Label>
+                  <Label className="text-xs text-muted-foreground">Pin Delivery Location</Label>
+                  <DeliveryMapPicker
+                    onSuggest={(result: MapSuggestResult | null) => {
+                      if (result) {
+                        setDeliveryFee(result.fee)
+                        setDeliveryFeeConfirmed(true)
+                        setDeliveryCoords({ lat: result.lat, lng: result.lng, distanceKm: result.distanceKm })
+                      } else {
+                        setDeliveryCoords(null)
+                      }
+                    }}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>Delivery Fee <span className="text-red-500">*</span> <span className="text-xs text-muted-foreground font-normal">(auto-filled · editable)</span></Label>
                   <div className="flex gap-2">
                     <Input
                       type="number"
