@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { getClient } from '@/lib/supabase/client'
-import { getRoadDistance, calcDeliveryFee } from '@/lib/routing'
+import { getRoadDistance, calcDeliveryFee, reverseGeocode } from '@/lib/routing'
 import type { FeeSettings } from '@/lib/routing'
 import 'leaflet/dist/leaflet.css'
 
@@ -12,6 +12,7 @@ export interface MapSuggestResult {
   distanceKm: number
   fee: number
   roadBased: boolean
+  geocodedAddress: string | null
 }
 
 interface DeliveryMapPickerProps {
@@ -21,6 +22,13 @@ interface DeliveryMapPickerProps {
 interface StoreSettings extends FeeSettings {
   store_latitude: number
   store_longitude: number
+}
+
+interface RouteInfo {
+  distanceKm: number
+  fee: number
+  roadBased: boolean
+  geocodedAddress: string | null
 }
 
 export function DeliveryMapPicker({ onSuggest }: DeliveryMapPickerProps) {
@@ -33,7 +41,7 @@ export function DeliveryMapPicker({ onSuggest }: DeliveryMapPickerProps) {
   onSuggestRef.current = onSuggest
 
   const [storeSettings, setStoreSettings] = useState<StoreSettings | null>(null)
-  const [routeInfo, setRouteInfo] = useState<{ distanceKm: number; fee: number; roadBased: boolean } | null>(null)
+  const [routeInfo, setRouteInfo] = useState<RouteInfo | null>(null)
   const [loading, setLoading] = useState(false)
   const [settingsLoading, setSettingsLoading] = useState(true)
 
@@ -88,7 +96,7 @@ export function DeliveryMapPicker({ onSuggest }: DeliveryMapPickerProps) {
         .addTo(map)
 
       async function handlePin(lat: number, lng: number) {
-        // Move or create marker
+        // Move or create customer marker
         if (markerRef.current) {
           markerRef.current.setLatLng([lat, lng])
         } else {
@@ -99,7 +107,7 @@ export function DeliveryMapPicker({ onSuggest }: DeliveryMapPickerProps) {
           })
         }
 
-        // Cancel previous OSRM request
+        // Cancel any previous in-flight requests
         abortRef.current?.abort()
         const ctrl = new AbortController()
         abortRef.current = ctrl
@@ -107,23 +115,31 @@ export function DeliveryMapPicker({ onSuggest }: DeliveryMapPickerProps) {
         setLoading(true)
 
         try {
-          const result = await getRoadDistance(sLat, sLng, lat, lng, ctrl.signal)
+          // Fire OSRM routing + Nominatim reverse geocoding in parallel
+          const [osrm, geocoded] = await Promise.all([
+            getRoadDistance(sLat, sLng, lat, lng, ctrl.signal),
+            reverseGeocode(lat, lng, ctrl.signal),
+          ])
 
           // Draw / update route polyline
           if (routeLayerRef.current) {
             routeLayerRef.current.remove()
             routeLayerRef.current = null
           }
-
-          if (result.routeCoords && result.routeCoords.length >= 2) {
-            const shadow = L.polyline(result.routeCoords, { color: '#ffffff', weight: 9, opacity: 0.5, lineJoin: 'round', lineCap: 'round' }).addTo(map)
-            const line = L.polyline(result.routeCoords, { color: '#2563eb', weight: 5, opacity: 0.85, lineJoin: 'round', lineCap: 'round' }).addTo(map)
+          if (osrm.routeCoords && osrm.routeCoords.length >= 2) {
+            const shadow = L.polyline(osrm.routeCoords, { color: '#ffffff', weight: 9, opacity: 0.5, lineJoin: 'round', lineCap: 'round' }).addTo(map)
+            const line   = L.polyline(osrm.routeCoords, { color: '#2563eb', weight: 5, opacity: 0.85, lineJoin: 'round', lineCap: 'round' }).addTo(map)
             routeLayerRef.current = { remove: () => { shadow.remove(); line.remove() } }
-            map.fitBounds(L.latLngBounds(result.routeCoords), { padding: [48, 48] })
+            map.fitBounds(L.latLngBounds(osrm.routeCoords), { padding: [48, 48] })
           }
 
-          const fee = calcDeliveryFee(result.distance_km, storeSettings!)
-          const info = { distanceKm: result.distance_km, fee, roadBased: result.road_based }
+          const fee = calcDeliveryFee(osrm.distance_km, storeSettings!)
+          const info: RouteInfo = {
+            distanceKm: osrm.distance_km,
+            fee,
+            roadBased: osrm.road_based,
+            geocodedAddress: geocoded,
+          }
           setRouteInfo(info)
           setLoading(false)
           onSuggestRef.current({ lat, lng, ...info })
@@ -134,7 +150,7 @@ export function DeliveryMapPicker({ onSuggest }: DeliveryMapPickerProps) {
 
       map.on('click', (e: any) => handlePin(e.latlng.lat, e.latlng.lng))
 
-      // Try to center on user's location
+      // Try to center on user's location as a helpful starting point
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
           (pos) => { if (!destroyed) map.setView([pos.coords.latitude, pos.coords.longitude], 15) },
@@ -174,20 +190,29 @@ export function DeliveryMapPicker({ onSuggest }: DeliveryMapPickerProps) {
   return (
     <div className="space-y-2">
       <div ref={containerRef} className="w-full h-52 rounded-xl overflow-hidden border border-slate-200" style={{ zIndex: 0 }} />
+
       {loading ? (
         <div className="flex items-center gap-2 rounded-lg px-3 py-2 bg-slate-50 border border-slate-200 text-xs text-slate-500 animate-pulse">
           <span>📍</span>
-          <span>Calculating road distance…</span>
+          <span>Calculating route and address…</span>
         </div>
       ) : routeInfo ? (
-        <div className={`rounded-lg px-3 py-2 text-xs ${routeInfo.distanceKm <= (storeSettings.cod_radius_km) ? 'bg-green-50 border border-green-200 text-green-800' : 'bg-blue-50 border border-blue-200 text-blue-800'}`}>
+        <div className={`rounded-lg px-3 py-2.5 text-xs space-y-1 ${routeInfo.distanceKm <= storeSettings.cod_radius_km ? 'bg-green-50 border border-green-200 text-green-800' : 'bg-blue-50 border border-blue-200 text-blue-800'}`}>
           <div className="flex items-center gap-1.5 font-medium">
             <span>📍</span>
-            <span><strong>{routeInfo.distanceKm} km</strong> from store · Suggested fee: <strong>₱{routeInfo.fee.toLocaleString('en-PH')}</strong></span>
+            <span>
+              <strong>{routeInfo.distanceKm} km</strong> from store
+              {' · '}Suggested fee: <strong>₱{routeInfo.fee.toLocaleString('en-PH')}</strong>
+            </span>
           </div>
-          <p className="mt-0.5 opacity-60 pl-5">
+          <p className="opacity-60 pl-5 leading-tight">
             {routeInfo.roadBased ? '🛣️ Road distance via OpenStreetMap' : '📏 Straight-line estimate (no road data)'}
           </p>
+          {routeInfo.geocodedAddress && (
+            <p className="pl-5 leading-tight font-medium">
+              📌 Near: {routeInfo.geocodedAddress}
+            </p>
+          )}
         </div>
       ) : (
         <p className="text-xs text-slate-400 text-center py-1">Click on the map to pin the customer&apos;s delivery location</p>

@@ -29,6 +29,9 @@ export interface ReceiptData {
   }
   delivery_type: 'pickup' | 'delivery'
   delivery_address?: string | null
+  delivery_geocoded_address?: string | null
+  delivery_distance_km?: number | null
+  delivery_road_based?: boolean | null
   items: ReceiptItem[]
   subtotal: number
   discount: number
@@ -129,10 +132,19 @@ export const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptTemplateProps>(
           </div>
         </div>
 
-        {data.delivery_type === 'delivery' && data.delivery_address && (
+        {data.delivery_type === 'delivery' && (
           <div className="text-xs mt-0.5">
             <div>Deliver to:</div>
-            <div className="pl-2">{data.delivery_address}</div>
+            {data.delivery_address && <div className="pl-2">{data.delivery_address}</div>}
+            {data.delivery_geocoded_address && (
+              <div className="pl-2 opacity-70">Near: {data.delivery_geocoded_address}</div>
+            )}
+            {data.delivery_distance_km != null && (
+              <div className="pl-2">
+                Distance: {data.delivery_distance_km} km
+                {' '}({data.delivery_road_based ? 'road' : 'est.'})
+              </div>
+            )}
           </div>
         )}
 

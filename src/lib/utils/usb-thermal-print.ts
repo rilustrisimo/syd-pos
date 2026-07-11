@@ -139,9 +139,18 @@ export function buildReceiptBytes(data: ReceiptData, width = 48): Uint8Array {
     line(lr('Phone:', data.customer.phone, width))
   }
   line(lr('Type:', data.delivery_type.toUpperCase(), width))
-  if (data.delivery_type === 'delivery' && data.delivery_address) {
-    line('Deliver to:')
-    line('  ' + data.delivery_address)
+  if (data.delivery_type === 'delivery') {
+    if (data.delivery_address) {
+      line('Deliver to:')
+      line('  ' + data.delivery_address)
+    }
+    if (data.delivery_geocoded_address) {
+      line('  Near: ' + data.delivery_geocoded_address.substring(0, width - 8))
+    }
+    if (data.delivery_distance_km != null) {
+      const routeLabel = data.delivery_road_based ? 'road' : 'est.'
+      line(lr('Distance:', data.delivery_distance_km + ' km (' + routeLabel + ')', width))
+    }
   }
 
   line(thinDivider)
@@ -361,14 +370,24 @@ export function buildDeliverySlipBytes(data: ReceiptData, width = 48): Uint8Arra
   if (data.customer.phone) {
     line('Tel: ' + data.customer.phone)
   }
-  if (data.delivery_address) {
+  if (data.delivery_address || data.delivery_geocoded_address) {
     cmd(CMD.BOLD_ON)
     line('Address:')
     cmd(CMD.BOLD_OFF)
-    const addr = data.delivery_address
-    for (let i = 0; i < addr.length; i += width - 2) {
-      line('  ' + addr.substring(i, i + width - 2))
+    if (data.delivery_address) {
+      const addr = data.delivery_address
+      for (let i = 0; i < addr.length; i += width - 2) {
+        line('  ' + addr.substring(i, i + width - 2))
+      }
     }
+    if (data.delivery_geocoded_address) {
+      line('  Near: ' + data.delivery_geocoded_address.substring(0, width - 8))
+    }
+  }
+  if (data.delivery_distance_km != null) {
+    const routeType = data.delivery_road_based ? 'Road (OpenStreetMap)' : 'Estimated (straight-line)'
+    line(lr('Distance:', data.delivery_distance_km + ' km', width))
+    line('  Route: ' + routeType)
   }
   line(thinDivider)
 

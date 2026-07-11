@@ -138,7 +138,8 @@ export default function POSPage() {
   const [selectedUnitId, setSelectedUnitId] = useState<string>('')
   const [deliveryPhoneHistory, setDeliveryPhoneHistory] = useState<string[]>([])
   const [deliveryPhoneHistoryLoading, setDeliveryPhoneHistoryLoading] = useState(false)
-  const [deliveryCoords, setDeliveryCoords] = useState<{ lat: number; lng: number; distanceKm: number } | null>(null)
+  const [deliveryCoords, setDeliveryCoords] = useState<{ lat: number; lng: number; distanceKm: number; roadBased: boolean } | null>(null)
+  const [deliveryGeocodedAddress, setDeliveryGeocodedAddress] = useState<string | null>(null)
 
   // Store
   const {
@@ -816,6 +817,7 @@ export default function POSPage() {
           delivery_latitude: deliveryCoords?.lat ?? null,
           delivery_longitude: deliveryCoords?.lng ?? null,
           delivery_distance_km: deliveryCoords?.distanceKm ?? null,
+          delivery_geocoded_address: deliveryGeocodedAddress ?? null,
           other_fees: otherFees || 0,
           other_fees_notes: otherFeesNotes || null,
           discount_amount: getTotalDiscount(),
@@ -861,6 +863,7 @@ export default function POSPage() {
       // Reset POS immediately so the next transaction can start
       resetAll()
       setDeliveryCoords(null)
+      setDeliveryGeocodedAddress(null)
       setSaleDate(getTodayPH())
       setDiscountInput('')
       setCustomer(WALK_IN_CUSTOMER)
@@ -1777,9 +1780,11 @@ export default function POSPage() {
                     onSuggest={(result: MapSuggestResult | null) => {
                       if (result) {
                         setDeliveryFee(result.fee)
-                        setDeliveryCoords({ lat: result.lat, lng: result.lng, distanceKm: result.distanceKm })
+                        setDeliveryCoords({ lat: result.lat, lng: result.lng, distanceKm: result.distanceKm, roadBased: result.roadBased })
+                        setDeliveryGeocodedAddress(result.geocodedAddress)
                       } else {
                         setDeliveryCoords(null)
+                        setDeliveryGeocodedAddress(null)
                       }
                     }}
                   />

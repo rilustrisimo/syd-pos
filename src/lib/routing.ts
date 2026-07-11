@@ -36,6 +36,42 @@ export function calcDeliveryFee(distance_km: number, settings: FeeSettings): num
 }
 
 /**
+ * Reverse-geocode a lat/lng to a rough address using Nominatim (OpenStreetMap).
+ * Returns a short string like "Brgy. Poblacion, Talakag, Bukidnon" suitable for
+ * printing on a thermal receipt. Returns null on any error.
+ */
+export async function reverseGeocode(
+  lat: number,
+  lng: number,
+  signal?: AbortSignal
+): Promise<string | null> {
+  try {
+    const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=16&addressdetails=1`
+    const res = await fetch(url, {
+      signal,
+      headers: { 'User-Agent': 'SYD-POS/1.0 (Construction Supplies POS)' },
+      cache: 'no-store',
+    })
+    if (!res.ok) return null
+    const data = await res.json()
+    const a = data.address ?? {}
+
+    // Build a short locality string: barangay/village + municipality + province
+    const parts: string[] = []
+    const locality = a.village || a.hamlet || a.suburb || a.neighbourhood
+    if (locality) parts.push(locality)
+    const muni = a.city || a.town || a.municipality || a.county
+    if (muni && muni !== locality) parts.push(muni)
+    const province = a.state
+    if (province && province !== muni) parts.push(province)
+
+    return parts.length > 0 ? parts.join(', ') : (data.display_name?.split(',').slice(0, 3).join(',').trim() ?? null)
+  } catch {
+    return null
+  }
+}
+
+/**
  * Fetch road driving distance between two points via OSRM.
  * Returns routeCoords (lat/lng pairs) for drawing on a Leaflet map.
  * Falls back to straight-line Haversine on network error or no route.

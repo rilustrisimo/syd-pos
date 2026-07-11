@@ -134,6 +134,7 @@ export interface TransactionInput {
   delivery_latitude?: number | null
   delivery_longitude?: number | null
   delivery_distance_km?: number | null
+  delivery_geocoded_address?: string | null
 }
 
 export interface TransactionLineInput {
@@ -423,14 +424,15 @@ export async function createTransaction(
     await updateCustomerBalance(input.customer_id, creditPayment.amount)
   }
 
-  // Persist delivery coordinates if captured from the map
-  if (input.delivery_latitude != null && input.delivery_longitude != null) {
+  // Persist delivery coordinates + geocoded address if captured from the map
+  if (input.delivery_latitude != null || input.delivery_geocoded_address) {
     await supabase
       .from('transactions')
       .update({
-        delivery_latitude: input.delivery_latitude,
-        delivery_longitude: input.delivery_longitude,
+        delivery_latitude: input.delivery_latitude ?? null,
+        delivery_longitude: input.delivery_longitude ?? null,
         delivery_distance_km: input.delivery_distance_km ?? null,
+        delivery_geocoded_address: input.delivery_geocoded_address ?? null,
       } as any)
       .eq('id', data.id)
   }

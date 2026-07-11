@@ -229,7 +229,8 @@ export default function FrontlinePOSPage() {
   const [savingDelivery, setSavingDelivery] = useState(false)
   const [deliveryPhoneHistory, setDeliveryPhoneHistory] = useState<string[]>([])
   const [deliveryPhoneHistoryLoading, setDeliveryPhoneHistoryLoading] = useState(false)
-  const [deliveryCoords, setDeliveryCoords] = useState<{ lat: number; lng: number; distanceKm: number } | null>(null)
+  const [deliveryCoords, setDeliveryCoords] = useState<{ lat: number; lng: number; distanceKm: number; roadBased: boolean } | null>(null)
+  const [deliveryGeocodedAddress, setDeliveryGeocodedAddress] = useState<string | null>(null)
 
   const { data: historyData, isLoading: isLoadingHistory, refetch: refetchHistory } = useTransactions({
     branch_id: branchId || undefined,
@@ -815,6 +816,8 @@ export default function FrontlinePOSPage() {
       const currentDeliveryAddress = deliveryAddress
       const currentDeliveryPhone = deliveryPhone
       const currentDeliveryFee = deliveryFee
+      const currentDeliveryCoords = deliveryCoords
+      const currentDeliveryGeocodedAddress = deliveryGeocodedAddress
       const currentOtherFees = otherFees
       const currentOtherFeesNotes = otherFeesNotes
       const currentNotes = notes
@@ -828,9 +831,10 @@ export default function FrontlinePOSPage() {
           delivery_address: deliveryAddress || null,
           delivery_phone: deliveryPhone.trim() || null,
           delivery_fee: deliveryFee || 0,
-          delivery_latitude: deliveryCoords?.lat ?? null,
-          delivery_longitude: deliveryCoords?.lng ?? null,
-          delivery_distance_km: deliveryCoords?.distanceKm ?? null,
+          delivery_latitude: currentDeliveryCoords?.lat ?? null,
+          delivery_longitude: currentDeliveryCoords?.lng ?? null,
+          delivery_distance_km: currentDeliveryCoords?.distanceKm ?? null,
+          delivery_geocoded_address: currentDeliveryGeocodedAddress ?? null,
           other_fees: otherFees || 0,
           other_fees_notes: otherFeesNotes || null,
           discount_amount: getTotalDiscount(),
@@ -862,6 +866,7 @@ export default function FrontlinePOSPage() {
 
       resetAll()
       setDeliveryCoords(null)
+      setDeliveryGeocodedAddress(null)
       setSaleDate(getTodayPH())
       setDiscountInput('')
       setCustomer(WALK_IN_CUSTOMER)
@@ -944,6 +949,9 @@ export default function FrontlinePOSPage() {
         },
         delivery_type: currentDeliveryType,
         delivery_address: currentDeliveryAddress || null,
+        delivery_geocoded_address: currentDeliveryGeocodedAddress || null,
+        delivery_distance_km: currentDeliveryCoords?.distanceKm ?? null,
+        delivery_road_based: currentDeliveryCoords?.roadBased ?? null,
         items: currentItems.map((item) => ({
           name: item.product_name,
           quantity: item.quantity,
@@ -1838,9 +1846,11 @@ export default function FrontlinePOSPage() {
                       if (result) {
                         setDeliveryFee(result.fee)
                         setDeliveryFeeConfirmed(true)
-                        setDeliveryCoords({ lat: result.lat, lng: result.lng, distanceKm: result.distanceKm })
+                        setDeliveryCoords({ lat: result.lat, lng: result.lng, distanceKm: result.distanceKm, roadBased: result.roadBased })
+                        setDeliveryGeocodedAddress(result.geocodedAddress)
                       } else {
                         setDeliveryCoords(null)
+                        setDeliveryGeocodedAddress(null)
                       }
                     }}
                   />
