@@ -21,6 +21,8 @@ interface DeliveryMapPickerProps {
   onExpandChange?: (expanded: boolean) => void
   /** Restore a previously-pinned location when the component remounts */
   initialCoords?: { lat: number; lng: number } | null
+  /** Start in expanded state (used to preserve state across remounts) */
+  initialExpanded?: boolean
 }
 
 interface StoreSettings extends FeeSettings {
@@ -35,8 +37,9 @@ interface RouteInfo {
   geocodedAddress: string | null
 }
 
-export function DeliveryMapPicker({ onSuggest, onExpandChange, initialCoords }: DeliveryMapPickerProps) {
+export function DeliveryMapPicker({ onSuggest, onExpandChange, initialCoords, initialExpanded = false }: DeliveryMapPickerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const mapSectionRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<any>(null)
   const markerRef = useRef<any>(null)
   const routeLayerRef = useRef<{ remove: () => void } | null>(null)
@@ -48,7 +51,7 @@ export function DeliveryMapPicker({ onSuggest, onExpandChange, initialCoords }: 
   const [routeInfo, setRouteInfo] = useState<RouteInfo | null>(null)
   const [loading, setLoading] = useState(false)
   const [settingsLoading, setSettingsLoading] = useState(true)
-  const [isExpanded, setIsExpanded] = useState(false)
+  const [isExpanded, setIsExpanded] = useState(initialExpanded)
 
   // Fetch store coordinates + fee settings once
   useEffect(() => {
@@ -175,6 +178,17 @@ export function DeliveryMapPicker({ onSuggest, onExpandChange, initialCoords }: 
     }
   }, [storeSettings]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // When expanded, scroll the map section into view so the map + info bar
+  // are visible without the user having to manually scroll the dialog.
+  useEffect(() => {
+    if (isExpanded) {
+      const t = setTimeout(() => {
+        mapSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }, 80)
+      return () => clearTimeout(t)
+    }
+  }, [isExpanded])
+
   const handleToggleExpand = () => {
     const next = !isExpanded
     setIsExpanded(next)
@@ -198,12 +212,12 @@ export function DeliveryMapPicker({ onSuggest, onExpandChange, initialCoords }: 
   }
 
   return (
-    <div className="space-y-2">
+    <div ref={mapSectionRef} className="space-y-2">
       {/* containerRef is always unconditionally rendered so Leaflet stays mounted */}
       <div className="relative">
         <div
           ref={containerRef}
-          className={`w-full rounded-xl overflow-hidden border border-slate-200 ${isExpanded ? 'h-[75vh]' : 'h-52'}`}
+          className={`w-full rounded-xl overflow-hidden border border-slate-200 ${isExpanded ? 'h-[65vh]' : 'h-52'}`}
           style={{ zIndex: 0 }}
         />
         <button

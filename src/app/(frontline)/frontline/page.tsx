@@ -1847,6 +1847,7 @@ export default function FrontlinePOSPage() {
                   <DeliveryMapPicker
                     key={mapExpanded ? 'expanded' : 'collapsed'}
                     initialCoords={deliveryCoords}
+                    initialExpanded={mapExpanded}
                     onSuggest={(result: MapSuggestResult | null) => {
                       if (result) {
                         setDeliveryFee(result.fee)
