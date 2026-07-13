@@ -203,7 +203,7 @@ export function DeliveryMapPicker({ onSuggest, onExpandChange, initialCoords }: 
       <div className="relative">
         <div
           ref={containerRef}
-          className={`w-full rounded-xl overflow-hidden border border-slate-200 ${isExpanded ? 'h-[55vh]' : 'h-52'}`}
+          className={`w-full rounded-xl overflow-hidden border border-slate-200 ${isExpanded ? 'h-[75vh]' : 'h-52'}`}
           style={{ zIndex: 0 }}
         />
         <button
