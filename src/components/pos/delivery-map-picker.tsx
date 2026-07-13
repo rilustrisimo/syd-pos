@@ -19,6 +19,8 @@ export interface MapSuggestResult {
 interface DeliveryMapPickerProps {
   onSuggest: (result: MapSuggestResult | null) => void
   onExpandChange?: (expanded: boolean) => void
+  /** Restore a previously-pinned location when the component remounts */
+  initialCoords?: { lat: number; lng: number } | null
 }
 
 interface StoreSettings extends FeeSettings {
@@ -33,10 +35,9 @@ interface RouteInfo {
   geocodedAddress: string | null
 }
 
-export function DeliveryMapPicker({ onSuggest, onExpandChange }: DeliveryMapPickerProps) {
+export function DeliveryMapPicker({ onSuggest, onExpandChange, initialCoords }: DeliveryMapPickerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<any>(null)
-  const tileLayerRef = useRef<any>(null)
   const markerRef = useRef<any>(null)
   const routeLayerRef = useRef<{ remove: () => void } | null>(null)
   const abortRef = useRef<AbortController | null>(null)
@@ -90,7 +91,7 @@ export function DeliveryMapPicker({ onSuggest, onExpandChange }: DeliveryMapPick
       const { store_latitude: sLat, store_longitude: sLng } = storeSettings
       const map = L.map(containerRef.current!).setView([sLat, sLng], 14)
 
-      tileLayerRef.current = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© <a href="https://openstreetmap.org">OpenStreetMap</a>',
         maxZoom: 19,
       }).addTo(map)
@@ -157,6 +158,11 @@ export function DeliveryMapPicker({ onSuggest, onExpandChange }: DeliveryMapPick
       }
 
       mapRef.current = map
+
+      // Restore previously-pinned location (e.g. after expand/collapse remount)
+      if (initialCoords?.lat && initialCoords?.lng) {
+        handlePin(initialCoords.lat, initialCoords.lng)
+      }
     })
 
     return () => {
@@ -164,27 +170,10 @@ export function DeliveryMapPicker({ onSuggest, onExpandChange }: DeliveryMapPick
       abortRef.current?.abort()
       mapRef.current?.remove()
       mapRef.current = null
-      tileLayerRef.current = null
       markerRef.current = null
       routeLayerRef.current = null
     }
-  }, [storeSettings])
-
-  // When isExpanded changes: wait one frame for the DOM to apply the new
-  // height, invalidate Leaflet's size, then remove and re-add the tile layer.
-  // redraw() alone is unreliable here; removing + re-adding the layer forces
-  // Leaflet to fully re-initialize tile loading for the new container size.
-  useEffect(() => {
-    const t = setTimeout(() => {
-      const map = mapRef.current
-      const tl = tileLayerRef.current
-      if (!map || !tl) return
-      map.invalidateSize({ animate: false })
-      map.removeLayer(tl)
-      map.addLayer(tl)
-    }, 50)
-    return () => clearTimeout(t)
-  }, [isExpanded])
+  }, [storeSettings]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleToggleExpand = () => {
     const next = !isExpanded
@@ -210,7 +199,7 @@ export function DeliveryMapPicker({ onSuggest, onExpandChange }: DeliveryMapPick
 
   return (
     <div className="space-y-2">
-      {/* containerRef is always rendered unconditionally — Leaflet stays mounted */}
+      {/* containerRef is always unconditionally rendered so Leaflet stays mounted */}
       <div className="relative">
         <div
           ref={containerRef}

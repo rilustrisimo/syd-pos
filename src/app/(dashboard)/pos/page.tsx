@@ -1780,6 +1780,8 @@ export default function POSPage() {
                 <div className="space-y-1">
                   <Label className="text-xs text-muted-foreground">Pin Delivery Location</Label>
                   <DeliveryMapPicker
+                    key={mapExpanded ? 'expanded' : 'collapsed'}
+                    initialCoords={deliveryCoords}
                     onSuggest={(result: MapSuggestResult | null) => {
                       if (result) {
                         setDeliveryFee(result.fee)
