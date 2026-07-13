@@ -168,15 +168,18 @@ export function DeliveryMapPicker({ onSuggest, onExpandChange }: DeliveryMapPick
     }
   }, [storeSettings])
 
-  // After the CSS transition completes, tell Leaflet to recalculate its size
-  // and force the tile layer to reload for the new viewport.
+  // After the CSS transition completes, recalculate size then call redraw()
+  // on every tile layer. invalidateSize alone (and setView with same params)
+  // is treated as a no-op by Leaflet's tile layer — redraw() is the only
+  // reliable way to force it to re-request tiles for the new viewport.
   useEffect(() => {
     const t = setTimeout(() => {
       const map = mapRef.current
       if (!map) return
       map.invalidateSize({ animate: false })
-      // setView forces the tile layer to request tiles for the updated viewport
-      map.setView(map.getCenter(), map.getZoom(), { animate: false })
+      map.eachLayer((layer: any) => {
+        if (layer._url && typeof layer.redraw === 'function') layer.redraw()
+      })
     }, 320)
     return () => clearTimeout(t)
   }, [isExpanded])
