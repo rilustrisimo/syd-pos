@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
 import { Maximize2, Minimize2 } from 'lucide-react'
 import { getClient } from '@/lib/supabase/client'
 import { getRoadDistance, calcDeliveryFee, reverseGeocode } from '@/lib/routing'
@@ -19,6 +18,7 @@ export interface MapSuggestResult {
 
 interface DeliveryMapPickerProps {
   onSuggest: (result: MapSuggestResult | null) => void
+  onExpandChange?: (expanded: boolean) => void
 }
 
 interface StoreSettings extends FeeSettings {
@@ -33,14 +33,8 @@ interface RouteInfo {
   geocodedAddress: string | null
 }
 
-export function DeliveryMapPicker({ onSuggest }: DeliveryMapPickerProps) {
-  // Slots: React-controlled divs that act as placeholders.
-  // The actual Leaflet container is an imperative DOM element moved between them.
-  const inlineSlotRef = useRef<HTMLDivElement>(null)
-  const expandedSlotRef = useRef<HTMLDivElement>(null)
-  // The raw div that Leaflet is initialized on — never unmounted by React.
-  const mapHostRef = useRef<HTMLDivElement | null>(null)
-
+export function DeliveryMapPicker({ onSuggest, onExpandChange }: DeliveryMapPickerProps) {
+  const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<any>(null)
   const markerRef = useRef<any>(null)
   const routeLayerRef = useRef<{ remove: () => void } | null>(null)
@@ -68,21 +62,14 @@ export function DeliveryMapPicker({ onSuggest }: DeliveryMapPickerProps) {
       })
   }, [])
 
-  // Initialize Leaflet once store settings arrive.
-  // Creates mapHostRef as an imperative element appended to the inline slot.
+  // Initialize Leaflet map once store settings are available
   useEffect(() => {
-    if (!storeSettings || !inlineSlotRef.current || mapRef.current) return
+    if (!storeSettings || !containerRef.current || mapRef.current) return
 
     let destroyed = false
 
-    // Create the Leaflet host element imperatively so React never unmounts it.
-    const mapHostEl = document.createElement('div')
-    mapHostEl.style.cssText = 'position:absolute;inset:0;'
-    inlineSlotRef.current.appendChild(mapHostEl)
-    mapHostRef.current = mapHostEl
-
     import('leaflet').then(({ default: L }) => {
-      if (destroyed || !mapHostEl.isConnected) return
+      if (destroyed || !containerRef.current) return
 
       const customerIcon = L.icon({
         iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
@@ -100,7 +87,7 @@ export function DeliveryMapPicker({ onSuggest }: DeliveryMapPickerProps) {
       })
 
       const { store_latitude: sLat, store_longitude: sLng } = storeSettings
-      const map = L.map(mapHostEl).setView([sLat, sLng], 14)
+      const map = L.map(containerRef.current!).setView([sLat, sLng], 14)
 
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© <a href="https://openstreetmap.org">OpenStreetMap</a>',
@@ -178,30 +165,20 @@ export function DeliveryMapPicker({ onSuggest }: DeliveryMapPickerProps) {
       mapRef.current = null
       markerRef.current = null
       routeLayerRef.current = null
-      mapHostEl.remove()
-      mapHostRef.current = null
     }
   }, [storeSettings])
 
-  // When isExpanded changes, physically move mapHostEl between the inline and portal slots.
-  // Because mapHostEl is not managed by React, appendChild just re-parents it in the DOM
-  // without destroying Leaflet's event listeners or tile layers.
+  // After the CSS transition completes, tell Leaflet to recalculate its size
   useEffect(() => {
-    const el = mapHostRef.current
-    if (!el) return
-
-    const target = isExpanded ? expandedSlotRef.current : inlineSlotRef.current
-    if (target && el.parentNode !== target) {
-      target.appendChild(el)
-    }
-
-    document.body.style.overflow = isExpanded ? 'hidden' : ''
-    const t = setTimeout(() => mapRef.current?.invalidateSize(), 50)
-    return () => {
-      clearTimeout(t)
-      document.body.style.overflow = ''
-    }
+    const t = setTimeout(() => mapRef.current?.invalidateSize(), 300)
+    return () => clearTimeout(t)
   }, [isExpanded])
+
+  const handleToggleExpand = () => {
+    const next = !isExpanded
+    setIsExpanded(next)
+    onExpandChange?.(next)
+  }
 
   if (settingsLoading) {
     return (
@@ -219,81 +196,53 @@ export function DeliveryMapPicker({ onSuggest }: DeliveryMapPickerProps) {
     )
   }
 
-  const infoBar = loading ? (
-    <div className="flex items-center gap-2 rounded-lg px-3 py-2 bg-slate-50 border border-slate-200 text-xs text-slate-500 animate-pulse">
-      <span>📍</span>
-      <span>Calculating route and address…</span>
-    </div>
-  ) : routeInfo ? (
-    <div className={`rounded-lg px-3 py-2.5 text-xs space-y-1 ${routeInfo.distanceKm <= storeSettings.cod_radius_km ? 'bg-green-50 border border-green-200 text-green-800' : 'bg-blue-50 border border-blue-200 text-blue-800'}`}>
-      <div className="flex items-center gap-1.5 font-medium">
-        <span>📍</span>
-        <span>
-          <strong>{routeInfo.distanceKm} km</strong> from store
-          {' · '}Suggested fee: <strong>₱{routeInfo.fee.toLocaleString('en-PH')}</strong>
-        </span>
-      </div>
-      <p className="opacity-60 pl-5 leading-tight">
-        {routeInfo.roadBased ? '🛣️ Road distance via OpenStreetMap' : '📏 Straight-line estimate (no road data)'}
-      </p>
-      {routeInfo.geocodedAddress && (
-        <p className="pl-5 leading-tight font-medium">
-          📌 Near: {routeInfo.geocodedAddress}
-        </p>
-      )}
-    </div>
-  ) : (
-    <p className="text-xs text-slate-400 text-center py-1">Click on the map to pin the customer&apos;s delivery location</p>
-  )
-
   return (
-    <>
-      {/* Inline collapsed view. The actual Leaflet host element lives in inlineSlotRef
-          and gets physically moved to expandedSlotRef when isExpanded is true. */}
-      <div className="space-y-2">
-        <div className="relative h-52">
-          <div
-            ref={inlineSlotRef}
-            className="absolute inset-0 rounded-xl overflow-hidden border border-slate-200"
-            style={{ zIndex: 0 }}
-          />
-          {!isExpanded && (
-            <button
-              onClick={() => setIsExpanded(true)}
-              className="absolute top-2 right-2 z-[1000] bg-white/90 hover:bg-white border border-slate-200 shadow-sm rounded-md p-1.5 transition-colors"
-              title="Expand map"
-              type="button"
-            >
-              <Maximize2 className="h-4 w-4 text-slate-600" />
-            </button>
+    <div className="space-y-2">
+      {/* containerRef is always rendered unconditionally — Leaflet stays mounted */}
+      <div className="relative">
+        <div
+          ref={containerRef}
+          className={`w-full rounded-xl overflow-hidden border border-slate-200 transition-all duration-300 ${isExpanded ? 'h-[55vh]' : 'h-52'}`}
+          style={{ zIndex: 0 }}
+        />
+        <button
+          onClick={handleToggleExpand}
+          className="absolute top-2 right-2 z-[1000] bg-white/90 hover:bg-white border border-slate-200 shadow-sm rounded-md p-1.5 transition-colors"
+          title={isExpanded ? 'Collapse map' : 'Expand map'}
+          type="button"
+        >
+          {isExpanded
+            ? <Minimize2 className="h-4 w-4 text-slate-600" />
+            : <Maximize2 className="h-4 w-4 text-slate-600" />}
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center gap-2 rounded-lg px-3 py-2 bg-slate-50 border border-slate-200 text-xs text-slate-500 animate-pulse">
+          <span>📍</span>
+          <span>Calculating route and address…</span>
+        </div>
+      ) : routeInfo ? (
+        <div className={`rounded-lg px-3 py-2.5 text-xs space-y-1 ${routeInfo.distanceKm <= storeSettings.cod_radius_km ? 'bg-green-50 border border-green-200 text-green-800' : 'bg-blue-50 border border-blue-200 text-blue-800'}`}>
+          <div className="flex items-center gap-1.5 font-medium">
+            <span>📍</span>
+            <span>
+              <strong>{routeInfo.distanceKm} km</strong> from store
+              {' · '}Suggested fee: <strong>₱{routeInfo.fee.toLocaleString('en-PH')}</strong>
+            </span>
+          </div>
+          <p className="opacity-60 pl-5 leading-tight">
+            {routeInfo.roadBased ? '🛣️ Road distance via OpenStreetMap' : '📏 Straight-line estimate (no road data)'}
+          </p>
+          {routeInfo.geocodedAddress && (
+            <p className="pl-5 leading-tight font-medium">
+              📌 Near: {routeInfo.geocodedAddress}
+            </p>
           )}
         </div>
-        {!isExpanded && infoBar}
-      </div>
-
-      {/* Fullscreen portal — rendered on document.body, completely outside the dialog's
-          stacking context. The Leaflet host element is moved here via appendChild. */}
-      {isExpanded && createPortal(
-        <div className="fixed inset-0 z-[9999] bg-white flex flex-col p-3 gap-2">
-          <div className="relative flex-1 min-h-0">
-            <div
-              ref={expandedSlotRef}
-              className="absolute inset-0 rounded-xl overflow-hidden border border-slate-200"
-              style={{ zIndex: 0 }}
-            />
-            <button
-              onClick={() => setIsExpanded(false)}
-              className="absolute top-2 right-2 z-[1000] bg-white/90 hover:bg-white border border-slate-200 shadow-sm rounded-md p-1.5 transition-colors"
-              title="Exit fullscreen"
-              type="button"
-            >
-              <Minimize2 className="h-4 w-4 text-slate-600" />
-            </button>
-          </div>
-          {infoBar}
-        </div>,
-        document.body
+      ) : (
+        <p className="text-xs text-slate-400 text-center py-1">Click on the map to pin the customer&apos;s delivery location</p>
       )}
-    </>
+    </div>
   )
 }

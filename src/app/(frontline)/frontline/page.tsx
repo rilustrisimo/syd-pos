@@ -132,6 +132,7 @@ export default function FrontlinePOSPage() {
   const [customerSearch, setCustomerSearch] = useState('')
   const [isCustomerOpen, setIsCustomerOpen] = useState(false)
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false)
+  const [mapExpanded, setMapExpanded] = useState(false)
   const [deliveryFeeConfirmed, setDeliveryFeeConfirmed] = useState(false)
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>('cash')
   const [paymentAmount, setPaymentAmount] = useState('')
@@ -1563,7 +1564,7 @@ export default function FrontlinePOSPage() {
 
       {/* Checkout Dialog */}
       <Dialog open={isCheckoutOpen} onOpenChange={setIsCheckoutOpen}>
-        <DialogContent className="max-w-4xl max-h-[95vh] overflow-y-auto p-6">
+        <DialogContent className={`${mapExpanded ? 'max-w-[95vw] max-h-[98vh]' : 'max-w-4xl max-h-[95vh]'} overflow-y-auto p-6 transition-all duration-300`}>
           <DialogHeader className="pb-4 border-b">
             <DialogTitle className="text-2xl">Checkout</DialogTitle>
             <DialogDescription className="text-base">
@@ -1713,14 +1714,14 @@ export default function FrontlinePOSPage() {
                   <Button
                     key={type}
                     variant={discountType === type ? 'default' : 'outline'}
-                    className="h-8 text-xs gap-1"
+                    className="h-7 text-[10px] gap-1 px-2"
                     onClick={() => handleDiscountTypeChange(type)}
                   >
-                    {type === 'none' && <><Ban className="h-3 w-3" />No Discount</>}
-                    {type === 'fixed' && <><Tag className="h-3 w-3" />Fixed</>}
-                    {type === 'percentage' && <><Percent className="h-3 w-3" />Percentage</>}
-                    {type === 'standard' && <><BadgeCheck className="h-3 w-3" />Standard</>}
-                    {type === 'cost' && <><Package className="h-3 w-3" />At Cost</>}
+                    {type === 'none' && <><Ban className="h-3 w-3 shrink-0" />None</>}
+                    {type === 'fixed' && <><Tag className="h-3 w-3 shrink-0" />Fixed</>}
+                    {type === 'percentage' && <><Percent className="h-3 w-3 shrink-0" />Percent</>}
+                    {type === 'standard' && <><BadgeCheck className="h-3 w-3 shrink-0" />Standard</>}
+                    {type === 'cost' && <><Package className="h-3 w-3 shrink-0" />At Cost</>}
                   </Button>
                 ))}
               </div>
@@ -1855,6 +1856,7 @@ export default function FrontlinePOSPage() {
                         setDeliveryGeocodedAddress(null)
                       }
                     }}
+                    onExpandChange={setMapExpanded}
                   />
                 </div>
                 <div className="space-y-1">
