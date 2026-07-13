@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { Maximize2, Minimize2 } from 'lucide-react'
 import { getClient } from '@/lib/supabase/client'
 import { getRoadDistance, calcDeliveryFee, reverseGeocode } from '@/lib/routing'
 import type { FeeSettings } from '@/lib/routing'
@@ -44,6 +45,7 @@ export function DeliveryMapPicker({ onSuggest }: DeliveryMapPickerProps) {
   const [routeInfo, setRouteInfo] = useState<RouteInfo | null>(null)
   const [loading, setLoading] = useState(false)
   const [settingsLoading, setSettingsLoading] = useState(true)
+  const [isExpanded, setIsExpanded] = useState(false)
 
   // Fetch store coordinates + fee settings once
   useEffect(() => {
@@ -171,6 +173,16 @@ export function DeliveryMapPicker({ onSuggest }: DeliveryMapPickerProps) {
     }
   }, [storeSettings])
 
+  // Invalidate Leaflet size after expand/collapse so tiles fill the new dimensions
+  useEffect(() => {
+    document.body.style.overflow = isExpanded ? 'hidden' : ''
+    const t = setTimeout(() => mapRef.current?.invalidateSize(), 50)
+    return () => {
+      clearTimeout(t)
+      document.body.style.overflow = ''
+    }
+  }, [isExpanded])
+
   if (settingsLoading) {
     return (
       <div className="w-full h-48 rounded-xl bg-slate-100 animate-pulse border border-slate-200 flex items-center justify-center">
@@ -187,36 +199,53 @@ export function DeliveryMapPicker({ onSuggest }: DeliveryMapPickerProps) {
     )
   }
 
-  return (
-    <div className="space-y-2">
-      <div ref={containerRef} className="w-full h-52 rounded-xl overflow-hidden border border-slate-200" style={{ zIndex: 0 }} />
-
-      {loading ? (
-        <div className="flex items-center gap-2 rounded-lg px-3 py-2 bg-slate-50 border border-slate-200 text-xs text-slate-500 animate-pulse">
-          <span>📍</span>
-          <span>Calculating route and address…</span>
-        </div>
-      ) : routeInfo ? (
-        <div className={`rounded-lg px-3 py-2.5 text-xs space-y-1 ${routeInfo.distanceKm <= storeSettings.cod_radius_km ? 'bg-green-50 border border-green-200 text-green-800' : 'bg-blue-50 border border-blue-200 text-blue-800'}`}>
-          <div className="flex items-center gap-1.5 font-medium">
-            <span>📍</span>
-            <span>
-              <strong>{routeInfo.distanceKm} km</strong> from store
-              {' · '}Suggested fee: <strong>₱{routeInfo.fee.toLocaleString('en-PH')}</strong>
-            </span>
-          </div>
-          <p className="opacity-60 pl-5 leading-tight">
-            {routeInfo.roadBased ? '🛣️ Road distance via OpenStreetMap' : '📏 Straight-line estimate (no road data)'}
-          </p>
-          {routeInfo.geocodedAddress && (
-            <p className="pl-5 leading-tight font-medium">
-              📌 Near: {routeInfo.geocodedAddress}
-            </p>
-          )}
-        </div>
-      ) : (
-        <p className="text-xs text-slate-400 text-center py-1">Click on the map to pin the customer&apos;s delivery location</p>
+  const infoBar = loading ? (
+    <div className="flex items-center gap-2 rounded-lg px-3 py-2 bg-slate-50 border border-slate-200 text-xs text-slate-500 animate-pulse">
+      <span>📍</span>
+      <span>Calculating route and address…</span>
+    </div>
+  ) : routeInfo ? (
+    <div className={`rounded-lg px-3 py-2.5 text-xs space-y-1 ${routeInfo.distanceKm <= storeSettings.cod_radius_km ? 'bg-green-50 border border-green-200 text-green-800' : 'bg-blue-50 border border-blue-200 text-blue-800'}`}>
+      <div className="flex items-center gap-1.5 font-medium">
+        <span>📍</span>
+        <span>
+          <strong>{routeInfo.distanceKm} km</strong> from store
+          {' · '}Suggested fee: <strong>₱{routeInfo.fee.toLocaleString('en-PH')}</strong>
+        </span>
+      </div>
+      <p className="opacity-60 pl-5 leading-tight">
+        {routeInfo.roadBased ? '🛣️ Road distance via OpenStreetMap' : '📏 Straight-line estimate (no road data)'}
+      </p>
+      {routeInfo.geocodedAddress && (
+        <p className="pl-5 leading-tight font-medium">
+          📌 Near: {routeInfo.geocodedAddress}
+        </p>
       )}
+    </div>
+  ) : (
+    <p className="text-xs text-slate-400 text-center py-1">Click on the map to pin the customer&apos;s delivery location</p>
+  )
+
+  return (
+    <div className={isExpanded ? 'fixed inset-0 z-[9999] bg-white flex flex-col p-3 gap-2' : 'space-y-2'}>
+      <div className={`relative ${isExpanded ? 'flex-1 min-h-0' : ''}`}>
+        <div
+          ref={containerRef}
+          className={`w-full rounded-xl overflow-hidden border border-slate-200 ${isExpanded ? 'h-full' : 'h-52'}`}
+          style={{ zIndex: 0 }}
+        />
+        <button
+          onClick={() => setIsExpanded(v => !v)}
+          className="absolute top-2 right-2 z-[1000] bg-white/90 hover:bg-white border border-slate-200 shadow-sm rounded-md p-1.5 transition-colors"
+          title={isExpanded ? 'Exit fullscreen' : 'Expand map'}
+          type="button"
+        >
+          {isExpanded
+            ? <Minimize2 className="h-4 w-4 text-slate-600" />
+            : <Maximize2 className="h-4 w-4 text-slate-600" />}
+        </button>
+      </div>
+      {infoBar}
     </div>
   )
 }
