@@ -1,8 +1,14 @@
 'use client'
 
 import { use, useState } from 'react'
+import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+
+const DeliveryMapView = dynamic(
+  () => import('@/components/pos/delivery-map-view').then(m => ({ default: m.DeliveryMapView })),
+  { ssr: false }
+)
 import { useTransaction, useUpdateTransactionDeliveryType } from '@/hooks/useTransactions'
 import { formatCurrency, formatDate, formatTime } from '@/lib/utils/formatting'
 import { toast } from 'sonner'
@@ -101,6 +107,9 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
   const branch = (txn as any).branch
   const lines = (txn as any).lines || []
   const payments = (txn as any).payments || []
+  const hasDeliveryMap = txn.delivery_type === 'delivery' &&
+    (txn as any).delivery_latitude != null &&
+    (txn as any).delivery_longitude != null
 
   // Compute gross for display — DB subtotal is post-line-discount so we derive from lines.
   const grossSubtotal = lines.reduce((sum: number, l: any) => sum + l.quantity * l.unit_price, 0)
@@ -147,7 +156,7 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
 
       {/* ── Customer + Delivery ───────────────────────────────────────── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Card>
+        <Card className={hasDeliveryMap ? 'sm:col-span-1' : ''}>
           <CardContent className="pt-5 space-y-1">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Customer</p>
             {customer?.id ? (
@@ -167,7 +176,7 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className={hasDeliveryMap ? 'sm:col-span-2' : ''}>
           <CardContent className="pt-5 space-y-1">
             <div className="flex items-center justify-between">
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Delivery</p>
@@ -225,6 +234,15 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
                     )}
                     {(txn as any).delivery_phone && (
                       <p className="text-sm text-muted-foreground">{(txn as any).delivery_phone}</p>
+                    )}
+                    {(txn as any).delivery_latitude != null && (txn as any).delivery_longitude != null && (
+                      <DeliveryMapView
+                        lat={(txn as any).delivery_latitude}
+                        lng={(txn as any).delivery_longitude}
+                        distanceKm={(txn as any).delivery_distance_km}
+                        geocodedAddress={(txn as any).delivery_geocoded_address}
+                        roadBased={true}
+                      />
                     )}
                   </>
                 )}
