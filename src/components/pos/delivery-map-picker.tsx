@@ -36,6 +36,7 @@ interface RouteInfo {
 export function DeliveryMapPicker({ onSuggest, onExpandChange }: DeliveryMapPickerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<any>(null)
+  const tileLayerRef = useRef<any>(null)
   const markerRef = useRef<any>(null)
   const routeLayerRef = useRef<{ remove: () => void } | null>(null)
   const abortRef = useRef<AbortController | null>(null)
@@ -89,7 +90,7 @@ export function DeliveryMapPicker({ onSuggest, onExpandChange }: DeliveryMapPick
       const { store_latitude: sLat, store_longitude: sLng } = storeSettings
       const map = L.map(containerRef.current!).setView([sLat, sLng], 14)
 
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      tileLayerRef.current = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© <a href="https://openstreetmap.org">OpenStreetMap</a>',
         maxZoom: 19,
       }).addTo(map)
@@ -163,24 +164,25 @@ export function DeliveryMapPicker({ onSuggest, onExpandChange }: DeliveryMapPick
       abortRef.current?.abort()
       mapRef.current?.remove()
       mapRef.current = null
+      tileLayerRef.current = null
       markerRef.current = null
       routeLayerRef.current = null
     }
   }, [storeSettings])
 
-  // After the CSS transition completes, recalculate size then call redraw()
-  // on every tile layer. invalidateSize alone (and setView with same params)
-  // is treated as a no-op by Leaflet's tile layer — redraw() is the only
-  // reliable way to force it to re-request tiles for the new viewport.
+  // When isExpanded changes: wait one frame for the DOM to apply the new
+  // height, invalidate Leaflet's size, then remove and re-add the tile layer.
+  // redraw() alone is unreliable here; removing + re-adding the layer forces
+  // Leaflet to fully re-initialize tile loading for the new container size.
   useEffect(() => {
     const t = setTimeout(() => {
       const map = mapRef.current
-      if (!map) return
+      const tl = tileLayerRef.current
+      if (!map || !tl) return
       map.invalidateSize({ animate: false })
-      map.eachLayer((layer: any) => {
-        if (layer._url && typeof layer.redraw === 'function') layer.redraw()
-      })
-    }, 320)
+      map.removeLayer(tl)
+      map.addLayer(tl)
+    }, 50)
     return () => clearTimeout(t)
   }, [isExpanded])
 
@@ -212,7 +214,7 @@ export function DeliveryMapPicker({ onSuggest, onExpandChange }: DeliveryMapPick
       <div className="relative">
         <div
           ref={containerRef}
-          className={`w-full rounded-xl overflow-hidden border border-slate-200 transition-all duration-300 ${isExpanded ? 'h-[55vh]' : 'h-52'}`}
+          className={`w-full rounded-xl overflow-hidden border border-slate-200 ${isExpanded ? 'h-[55vh]' : 'h-52'}`}
           style={{ zIndex: 0 }}
         />
         <button
