@@ -44,6 +44,8 @@ import {
   RefreshCw,
   Usb,
   CheckCircle2,
+  Ban,
+  BadgeCheck,
 } from 'lucide-react'
 import type { ReceiptData } from '@/components/print/receipt-template'
 import { printThermalTransaction, listAllPrinters, printTestPage, connectBtPrinter, type DiscoveredPrinter } from '@/lib/utils/usb-thermal-print'
@@ -1561,7 +1563,7 @@ export default function FrontlinePOSPage() {
 
       {/* Checkout Dialog */}
       <Dialog open={isCheckoutOpen} onOpenChange={setIsCheckoutOpen}>
-        <DialogContent className="max-w-3xl max-h-[95vh] overflow-y-auto p-6">
+        <DialogContent className="max-w-4xl max-h-[95vh] overflow-y-auto p-6">
           <DialogHeader className="pb-4 border-b">
             <DialogTitle className="text-2xl">Checkout</DialogTitle>
             <DialogDescription className="text-base">
@@ -1711,14 +1713,14 @@ export default function FrontlinePOSPage() {
                   <Button
                     key={type}
                     variant={discountType === type ? 'default' : 'outline'}
-                    className="h-10 text-sm"
+                    className="h-8 text-xs gap-1"
                     onClick={() => handleDiscountTypeChange(type)}
                   >
-                    {type === 'none' && 'No Discount'}
-                    {type === 'fixed' && <><Tag className="mr-1 h-4 w-4" />Fixed</>}
-                    {type === 'percentage' && <><Percent className="mr-1 h-4 w-4" />Percentage</>}
-                    {type === 'standard' && 'Standard'}
-                    {type === 'cost' && 'At Cost'}
+                    {type === 'none' && <><Ban className="h-3 w-3" />No Discount</>}
+                    {type === 'fixed' && <><Tag className="h-3 w-3" />Fixed</>}
+                    {type === 'percentage' && <><Percent className="h-3 w-3" />Percentage</>}
+                    {type === 'standard' && <><BadgeCheck className="h-3 w-3" />Standard</>}
+                    {type === 'cost' && <><Package className="h-3 w-3" />At Cost</>}
                   </Button>
                 ))}
               </div>

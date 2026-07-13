@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Maximize2, Minimize2 } from 'lucide-react'
 import { getClient } from '@/lib/supabase/client'
 import { getRoadDistance, calcDeliveryFee, reverseGeocode } from '@/lib/routing'
@@ -33,7 +34,13 @@ interface RouteInfo {
 }
 
 export function DeliveryMapPicker({ onSuggest }: DeliveryMapPickerProps) {
-  const containerRef = useRef<HTMLDivElement>(null)
+  // Slots: React-controlled divs that act as placeholders.
+  // The actual Leaflet container is an imperative DOM element moved between them.
+  const inlineSlotRef = useRef<HTMLDivElement>(null)
+  const expandedSlotRef = useRef<HTMLDivElement>(null)
+  // The raw div that Leaflet is initialized on — never unmounted by React.
+  const mapHostRef = useRef<HTMLDivElement | null>(null)
+
   const mapRef = useRef<any>(null)
   const markerRef = useRef<any>(null)
   const routeLayerRef = useRef<{ remove: () => void } | null>(null)
@@ -61,14 +68,21 @@ export function DeliveryMapPicker({ onSuggest }: DeliveryMapPickerProps) {
       })
   }, [])
 
-  // Initialize Leaflet map once store settings are available
+  // Initialize Leaflet once store settings arrive.
+  // Creates mapHostRef as an imperative element appended to the inline slot.
   useEffect(() => {
-    if (!storeSettings || !containerRef.current || mapRef.current) return
+    if (!storeSettings || !inlineSlotRef.current || mapRef.current) return
 
     let destroyed = false
 
+    // Create the Leaflet host element imperatively so React never unmounts it.
+    const mapHostEl = document.createElement('div')
+    mapHostEl.style.cssText = 'position:absolute;inset:0;'
+    inlineSlotRef.current.appendChild(mapHostEl)
+    mapHostRef.current = mapHostEl
+
     import('leaflet').then(({ default: L }) => {
-      if (destroyed || !containerRef.current) return
+      if (destroyed || !mapHostEl.isConnected) return
 
       const customerIcon = L.icon({
         iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
@@ -86,7 +100,7 @@ export function DeliveryMapPicker({ onSuggest }: DeliveryMapPickerProps) {
       })
 
       const { store_latitude: sLat, store_longitude: sLng } = storeSettings
-      const map = L.map(containerRef.current!).setView([sLat, sLng], 14)
+      const map = L.map(mapHostEl).setView([sLat, sLng], 14)
 
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© <a href="https://openstreetmap.org">OpenStreetMap</a>',
@@ -98,7 +112,6 @@ export function DeliveryMapPicker({ onSuggest }: DeliveryMapPickerProps) {
         .addTo(map)
 
       async function handlePin(lat: number, lng: number) {
-        // Move or create customer marker
         if (markerRef.current) {
           markerRef.current.setLatLng([lat, lng])
         } else {
@@ -109,21 +122,17 @@ export function DeliveryMapPicker({ onSuggest }: DeliveryMapPickerProps) {
           })
         }
 
-        // Cancel any previous in-flight requests
         abortRef.current?.abort()
         const ctrl = new AbortController()
         abortRef.current = ctrl
-
         setLoading(true)
 
         try {
-          // Fire OSRM routing + Nominatim reverse geocoding in parallel
           const [osrm, geocoded] = await Promise.all([
             getRoadDistance(sLat, sLng, lat, lng, ctrl.signal),
             reverseGeocode(lat, lng, ctrl.signal),
           ])
 
-          // Draw / update route polyline
           if (routeLayerRef.current) {
             routeLayerRef.current.remove()
             routeLayerRef.current = null
@@ -152,7 +161,6 @@ export function DeliveryMapPicker({ onSuggest }: DeliveryMapPickerProps) {
 
       map.on('click', (e: any) => handlePin(e.latlng.lat, e.latlng.lng))
 
-      // Try to center on user's location as a helpful starting point
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
           (pos) => { if (!destroyed) map.setView([pos.coords.latitude, pos.coords.longitude], 15) },
@@ -170,11 +178,23 @@ export function DeliveryMapPicker({ onSuggest }: DeliveryMapPickerProps) {
       mapRef.current = null
       markerRef.current = null
       routeLayerRef.current = null
+      mapHostEl.remove()
+      mapHostRef.current = null
     }
   }, [storeSettings])
 
-  // Invalidate Leaflet size after expand/collapse so tiles fill the new dimensions
+  // When isExpanded changes, physically move mapHostEl between the inline and portal slots.
+  // Because mapHostEl is not managed by React, appendChild just re-parents it in the DOM
+  // without destroying Leaflet's event listeners or tile layers.
   useEffect(() => {
+    const el = mapHostRef.current
+    if (!el) return
+
+    const target = isExpanded ? expandedSlotRef.current : inlineSlotRef.current
+    if (target && el.parentNode !== target) {
+      target.appendChild(el)
+    }
+
     document.body.style.overflow = isExpanded ? 'hidden' : ''
     const t = setTimeout(() => mapRef.current?.invalidateSize(), 50)
     return () => {
@@ -227,25 +247,53 @@ export function DeliveryMapPicker({ onSuggest }: DeliveryMapPickerProps) {
   )
 
   return (
-    <div className={isExpanded ? 'fixed inset-0 z-[9999] bg-white flex flex-col p-3 gap-2' : 'space-y-2'}>
-      <div className={`relative ${isExpanded ? 'flex-1 min-h-0' : ''}`}>
-        <div
-          ref={containerRef}
-          className={`w-full rounded-xl overflow-hidden border border-slate-200 ${isExpanded ? 'h-full' : 'h-52'}`}
-          style={{ zIndex: 0 }}
-        />
-        <button
-          onClick={() => setIsExpanded(v => !v)}
-          className="absolute top-2 right-2 z-[1000] bg-white/90 hover:bg-white border border-slate-200 shadow-sm rounded-md p-1.5 transition-colors"
-          title={isExpanded ? 'Exit fullscreen' : 'Expand map'}
-          type="button"
-        >
-          {isExpanded
-            ? <Minimize2 className="h-4 w-4 text-slate-600" />
-            : <Maximize2 className="h-4 w-4 text-slate-600" />}
-        </button>
+    <>
+      {/* Inline collapsed view. The actual Leaflet host element lives in inlineSlotRef
+          and gets physically moved to expandedSlotRef when isExpanded is true. */}
+      <div className="space-y-2">
+        <div className="relative h-52">
+          <div
+            ref={inlineSlotRef}
+            className="absolute inset-0 rounded-xl overflow-hidden border border-slate-200"
+            style={{ zIndex: 0 }}
+          />
+          {!isExpanded && (
+            <button
+              onClick={() => setIsExpanded(true)}
+              className="absolute top-2 right-2 z-[1000] bg-white/90 hover:bg-white border border-slate-200 shadow-sm rounded-md p-1.5 transition-colors"
+              title="Expand map"
+              type="button"
+            >
+              <Maximize2 className="h-4 w-4 text-slate-600" />
+            </button>
+          )}
+        </div>
+        {!isExpanded && infoBar}
       </div>
-      {infoBar}
-    </div>
+
+      {/* Fullscreen portal — rendered on document.body, completely outside the dialog's
+          stacking context. The Leaflet host element is moved here via appendChild. */}
+      {isExpanded && createPortal(
+        <div className="fixed inset-0 z-[9999] bg-white flex flex-col p-3 gap-2">
+          <div className="relative flex-1 min-h-0">
+            <div
+              ref={expandedSlotRef}
+              className="absolute inset-0 rounded-xl overflow-hidden border border-slate-200"
+              style={{ zIndex: 0 }}
+            />
+            <button
+              onClick={() => setIsExpanded(false)}
+              className="absolute top-2 right-2 z-[1000] bg-white/90 hover:bg-white border border-slate-200 shadow-sm rounded-md p-1.5 transition-colors"
+              title="Exit fullscreen"
+              type="button"
+            >
+              <Minimize2 className="h-4 w-4 text-slate-600" />
+            </button>
+          </div>
+          {infoBar}
+        </div>,
+        document.body
+      )}
+    </>
   )
 }
