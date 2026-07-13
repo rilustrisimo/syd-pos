@@ -1564,7 +1564,7 @@ export default function FrontlinePOSPage() {
 
       {/* Checkout Dialog */}
       <Dialog open={isCheckoutOpen} onOpenChange={setIsCheckoutOpen}>
-        <DialogContent className={`${mapExpanded ? 'max-w-[95vw] max-h-[98vh]' : 'max-w-4xl max-h-[95vh]'} overflow-y-auto p-6 transition-all duration-300`}>
+        <DialogContent className={`${mapExpanded ? 'sm:max-w-[95vw] max-h-[98vh]' : 'sm:max-w-4xl max-h-[95vh]'} overflow-y-auto p-6`}>
           <DialogHeader className="pb-4 border-b">
             <DialogTitle className="text-2xl">Checkout</DialogTitle>
             <DialogDescription className="text-base">
