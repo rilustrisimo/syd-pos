@@ -4,6 +4,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
 import type { Canvas, CanvasLineInput } from '@syd/api'
 
+type SupabaseClient = ReturnType<typeof createClient>
+
 // ── Query keys ────────────────────────────────────────────────────────────────
 export const govCanvasKeys = {
   all: ['government-canvases'] as const,
@@ -40,9 +42,29 @@ export interface CreateGovernmentCanvasPayload {
     government_agency: string
     po_number?: string | null
     contact_person?: string | null
+    markup_percentage: number
   }
   lines: CanvasLineInput[]
   userId: string
+}
+
+// Blocks an action when an active (non-deleted) sale already references this
+// canvass — used by both delete and full-edit so a converted canvass can no
+// longer be changed out from under its sale.
+async function assertCanvasNotLinkedToSale(supabase: SupabaseClient, id: string, action: 'edit' | 'delete') {
+  const { data: linked, error } = await supabase
+    .from('transactions')
+    .select('id, transaction_number')
+    .eq('canvas_id', id)
+    .eq('is_deleted', false)
+    .limit(1)
+  if (error) throw new Error(error.message)
+  if (linked && linked.length > 0) {
+    const suffix = action === 'delete' ? ' Delete the sale first.' : ''
+    throw new Error(
+      `Cannot ${action}: canvass is linked to sale ${(linked[0] as any).transaction_number}.${suffix}`
+    )
+  }
 }
 
 // ── Hooks ─────────────────────────────────────────────────────────────────────
@@ -121,6 +143,7 @@ export function useCreateGovernmentCanvas() {
           government_agency:  input.government_agency,
           po_number:          input.po_number          ?? null,
           contact_person:     input.contact_person     ?? null,
+          markup_percentage:  input.markup_percentage  ?? 0,
           created_by:         payload.userId,
         } as any)
         .select()
@@ -140,6 +163,7 @@ export function useCreateGovernmentCanvas() {
           notes:            line.notes            ?? null,
           line_description: line.line_description ?? null,
           unit_label:       line.unit_label       ?? null,
+          base_unit_price:  line.base_unit_price  ?? null,
         }))
 
         const { error: linesError } = await supabase.from('canvas_lines').insert(lines as any)
@@ -185,6 +209,103 @@ export function useUpdateGovernmentCanvas() {
   })
 }
 
+// Returns the active (non-deleted) sale referencing this canvass, if any.
+// Once a sale exists the canvass is considered converted and should no
+// longer be editable.
+export function useCanvasLinkedTransaction(id: string | undefined) {
+  return useQuery({
+    queryKey: [...govCanvasKeys.detail(id || ''), 'linked-transaction'] as const,
+    queryFn: async () => {
+      if (!id) return null
+      const supabase = createClient()
+      const { data, error } = await supabase
+        .from('transactions')
+        .select('id, transaction_number')
+        .eq('canvas_id', id)
+        .eq('is_deleted', false)
+        .limit(1)
+      if (error) throw new Error(error.message)
+      return (data && data[0]) as { id: string; transaction_number: string } | undefined || null
+    },
+    enabled: !!id,
+    staleTime: 1000 * 60,
+  })
+}
+
+export function useUpdateGovernmentCanvasFull() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({
+      id,
+      input,
+      lines,
+    }: {
+      id: string
+      input: CreateGovernmentCanvasPayload['input']
+      lines: CanvasLineInput[]
+    }) => {
+      const supabase = createClient()
+
+      await assertCanvasNotLinkedToSale(supabase, id, 'edit')
+
+      const { data: canvas, error: headerError } = await supabase
+        .from('canvases')
+        .update({
+          branch_id:           input.branch_id,
+          customer_id:         input.customer_id        ?? null,
+          title:               input.title              ?? null,
+          notes:               input.notes              ?? null,
+          subtotal:            input.subtotal,
+          discount_amount:     input.discount_amount,
+          discount_percentage: input.discount_percentage,
+          delivery_fee:        input.delivery_fee,
+          other_fees:          input.other_fees,
+          other_fees_notes:    input.other_fees_notes   ?? null,
+          total_amount:        input.total_amount,
+          canvas_date:         input.canvas_date        ?? new Date().toISOString(),
+          government_agency:   input.government_agency,
+          po_number:           input.po_number          ?? null,
+          contact_person:      input.contact_person     ?? null,
+          markup_percentage:   input.markup_percentage  ?? 0,
+        } as any)
+        .eq('id', id)
+        .select()
+        .single()
+      if (headerError) throw new Error(`Failed to update canvas: ${headerError.message}`)
+
+      const { error: deleteLinesError } = await supabase.from('canvas_lines').delete().eq('canvas_id', id)
+      if (deleteLinesError) throw new Error(`Failed to update canvas lines: ${deleteLinesError.message}`)
+
+      if (lines.length > 0) {
+        const newLines = lines.map((line, i) => ({
+          canvas_id:        id,
+          line_number:      i + 1,
+          product_id:       line.product_id       ?? null,
+          quantity:         line.quantity,
+          uom_id:           line.uom_id           ?? null,
+          unit_price:       line.unit_price,
+          cogs_per_unit:    line.cogs_per_unit,
+          discount_amount:  line.discount_amount  ?? 0,
+          notes:            line.notes            ?? null,
+          line_description: line.line_description ?? null,
+          unit_label:       line.unit_label       ?? null,
+          base_unit_price:  line.base_unit_price  ?? null,
+        }))
+
+        const { error: insertLinesError } = await supabase.from('canvas_lines').insert(newLines as any)
+        if (insertLinesError) throw new Error(`Failed to update canvas lines: ${insertLinesError.message}`)
+      }
+
+      return canvas as Canvas
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: govCanvasKeys.detail(variables.id) })
+      queryClient.invalidateQueries({ queryKey: govCanvasKeys.lists() })
+    },
+  })
+}
+
 export function useDeleteGovernmentCanvas() {
   const queryClient = useQueryClient()
 
@@ -193,18 +314,7 @@ export function useDeleteGovernmentCanvas() {
       const supabase = createClient()
 
       // Block deletion if any active (non-deleted) sale is linked to this canvass
-      const { data: linked, error: checkError } = await supabase
-        .from('transactions')
-        .select('id, transaction_number')
-        .eq('canvas_id', id)
-        .eq('is_deleted', false)
-        .limit(1)
-      if (checkError) throw new Error(checkError.message)
-      if (linked && linked.length > 0) {
-        throw new Error(
-          `Cannot delete: canvass is linked to sale ${(linked[0] as any).transaction_number}. Delete the sale first.`
-        )
-      }
+      await assertCanvasNotLinkedToSale(supabase, id, 'delete')
 
       const { error } = await supabase
         .from('canvases')

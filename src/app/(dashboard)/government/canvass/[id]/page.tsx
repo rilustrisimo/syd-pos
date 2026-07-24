@@ -3,10 +3,15 @@
 import { useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Printer, ShoppingCart, Loader2, Pencil, Check, X, Trash2 } from 'lucide-react'
+import { ArrowLeft, Printer, ShoppingCart, Loader2, Pencil, Check, X, Trash2, PencilLine, Link2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuthStore } from '@/lib/stores/auth'
-import { useGovernmentCanvas, useUpdateGovernmentCanvas, useDeleteGovernmentCanvas } from '@/hooks/useGovernmentCanvases'
+import {
+  useGovernmentCanvas,
+  useUpdateGovernmentCanvas,
+  useDeleteGovernmentCanvas,
+  useCanvasLinkedTransaction,
+} from '@/hooks/useGovernmentCanvases'
 import { useGovernmentSaleStore } from '@/lib/stores/governmentSaleStore'
 import { GovernmentCanvasTemplate } from '@/components/print/government-canvas-template'
 import type { GovCanvasTemplateData } from '@/components/print/government-canvas-template'
@@ -39,6 +44,7 @@ export default function GovernmentCanvassDetail() {
   const templateRef = useRef<HTMLDivElement>(null)
 
   const { data: canvas, isLoading } = useGovernmentCanvas(id)
+  const { data: linkedTransaction } = useCanvasLinkedTransaction(id)
   const updateCanvas = useUpdateGovernmentCanvas()
   const deleteCanvas = useDeleteGovernmentCanvas()
   const govStore = useGovernmentSaleStore()
@@ -142,14 +148,28 @@ export default function GovernmentCanvassDetail() {
             <Button variant="ghost" size="sm"><ArrowLeft className="h-4 w-4 mr-1" />Back</Button>
           </Link>
           <div>
-            <h1 className="text-xl font-bold">{c.canvas_number}</h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl font-bold">{c.canvas_number}</h1>
+              {linkedTransaction && (
+                <Badge variant="secondary" className="gap-1">
+                  <Link2 className="h-3 w-3" />Linked to sale {linkedTransaction.transaction_number}
+                </Badge>
+              )}
+            </div>
             <p className="text-sm text-muted-foreground">{c.canvas_date?.slice(0, 10)} · {c.government_agency}</p>
           </div>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => setDeleteOpen(true)} className="text-destructive hover:text-destructive">
-            <Trash2 className="h-4 w-4 mr-1" />Delete
-          </Button>
+          {!linkedTransaction && (
+            <>
+              <Button variant="outline" size="sm" onClick={() => setDeleteOpen(true)} className="text-destructive hover:text-destructive">
+                <Trash2 className="h-4 w-4 mr-1" />Delete
+              </Button>
+              <Link href={`/government/canvass/${c.id}/edit`}>
+                <Button variant="outline" size="sm"><PencilLine className="h-4 w-4 mr-1" />Edit</Button>
+              </Link>
+            </>
+          )}
           <Button variant="outline" onClick={handlePrint}>
             <Printer className="h-4 w-4 mr-2" />Print
           </Button>
@@ -195,6 +215,12 @@ export default function GovernmentCanvassDetail() {
           <div>
             <span className="text-muted-foreground">Branch</span>
             <p className="font-semibold mt-0.5">{c.branch?.name || '—'}</p>
+          </div>
+          <div>
+            <span className="text-muted-foreground">Government Markup</span>
+            <p className="font-semibold mt-0.5">
+              {c.markup_percentage > 0 ? `+${c.markup_percentage}%` : 'None'}
+            </p>
           </div>
           {c.notes && (
             <div className="col-span-2">

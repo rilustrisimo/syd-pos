@@ -277,6 +277,7 @@ export interface CanvasLine {
   notes: string | null
   line_description: string | null
   unit_label: string | null
+  base_unit_price: number | null
   created_at: string
   updated_at: string
   // Joined data
@@ -308,6 +309,7 @@ export interface Canvas {
   po_number: string | null
   government_agency: string | null
   contact_person: string | null
+  markup_percentage: number
   // Joined data
   customer?: Customer
   branch?: Branch
@@ -331,6 +333,7 @@ export interface CreateCanvasInput {
   po_number?: string | null
   government_agency?: string | null
   contact_person?: string | null
+  markup_percentage?: number
 }
 
 export interface CanvasLineInput {
@@ -343,6 +346,7 @@ export interface CanvasLineInput {
   notes?: string | null
   line_description?: string | null
   unit_label?: string | null
+  base_unit_price?: number | null
 }
 
 export interface CreateCanvasPayload {

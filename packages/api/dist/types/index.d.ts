@@ -236,6 +236,7 @@ export interface CanvasLine {
     notes: string | null;
     line_description: string | null;
     unit_label: string | null;
+    base_unit_price: number | null;
     created_at: string;
     updated_at: string;
     product?: Product;
@@ -265,6 +266,7 @@ export interface Canvas {
     po_number: string | null;
     government_agency: string | null;
     contact_person: string | null;
+    markup_percentage: number;
     customer?: Customer;
     branch?: Branch;
     lines?: CanvasLine[];
@@ -286,6 +288,7 @@ export interface CreateCanvasInput {
     po_number?: string | null;
     government_agency?: string | null;
     contact_person?: string | null;
+    markup_percentage?: number;
 }
 export interface CanvasLineInput {
     product_id?: string | null;
@@ -297,6 +300,7 @@ export interface CanvasLineInput {
     notes?: string | null;
     line_description?: string | null;
     unit_label?: string | null;
+    base_unit_price?: number | null;
 }
 export interface CreateCanvasPayload {
     input: CreateCanvasInput;

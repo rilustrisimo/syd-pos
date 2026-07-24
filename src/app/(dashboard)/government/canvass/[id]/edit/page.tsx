@@ -1,13 +1,18 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useEffect, useState } from 'react'
+import { useParams, useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { Loader2, ArrowLeft, User } from 'lucide-react'
 import { toast } from 'sonner'
-import { useAuthStore } from '@/lib/stores/auth'
+import type { Canvas } from '@syd/api'
 import { useBranches } from '@/hooks/useInventory'
 import { useAllActiveCustomers } from '@/hooks/useCustomers'
-import { useCreateGovernmentCanvas } from '@/hooks/useGovernmentCanvases'
+import {
+  useGovernmentCanvas,
+  useCanvasLinkedTransaction,
+  useUpdateGovernmentCanvasFull,
+} from '@/hooks/useGovernmentCanvases'
 import { CanvasLineEditor, round2, fmt, type CanvasLineRow } from '@/components/government/canvas-line-editor'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -23,44 +28,91 @@ import {
   CommandList,
 } from '@/components/ui/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import Link from 'next/link'
 
-export default function NewGovernmentCanvass() {
+function toLineRow(l: any): CanvasLineRow {
+  return {
+    id: l.id,
+    type: l.product_id ? 'inventory' : 'custom',
+    product_id: l.product_id || undefined,
+    product_code: l.product?.code,
+    product_name: l.product?.name,
+    uom_id: l.uom_id || undefined,
+    uom_name: l.unit_label || l.uom?.code || l.uom?.name || 'pc',
+    cogs_per_unit: l.cogs_per_unit || 0,
+    line_description: l.line_description || undefined,
+    unit_label: l.unit_label || undefined,
+    quantity: l.quantity,
+    unit_price: l.unit_price,
+    base_unit_price: l.base_unit_price ?? null,
+    discount_amount: l.discount_amount || 0,
+  }
+}
+
+export default function EditGovernmentCanvass() {
+  const { id } = useParams<{ id: string }>()
   const router = useRouter()
-  const { user } = useAuthStore()
+  const { data: canvas, isLoading } = useGovernmentCanvas(id)
+  const { data: linkedTransaction, isLoading: isLoadingLinked } = useCanvasLinkedTransaction(id)
+
+  // Redirect away once we know the canvass is already tied to a sale — it
+  // can no longer be edited.
+  useEffect(() => {
+    if (!isLoadingLinked && linkedTransaction) {
+      toast.error(`Cannot edit — linked to sale ${linkedTransaction.transaction_number}`)
+      router.replace(`/government/canvass/${id}`)
+    }
+  }, [isLoadingLinked, linkedTransaction, id, router])
+
+  if (isLoading || isLoadingLinked || linkedTransaction) {
+    return <div className="flex justify-center items-center h-64"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+  }
+
+  if (!canvas) {
+    return (
+      <div className="p-6 text-center">
+        <p className="text-muted-foreground">Canvass not found.</p>
+        <Link href="/government/canvass"><Button variant="link">Back to canvasses</Button></Link>
+      </div>
+    )
+  }
+
+  return <CanvasEditForm canvas={canvas} />
+}
+
+// Mounted only once the canvas has loaded, so all form state can be
+// initialized directly from it — no prefill effect needed.
+function CanvasEditForm({ canvas }: { canvas: Canvas }) {
+  const c = canvas as any
+  const router = useRouter()
   const { data: branches = [] } = useBranches()
   const { data: allCustomers = [] } = useAllActiveCustomers()
+  const updateCanvas = useUpdateGovernmentCanvasFull()
 
-  const [branchId, setBranchId] = useState('')
-  const [customerId, setCustomerId] = useState<string | null>(null)
-  const [customerName, setCustomerName] = useState('')
-  const [agency, setAgency] = useState('')
-  const [contactPerson, setContactPerson] = useState('')
-  const [poNumber, setPoNumber] = useState('')
-  const [notes, setNotes] = useState('')
-  const [canvasDate, setCanvasDate] = useState(new Date().toISOString().slice(0, 10))
-  const [lines, setLines] = useState<CanvasLineRow[]>([])
-  const [markupPercentage, setMarkupPercentage] = useState(0)
+  const [branchId, setBranchId] = useState(c.branch_id || '')
+  const [customerId, setCustomerId] = useState<string | null>(c.customer_id || null)
+  const [customerName, setCustomerName] = useState(c.customer?.name || '')
+  const [agency, setAgency] = useState(c.government_agency || '')
+  const [contactPerson, setContactPerson] = useState(c.contact_person || '')
+  const [poNumber, setPoNumber] = useState(c.po_number || '')
+  const [notes, setNotes] = useState(c.notes || '')
+  const [canvasDate, setCanvasDate] = useState((c.canvas_date || '').slice(0, 10) || new Date().toISOString().slice(0, 10))
+  const [lines, setLines] = useState<CanvasLineRow[]>((c.lines || []).map(toLineRow))
+  const [markupPercentage, setMarkupPercentage] = useState(c.markup_percentage || 0)
 
-  // Customer picker state
   const [customerOpen, setCustomerOpen] = useState(false)
   const [customerSearch, setCustomerSearch] = useState('')
 
-  const createCanvas = useCreateGovernmentCanvas()
-
-  const govCustomers = (allCustomers as any[]).filter((c: any) => c.customer_type === 'government')
+  const govCustomers = (allCustomers as any[]).filter((cu: any) => cu.customer_type === 'government')
   const filteredCustomers = customerSearch
-    ? govCustomers.filter((c: any) =>
-        c.name.toLowerCase().includes(customerSearch.toLowerCase()) ||
-        (c.phone || '').includes(customerSearch)
+    ? govCustomers.filter((cu: any) =>
+        cu.name.toLowerCase().includes(customerSearch.toLowerCase()) ||
+        (cu.phone || '').includes(customerSearch)
       )
     : govCustomers
 
-  function selectCustomer(c: any) {
-    setCustomerId(c.id)
-    setCustomerName(c.name)
-    // Auto-fill agency from customer name if not already set
-    if (!agency.trim()) setAgency(c.name)
+  function selectCustomer(cu: any) {
+    setCustomerId(cu.id)
+    setCustomerName(cu.name)
     setCustomerOpen(false)
     setCustomerSearch('')
   }
@@ -70,7 +122,6 @@ export default function NewGovernmentCanvass() {
     setCustomerName('')
   }
 
-  // Computed totals
   const subtotal = lines.reduce((s, l) => s + round2(l.quantity * l.unit_price), 0)
   const totalDiscount = lines.reduce((s, l) => s + l.discount_amount, 0)
   const totalAmount = round2(subtotal - totalDiscount)
@@ -84,7 +135,8 @@ export default function NewGovernmentCanvass() {
     if (invalidLine) { toast.error('All custom items need a description'); return }
 
     try {
-      const canvas = await createCanvas.mutateAsync({
+      await updateCanvas.mutateAsync({
+        id: c.id,
         input: {
           branch_id: branchId,
           customer_id: customerId || null,
@@ -112,22 +164,21 @@ export default function NewGovernmentCanvass() {
           unit_label: l.unit_label || null,
           base_unit_price: l.base_unit_price ?? null,
         })),
-        userId: user?.id || '',
       })
-      toast.success('Canvass created!')
-      router.push(`/government/canvass/${(canvas as any).id}`)
+      toast.success('Canvass updated!')
+      router.push(`/government/canvass/${c.id}`)
     } catch (err: any) {
-      toast.error(err.message || 'Failed to create canvass')
+      toast.error(err.message || 'Failed to update canvass')
     }
   }
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
       <div className="flex items-center gap-3">
-        <Link href="/government/canvass">
+        <Link href={`/government/canvass/${c.id}`}>
           <Button variant="ghost" size="sm"><ArrowLeft className="h-4 w-4 mr-1" />Back</Button>
         </Link>
-        <h1 className="text-2xl font-bold">New Government Canvass</h1>
+        <h1 className="text-2xl font-bold">Edit Canvass {c.canvas_number}</h1>
       </div>
 
       {/* Header fields */}
@@ -182,10 +233,10 @@ export default function NewGovernmentCanvass() {
                         <Link href="/customers" className="underline text-xs">Add one</Link>
                       </CommandEmpty>
                       <CommandGroup>
-                        {filteredCustomers.slice(0, 20).map((c: any) => (
-                          <CommandItem key={c.id} onSelect={() => selectCustomer(c)} className="cursor-pointer">
+                        {filteredCustomers.slice(0, 20).map((cu: any) => (
+                          <CommandItem key={cu.id} onSelect={() => selectCustomer(cu)} className="cursor-pointer">
                             <User className="h-4 w-4 mr-2 text-muted-foreground" />
-                            {c.name}
+                            {cu.name}
                           </CommandItem>
                         ))}
                       </CommandGroup>
@@ -244,9 +295,9 @@ export default function NewGovernmentCanvass() {
             )}
             <div className="text-xl font-bold">Total: {fmt(totalAmount)}</div>
           </div>
-          <Button size="lg" onClick={handleSubmit} disabled={createCanvas.isPending}>
-            {createCanvas.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            Save Canvass
+          <Button size="lg" onClick={handleSubmit} disabled={updateCanvas.isPending}>
+            {updateCanvas.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+            Save Changes
           </Button>
         </div>
       </div>
