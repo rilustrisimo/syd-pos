@@ -30,9 +30,10 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 
 function toLineRow(l: any): CanvasLineRow {
+  const isInventory = !!l.product_id
   return {
     id: l.id,
-    type: l.product_id ? 'inventory' : 'custom',
+    type: isInventory ? 'inventory' : 'custom',
     product_id: l.product_id || undefined,
     product_code: l.product?.code,
     product_name: l.product?.name,
@@ -43,7 +44,10 @@ function toLineRow(l: any): CanvasLineRow {
     unit_label: l.unit_label || undefined,
     quantity: l.quantity,
     unit_price: l.unit_price,
-    base_unit_price: l.base_unit_price ?? null,
+    // Canvasses saved before the markup % feature existed never recorded a
+    // base price. Fall back to the current unit_price for catalog lines so
+    // markup % edits still recompute them instead of silently no-op'ing.
+    base_unit_price: l.base_unit_price ?? (isInventory ? l.unit_price : null),
     discount_amount: l.discount_amount || 0,
   }
 }
