@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { useTransactions, useSoftDeleteTransaction, useUpdateTransactionDeliveryType } from '@/hooks/useTransactions'
 import { getTransaction } from '@/lib/supabase/queries/transactions'
@@ -100,11 +100,14 @@ const paymentStatusColors: Record<string, 'default' | 'secondary' | 'destructive
   unpaid: 'destructive',
 }
 
+const STORAGE_KEY = 'transaction-history-filters'
+
 export default function TransactionHistoryPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [branchFilter, setBranchFilter] = useState<string>('all')
   const [currentPage, setCurrentPage] = useState(1)
+  const [isInitialized, setIsInitialized] = useState(false)
   const [printingId, setPrintingId] = useState<string | null>(null)
   const [deleteTransactionId, setDeleteTransactionId] = useState<string | null>(null)
   const [detailsTransactionId, setDetailsTransactionId] = useState<string | null>(null)
@@ -121,6 +124,37 @@ export default function TransactionHistoryPage() {
 
   const { user } = useAuthStore()
 
+  // Load filters from sessionStorage on mount
+  useEffect(() => {
+    try {
+      const savedFilters = sessionStorage.getItem(STORAGE_KEY)
+      if (savedFilters) {
+        const parsed = JSON.parse(savedFilters)
+        setSearchQuery(parsed.searchQuery || '')
+        setStatusFilter(parsed.statusFilter || 'all')
+        setBranchFilter(parsed.branchFilter || 'all')
+        setCurrentPage(parsed.currentPage || 1)
+      }
+    } catch (error) {
+      console.error('Failed to load saved filters:', error)
+    } finally {
+      setIsInitialized(true)
+    }
+  }, [])
+
+  // Save filters to sessionStorage whenever they change
+  useEffect(() => {
+    if (!isInitialized) return
+    try {
+      sessionStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ searchQuery, statusFilter, branchFilter, currentPage })
+      )
+    } catch (error) {
+      console.error('Failed to save filters:', error)
+    }
+  }, [searchQuery, statusFilter, branchFilter, currentPage, isInitialized])
+
   // Detect whether search looks like a transaction # or a customer name
   const isTransactionSearch = searchQuery.toUpperCase().startsWith('TXN')
 
@@ -132,6 +166,7 @@ export default function TransactionHistoryPage() {
     branch_id: branchFilter !== 'all' ? branchFilter : undefined,
     page: currentPage,
     limit: 20,
+    enabled: isInitialized,
   })
 
   const softDeleteTransaction = useSoftDeleteTransaction()
@@ -374,7 +409,7 @@ export default function TransactionHistoryPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {isLoading || !isInitialized ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>

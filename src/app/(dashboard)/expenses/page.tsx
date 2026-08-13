@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   useExpenses,
   useExpenseCategories,
@@ -101,6 +101,8 @@ function getInitialFormData(): ExpenseFormData {
   }
 }
 
+const STORAGE_KEY = 'expenses-filters'
+
 export default function ExpensesPage() {
   const { user } = useAuthStore()
 
@@ -110,6 +112,39 @@ export default function ExpensesPage() {
   const [categoryFilter, setCategoryFilter] = useState('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
+  const [isInitialized, setIsInitialized] = useState(false)
+
+  // Load filters from sessionStorage on mount
+  useEffect(() => {
+    try {
+      const savedFilters = sessionStorage.getItem(STORAGE_KEY)
+      if (savedFilters) {
+        const parsed = JSON.parse(savedFilters)
+        setDateFrom(parsed.dateFrom || '')
+        setDateTo(parsed.dateTo || '')
+        setCategoryFilter(parsed.categoryFilter || 'all')
+        setSearchQuery(parsed.searchQuery || '')
+        setCurrentPage(parsed.currentPage || 1)
+      }
+    } catch (error) {
+      console.error('Failed to load saved filters:', error)
+    } finally {
+      setIsInitialized(true)
+    }
+  }, [])
+
+  // Save filters to sessionStorage whenever they change
+  useEffect(() => {
+    if (!isInitialized) return
+    try {
+      sessionStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ dateFrom, dateTo, categoryFilter, searchQuery, currentPage })
+      )
+    } catch (error) {
+      console.error('Failed to save filters:', error)
+    }
+  }, [dateFrom, dateTo, categoryFilter, searchQuery, currentPage, isInitialized])
 
   // Dialog state
   const [isDialogOpen, setIsDialogOpen] = useState(false)
@@ -132,7 +167,7 @@ export default function ExpensesPage() {
     page: currentPage,
     limit: 20,
   }
-  const { data: expensesData, isLoading } = useExpenses(filters)
+  const { data: expensesData, isLoading } = useExpenses({ ...filters, enabled: isInitialized })
   const expenses = expensesData?.data || []
   const totalCount = expensesData?.total || 0
   const totalPages = Math.ceil(totalCount / 20) || 1
@@ -322,7 +357,7 @@ export default function ExpensesPage() {
           </div>
 
           {/* Table */}
-          {isLoading ? (
+          {isLoading || !isInitialized ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>

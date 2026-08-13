@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
@@ -53,12 +53,55 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 
+const STORAGE_KEY = 'inventory-filters'
+
 export default function InventoryPage() {
   const router = useRouter()
   const [selectedBranch, setSelectedBranch] = useState<string>('')
   const [searchQuery, setSearchQuery] = useState('')
   const [showLowStockOnly, setShowLowStockOnly] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
+  const [isInitialized, setIsInitialized] = useState(false)
+
+  // Load filters from sessionStorage on mount
+  useEffect(() => {
+    try {
+      const savedFilters = sessionStorage.getItem(STORAGE_KEY)
+      if (savedFilters) {
+        const parsed = JSON.parse(savedFilters)
+        setSelectedBranch(parsed.selectedBranch || '')
+        setSearchQuery(parsed.searchQuery || '')
+        setShowLowStockOnly(parsed.showLowStockOnly || false)
+        setCurrentPage(parsed.currentPage || 1)
+      }
+    } catch (error) {
+      console.error('Failed to load saved filters:', error)
+    } finally {
+      setIsInitialized(true)
+    }
+  }, [])
+
+  // Save filters to sessionStorage whenever they change
+  useEffect(() => {
+    if (!isInitialized) return
+    try {
+      sessionStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ selectedBranch, searchQuery, showLowStockOnly, currentPage })
+      )
+    } catch (error) {
+      console.error('Failed to save filters:', error)
+    }
+  }, [selectedBranch, searchQuery, showLowStockOnly, currentPage, isInitialized])
+
+  // Clear filters from session storage (used when navigating away to a different flow)
+  const clearSessionFilters = () => {
+    try {
+      sessionStorage.removeItem(STORAGE_KEY)
+    } catch (error) {
+      console.error('Failed to clear session filters:', error)
+    }
+  }
 
   const { data: branches, isLoading: branchesLoading } = useBranches()
   const branchesList: Branch[] = branches || []
@@ -68,6 +111,7 @@ export default function InventoryPage() {
     lowStockOnly: showLowStockOnly,
     page: currentPage,
     limit: 50,
+    enabled: isInitialized,
   })
   const { data: summary, isLoading: summaryLoading } = useInventorySummary(
     selectedBranch || undefined
@@ -112,13 +156,13 @@ export default function InventoryPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Link href="/inventory/movements">
+          <Link href="/inventory/movements" onClick={clearSessionFilters}>
             <Button variant="outline">
               <FileText className="mr-2 h-4 w-4" />
               Movement History
             </Button>
           </Link>
-          <Link href="/inventory/adjust">
+          <Link href="/inventory/adjust" onClick={clearSessionFilters}>
             <Button>
               <Plus className="mr-2 h-4 w-4" />
               Adjust Stock
@@ -276,7 +320,7 @@ export default function InventoryPage() {
           </div>
 
           {/* Inventory Table */}
-          {inventoryLoading ? (
+          {inventoryLoading || !isInitialized ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>

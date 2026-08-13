@@ -72,6 +72,7 @@ export default function ProductsPage() {
     statusFilter,
     page,
     limit,
+    enabled: isInitialized,
   })
 
   const { data: categories } = useCategories()
@@ -193,7 +194,7 @@ export default function ProductsPage() {
       {/* Products table */}
       <Card>
         <CardContent className="p-0">
-          {isLoading ? (
+          {isLoading || !isInitialized ? (
             <div className="flex h-64 items-center justify-center">
               <div className="text-muted-foreground">Loading products...</div>
             </div>

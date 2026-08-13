@@ -28,10 +28,13 @@ export function useProducts(params?: {
   page?: number
   limit?: number
   statusFilter?: 'active' | 'inactive' | 'all'
+  enabled?: boolean
 }) {
+  const { enabled = true, ...queryParams } = params || {}
   return useQuery({
-    queryKey: ['products', params],
-    queryFn: () => getProducts(params),
+    queryKey: ['products', queryParams],
+    queryFn: () => getProducts(queryParams),
+    enabled,
   })
 }
 

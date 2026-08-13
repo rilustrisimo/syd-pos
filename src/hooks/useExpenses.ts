@@ -72,12 +72,13 @@ export function useExpenseCategories() {
   })
 }
 
-export function useExpenses(filters: ExpenseFilters = {}) {
-  const { page = 1, limit = 20, ...rest } = filters
+export function useExpenses(filters: ExpenseFilters & { enabled?: boolean } = {}) {
+  const { page = 1, limit = 20, enabled = true, ...rest } = filters
   const offset = (page - 1) * limit
+  const queryKeyFilters = { ...rest, page, limit }
 
   return useQuery({
-    queryKey: expenseKeys.list(filters),
+    queryKey: expenseKeys.list(queryKeyFilters),
     queryFn: async () => {
       const supabase = createClient()
 
@@ -115,6 +116,7 @@ export function useExpenses(filters: ExpenseFilters = {}) {
       }
     },
     staleTime: 1000 * 60,
+    enabled,
   })
 }
 

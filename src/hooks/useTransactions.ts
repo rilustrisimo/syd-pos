@@ -39,11 +39,13 @@ export const transactionKeys = {
 }
 
 // Hook to get transactions with filters
-export function useTransactions(filters: TransactionFilters = {}) {
+export function useTransactions(filters: TransactionFilters & { enabled?: boolean } = {}) {
+  const { enabled = true, ...queryFilters } = filters
   return useQuery({
-    queryKey: transactionKeys.list(filters),
-    queryFn: () => getTransactions(filters),
+    queryKey: transactionKeys.list(queryFilters),
+    queryFn: () => getTransactions(queryFilters),
     staleTime: 30000, // 30 seconds
+    enabled,
   })
 }
 

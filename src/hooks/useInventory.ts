@@ -28,10 +28,13 @@ export function useBranchInventory(params?: {
   lowStockOnly?: boolean
   page?: number
   limit?: number
+  enabled?: boolean
 }) {
+  const { enabled = true, ...queryParams } = params || {}
   return useQuery({
-    queryKey: ['branch-inventory', params],
-    queryFn: () => getBranchInventory(params),
+    queryKey: ['branch-inventory', queryParams],
+    queryFn: () => getBranchInventory(queryParams),
+    enabled,
   })
 }
 

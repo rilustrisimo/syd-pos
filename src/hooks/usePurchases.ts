@@ -28,10 +28,13 @@ export function usePurchaseOrders(params?: {
   status?: POStatus
   page?: number
   limit?: number
+  enabled?: boolean
 }) {
+  const { enabled = true, ...queryParams } = params || {}
   return useQuery({
-    queryKey: ['purchase-orders', params],
-    queryFn: () => getPurchaseOrders(params),
+    queryKey: ['purchase-orders', queryParams],
+    queryFn: () => getPurchaseOrders(queryParams),
+    enabled,
   })
 }
 

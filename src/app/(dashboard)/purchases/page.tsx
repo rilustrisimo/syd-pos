@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePurchaseOrders, usePOStats, useCancelPurchaseOrder, useDeletePurchaseOrder } from '@/hooks/usePurchases'
 import { getPurchaseOrders } from '@/lib/supabase/queries/purchases'
@@ -80,14 +80,57 @@ const statusConfig: Record<POStatus, { label: string; variant: 'default' | 'seco
   cancelled: { label: 'Cancelled', variant: 'destructive', icon: XCircle },
 }
 
+const STORAGE_KEY = 'purchases-filters'
+
 export default function PurchasesPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedSupplier, setSelectedSupplier] = useState<string>('')
   const [selectedStatus, setSelectedStatus] = useState<string>('')
   const [currentPage, setCurrentPage] = useState(1)
+  const [isInitialized, setIsInitialized] = useState(false)
   const [cancellingPO, setCancellingPO] = useState<string | null>(null)
   const [deletingPO, setDeletingPO] = useState<string | null>(null)
   const [isExporting, setIsExporting] = useState(false)
+
+  // Load filters from sessionStorage on mount
+  useEffect(() => {
+    try {
+      const savedFilters = sessionStorage.getItem(STORAGE_KEY)
+      if (savedFilters) {
+        const parsed = JSON.parse(savedFilters)
+        setSearchQuery(parsed.searchQuery || '')
+        setSelectedSupplier(parsed.selectedSupplier || '')
+        setSelectedStatus(parsed.selectedStatus || '')
+        setCurrentPage(parsed.currentPage || 1)
+      }
+    } catch (error) {
+      console.error('Failed to load saved filters:', error)
+    } finally {
+      setIsInitialized(true)
+    }
+  }, [])
+
+  // Save filters to sessionStorage whenever they change
+  useEffect(() => {
+    if (!isInitialized) return
+    try {
+      sessionStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ searchQuery, selectedSupplier, selectedStatus, currentPage })
+      )
+    } catch (error) {
+      console.error('Failed to save filters:', error)
+    }
+  }, [searchQuery, selectedSupplier, selectedStatus, currentPage, isInitialized])
+
+  // Clear filters from session storage (used when navigating away to a different flow)
+  const clearSessionFilters = () => {
+    try {
+      sessionStorage.removeItem(STORAGE_KEY)
+    } catch (error) {
+      console.error('Failed to clear session filters:', error)
+    }
+  }
 
   const handleExportCSV = async () => {
     setIsExporting(true)
@@ -126,6 +169,7 @@ export default function PurchasesPage() {
     status: selectedStatus as POStatus || undefined,
     page: currentPage,
     limit: 20,
+    enabled: isInitialized,
   })
 
   const { data: suppliersData } = useSuppliers({ limit: 100 })
@@ -188,13 +232,13 @@ export default function PurchasesPage() {
             {isExporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
             Export CSV
           </Button>
-          <Link href="/purchases/reorder">
+          <Link href="/purchases/reorder" onClick={clearSessionFilters}>
             <Button variant="outline" className="gap-2">
               <RefreshCcw className="h-4 w-4" />
               Reorder from Low Stock
             </Button>
           </Link>
-          <Link href="/purchases/new">
+          <Link href="/purchases/new" onClick={clearSessionFilters}>
             <Button>
               <Plus className="mr-2 h-4 w-4" />
               New Purchase Order
@@ -341,7 +385,7 @@ export default function PurchasesPage() {
           </div>
 
           {/* Table */}
-          {isLoading ? (
+          {isLoading || !isInitialized ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
@@ -355,7 +399,7 @@ export default function PurchasesPage() {
                   : 'Create your first purchase order to get started'}
               </p>
               {!searchQuery && !selectedSupplier && !selectedStatus && (
-                <Link href="/purchases/new">
+                <Link href="/purchases/new" onClick={clearSessionFilters}>
                   <Button>
                     <Plus className="mr-2 h-4 w-4" />
                     New Purchase Order
