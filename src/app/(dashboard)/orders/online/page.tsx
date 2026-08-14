@@ -30,6 +30,7 @@ const STATUS_LABELS: Record<OnlineOrderStatus, string> = {
   preparing: 'Preparing',
   out_for_delivery: 'Out for Delivery',
   delivered: 'Delivered',
+  picked_up: 'Picked Up',
   cancelled: 'Cancelled',
 }
 
@@ -39,6 +40,7 @@ const STATUS_COLORS: Record<OnlineOrderStatus, string> = {
   preparing: 'bg-purple-100 text-purple-800 border-purple-200',
   out_for_delivery: 'bg-indigo-100 text-indigo-800 border-indigo-200',
   delivered: 'bg-green-100 text-green-800 border-green-200',
+  picked_up: 'bg-green-100 text-green-800 border-green-200',
   cancelled: 'bg-gray-100 text-gray-500 border-gray-200',
 }
 

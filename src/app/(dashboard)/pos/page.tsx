@@ -136,6 +136,7 @@ export default function POSPage() {
   const [isReferrerOpen, setIsReferrerOpen] = useState(false)
   const [isMounted, setIsMounted] = useState(false)
   const [pendingOnlineOrderId, setPendingOnlineOrderId] = useState<string | null>(null)
+  const [pendingOnlineOrderFulfillment, setPendingOnlineOrderFulfillment] = useState<'delivery' | 'pickup' | null>(null)
   const [isUnitSelectorOpen, setIsUnitSelectorOpen] = useState(false)
   const [selectedProduct, setSelectedProduct] = useState<any>(null)
   const [selectedUnitId, setSelectedUnitId] = useState<string>('')
@@ -376,6 +377,7 @@ export default function POSPage() {
       }
 
       setPendingOnlineOrderId(fromOrderId)
+      setPendingOnlineOrderFulfillment(order.fulfillment)
       toast.success(`Loaded order ${order.order_number} — review and complete the transaction`)
     }
 
@@ -857,10 +859,11 @@ export default function POSPage() {
           .from('online_orders')
           .update({
             transaction_id: result.id,
-            status: 'delivered',
+            status: pendingOnlineOrderFulfillment === 'pickup' ? 'picked_up' : 'delivered',
           })
           .eq('id', pendingOnlineOrderId)
         setPendingOnlineOrderId(null)
+        setPendingOnlineOrderFulfillment(null)
       }
 
       // Reset POS immediately so the next transaction can start

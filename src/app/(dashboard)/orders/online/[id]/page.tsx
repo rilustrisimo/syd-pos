@@ -11,6 +11,8 @@ import {
 import { PageTitle } from '@/components/page-title'
 import {
   useOnlineOrder,
+  useOnlineOrderStock,
+  useSignedPaymentProofUrl,
   useUpdateOnlineOrderStatus,
   useUpdateOnlineOrderPaymentStatus,
   useUpdateOnlineOrderLine,
@@ -58,6 +60,7 @@ const STATUS_OPTIONS: { value: OnlineOrderStatus; label: string }[] = [
   { value: 'preparing', label: 'Preparing' },
   { value: 'out_for_delivery', label: 'Out for Delivery' },
   { value: 'delivered', label: 'Delivered' },
+  { value: 'picked_up', label: 'Picked Up' },
   { value: 'cancelled', label: 'Cancelled' },
 ]
 
@@ -67,6 +70,7 @@ const STATUS_COLORS: Record<OnlineOrderStatus, string> = {
   preparing: 'bg-purple-100 text-purple-800 border-purple-200',
   out_for_delivery: 'bg-indigo-100 text-indigo-800 border-indigo-200',
   delivered: 'bg-green-100 text-green-800 border-green-200',
+  picked_up: 'bg-green-100 text-green-800 border-green-200',
   cancelled: 'bg-gray-100 text-gray-500 border-gray-200',
 }
 
@@ -89,6 +93,20 @@ export default function OnlineOrderDetailPage({ params }: { params: Promise<{ id
 
   const [editingLineId, setEditingLineId] = useState<string | null>(null)
   const [editingQty, setEditingQty] = useState<string>('')
+
+  const productIds = (order?.lines ?? [])
+    .map(l => l.product_id)
+    .filter((id): id is string => !!id)
+  const { data: stock } = useOnlineOrderStock(productIds)
+
+  const shortages = (order?.lines ?? []).filter(line => {
+    if (!line.product_id) return false
+    const onHand = stock?.[line.product_id] ?? 0
+    return line.quantity > onHand
+  })
+  const hasShortages = shortages.length > 0
+
+  const { data: signedProofUrl, isLoading: proofLoading } = useSignedPaymentProofUrl(order?.payment_proof_url ?? null)
 
   if (isLoading) {
     return (
@@ -182,7 +200,9 @@ export default function OnlineOrderDetailPage({ params }: { params: Promise<{ id
         {!order.transaction_id && order.status !== 'cancelled' && (
           <Button
             onClick={handleConvertToSale}
-            className="bg-green-600 hover:bg-green-700 text-white gap-2 flex-shrink-0"
+            disabled={hasShortages}
+            title={hasShortages ? 'Adjust quantities to match available stock before converting' : undefined}
+            className="bg-green-600 hover:bg-green-700 text-white gap-2 flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <ShoppingCart className="w-4 h-4" />
             Convert to Sale
@@ -295,7 +315,14 @@ export default function OnlineOrderDetailPage({ params }: { params: Promise<{ id
                             </Button>
                           </div>
                         ) : (
-                          <span className="font-medium">{line.quantity} {line.unit_label}</span>
+                          <>
+                            <span className="font-medium">{line.quantity} {line.unit_label}</span>
+                            {line.product_id && line.quantity > (stock?.[line.product_id] ?? 0) && (
+                              <p className="text-[11px] text-red-600 mt-0.5">
+                                only {stock?.[line.product_id] ?? 0} in stock
+                              </p>
+                            )}
+                          </>
                         )}
                       </td>
                       <td className="px-4 py-2 text-right font-medium">
@@ -370,6 +397,24 @@ export default function OnlineOrderDetailPage({ params }: { params: Promise<{ id
               </table>
             </CardContent>
           </Card>
+
+          {/* Staff activity log */}
+          {order.staff_log && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                  <Edit2 className="w-4 h-4" /> Activity Log
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ul className="space-y-1.5 text-xs text-slate-500">
+                  {order.staff_log.split('\n').map((entry, i) => (
+                    <li key={i} className="border-l-2 border-slate-200 pl-2">{entry}</li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Delivery info / map */}
           {order.fulfillment === 'delivery' && (
@@ -461,20 +506,23 @@ export default function OnlineOrderDetailPage({ params }: { params: Promise<{ id
                   <p className="text-xs text-slate-500 mb-1 flex items-center gap-1">
                     <FileImage className="w-3.5 h-3.5" /> Proof of Payment
                   </p>
-                  <a
-                    href={order.payment_proof_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="block"
-                  >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={order.payment_proof_url}
-                      alt="Payment proof"
-                      className="rounded-lg border w-full object-cover max-h-48 cursor-pointer hover:opacity-90"
-                    />
-                    <p className="text-xs text-blue-600 mt-1 text-center hover:underline">Open full size ↗</p>
-                  </a>
+                  {proofLoading && <p className="text-xs text-slate-400">Loading proof...</p>}
+                  {signedProofUrl && (
+                    <a
+                      href={signedProofUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={signedProofUrl}
+                        alt="Payment proof"
+                        className="rounded-lg border w-full object-cover max-h-48 cursor-pointer hover:opacity-90"
+                      />
+                      <p className="text-xs text-blue-600 mt-1 text-center hover:underline">Open full size ↗</p>
+                    </a>
+                  )}
                 </div>
               )}
             </CardContent>
@@ -495,16 +543,38 @@ export default function OnlineOrderDetailPage({ params }: { params: Promise<{ id
             </CardContent>
           </Card>
 
+          {/* Stock shortage warning */}
+          {!order.transaction_id && order.status !== 'cancelled' && hasShortages && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+              <p className="text-sm text-red-800 font-medium mb-1 flex items-center gap-1.5">
+                <AlertCircle className="w-4 h-4" /> Not enough stock
+              </p>
+              <ul className="text-xs text-red-700 space-y-1 mb-2">
+                {shortages.map(line => (
+                  <li key={line.id}>
+                    {line.product_name}: ordered {line.quantity}, only {stock?.[line.product_id!] ?? 0} in stock
+                  </li>
+                ))}
+              </ul>
+              <p className="text-xs text-red-600">
+                Call the customer to adjust quantities before converting to a sale.
+              </p>
+            </div>
+          )}
+
           {/* Convert to Sale */}
           {!order.transaction_id && order.status !== 'cancelled' && (
             <div className="bg-green-50 border border-green-200 rounded-xl p-4">
               <p className="text-sm text-green-800 font-medium mb-1">Ready to process?</p>
               <p className="text-xs text-green-700 mb-3">
-                Click "Convert to Sale" to open the POS with this order's items and customer pre-filled.
+                {hasShortages
+                  ? 'Adjust the line items above to match available stock, then convert.'
+                  : 'Click "Convert to Sale" to open the POS with this order\'s items and customer pre-filled.'}
               </p>
               <Button
                 onClick={handleConvertToSale}
-                className="w-full bg-green-600 hover:bg-green-700 text-white gap-2"
+                disabled={hasShortages}
+                className="w-full bg-green-600 hover:bg-green-700 text-white gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <ShoppingCart className="w-4 h-4" />
                 Convert to Sale

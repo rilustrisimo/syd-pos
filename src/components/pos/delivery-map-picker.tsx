@@ -1,10 +1,10 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { Maximize2, Minimize2 } from 'lucide-react'
+import { Maximize2, Minimize2, Search, X, Loader2, MapPin } from 'lucide-react'
 import { getClient } from '@/lib/supabase/client'
-import { getRoadDistance, calcDeliveryFee, reverseGeocode } from '@/lib/routing'
-import type { FeeSettings } from '@/lib/routing'
+import { getRoadDistance, calcDeliveryFee, reverseGeocode, searchPlaces } from '@/lib/routing'
+import type { FeeSettings, PlaceResult } from '@/lib/routing'
 import 'leaflet/dist/leaflet.css'
 
 export interface MapSuggestResult {
@@ -40,10 +40,12 @@ interface RouteInfo {
 export function DeliveryMapPicker({ onSuggest, onExpandChange, initialCoords, initialExpanded = false }: DeliveryMapPickerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapSectionRef = useRef<HTMLDivElement>(null)
+  const searchWrapperRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<any>(null)
   const markerRef = useRef<any>(null)
   const routeLayerRef = useRef<{ remove: () => void } | null>(null)
   const abortRef = useRef<AbortController | null>(null)
+  const handlePinRef = useRef<((lat: number, lng: number) => void) | null>(null)
   const onSuggestRef = useRef(onSuggest)
   onSuggestRef.current = onSuggest
 
@@ -52,6 +54,48 @@ export function DeliveryMapPicker({ onSuggest, onExpandChange, initialCoords, in
   const [loading, setLoading] = useState(false)
   const [settingsLoading, setSettingsLoading] = useState(true)
   const [isExpanded, setIsExpanded] = useState(initialExpanded)
+
+  const [query, setQuery] = useState('')
+  const [searchResults, setSearchResults] = useState<PlaceResult[]>([])
+  const [searching, setSearching] = useState(false)
+  const [showResults, setShowResults] = useState(false)
+
+  // Close the results dropdown on outside click/tap (not input blur — blur
+  // can fire and unmount the dropdown before a touch tap's click lands).
+  useEffect(() => {
+    function handlePointerDown(e: PointerEvent) {
+      if (searchWrapperRef.current && !searchWrapperRef.current.contains(e.target as Node)) {
+        setShowResults(false)
+      }
+    }
+    document.addEventListener('pointerdown', handlePointerDown)
+    return () => document.removeEventListener('pointerdown', handlePointerDown)
+  }, [])
+
+  // Debounced place search
+  useEffect(() => {
+    if (query.trim().length < 3) {
+      setSearchResults([])
+      setSearching(false)
+      return
+    }
+    const ctrl = new AbortController()
+    setSearching(true)
+    const t = setTimeout(() => {
+      searchPlaces(query, ctrl.signal)
+        .then(r => { setSearchResults(r); setSearching(false) })
+        .catch(() => setSearching(false))
+    }, 450)
+    return () => { clearTimeout(t); ctrl.abort() }
+  }, [query])
+
+  function selectSearchResult(result: PlaceResult) {
+    handlePinRef.current?.(result.lat, result.lng)
+    mapRef.current?.flyTo([result.lat, result.lng], 16, { duration: 1 })
+    setQuery(result.label)
+    setShowResults(false)
+    setSearchResults([])
+  }
 
   // Fetch store coordinates + fee settings once
   useEffect(() => {
@@ -151,6 +195,8 @@ export function DeliveryMapPicker({ onSuggest, onExpandChange, initialCoords, in
         }
       }
 
+      handlePinRef.current = handlePin
+
       map.on('click', (e: any) => handlePin(e.latlng.lat, e.latlng.lng))
 
       if (navigator.geolocation) {
@@ -175,6 +221,7 @@ export function DeliveryMapPicker({ onSuggest, onExpandChange, initialCoords, in
       mapRef.current = null
       markerRef.current = null
       routeLayerRef.current = null
+      handlePinRef.current = null
     }
   }, [storeSettings]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -213,6 +260,55 @@ export function DeliveryMapPicker({ onSuggest, onExpandChange, initialCoords, in
 
   return (
     <div ref={mapSectionRef} className="space-y-2">
+      {/* Place search */}
+      <div className="relative" ref={searchWrapperRef}>
+        <div className="relative">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+          <input
+            type="text"
+            value={query}
+            onChange={e => { setQuery(e.target.value); setShowResults(true) }}
+            onFocus={() => setShowResults(true)}
+            placeholder="Search for a place or landmark..."
+            className="w-full pl-8 pr-8 py-2 rounded-lg border border-slate-300 bg-white text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+          />
+          {searching ? (
+            <Loader2 className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 animate-spin" />
+          ) : query ? (
+            <button
+              type="button"
+              onClick={() => { setQuery(''); setSearchResults([]) }}
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-slate-400 hover:text-slate-600"
+              aria-label="Clear search"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          ) : null}
+        </div>
+
+        {showResults && searchResults.length > 0 && (
+          <div className="absolute z-[1000] mt-1 w-full bg-white rounded-lg border border-slate-200 shadow-lg overflow-hidden max-h-56 overflow-y-auto">
+            {searchResults.map((r, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => selectSearchResult(r)}
+                className="w-full flex items-start gap-2 text-left px-3 py-2 hover:bg-blue-50 border-b border-slate-100 last:border-b-0 transition-colors"
+              >
+                <MapPin className="w-3.5 h-3.5 text-blue-500 flex-shrink-0 mt-0.5" />
+                <span className="text-xs text-slate-700 leading-snug">{r.label}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {showResults && !searching && query.trim().length >= 3 && searchResults.length === 0 && (
+          <div className="absolute z-[1000] mt-1 w-full bg-white rounded-lg border border-slate-200 shadow-lg px-3 py-2 text-xs text-slate-400">
+            No places found — try a different search, or tap the map directly.
+          </div>
+        )}
+      </div>
+
       {/* containerRef is always unconditionally rendered so Leaflet stays mounted */}
       <div className="relative">
         <div

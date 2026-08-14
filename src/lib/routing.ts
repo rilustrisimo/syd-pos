@@ -4,6 +4,36 @@
 
 const OSRM = 'https://router.project-osrm.org/route/v1/driving'
 
+export interface PlaceResult {
+  lat: number
+  lng: number
+  label: string
+}
+
+/**
+ * Forward-geocode a free-text place name to candidate lat/lng locations via
+ * Nominatim (OpenStreetMap), restricted to the Philippines. Lets staff jump
+ * the delivery map to a location by typing its name instead of panning.
+ */
+export async function searchPlaces(query: string, signal?: AbortSignal): Promise<PlaceResult[]> {
+  const q = query.trim()
+  if (q.length < 3) return []
+
+  const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&q=${encodeURIComponent(q)}&countrycodes=ph&limit=6&addressdetails=0`
+  const res = await fetch(url, {
+    signal,
+    headers: { 'User-Agent': 'SYD-POS/1.0 (Construction Supplies POS)' },
+    cache: 'no-store',
+  })
+  if (!res.ok) return []
+  const data = await res.json()
+  return (data as any[]).map((r: any) => ({
+    lat: Number(r.lat),
+    lng: Number(r.lon),
+    label: r.display_name as string,
+  }))
+}
+
 export interface RouteResult {
   distance_km: number
   road_based: boolean

@@ -3,7 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { getClient } from '@/lib/supabase/client'
 
-export type OnlineOrderStatus = 'pending' | 'confirmed' | 'preparing' | 'out_for_delivery' | 'delivered' | 'cancelled'
+export type OnlineOrderStatus = 'pending' | 'confirmed' | 'preparing' | 'out_for_delivery' | 'delivered' | 'picked_up' | 'cancelled'
 export type OnlineOrderFulfillment = 'delivery' | 'pickup'
 export type OnlineOrderPaymentMethod = 'cod' | 'gcash' | 'bank_transfer' | 'qr'
 export type OnlineOrderPaymentStatus = 'unpaid' | 'submitted' | 'verified' | 'refunded'
@@ -42,6 +42,7 @@ export interface OnlineOrder {
   delivery_fee: number
   total_amount: number
   notes: string | null
+  staff_log: string | null
   customer_id: string | null
   transaction_id: string | null
   created_at: string
@@ -96,6 +97,58 @@ export function useOnlineOrder(id: string) {
   })
 }
 
+// Live stock lookup for an order's line items, keyed by product_id.
+// Used to warn staff and block "Convert to Sale" when the customer
+// ordered more than what's currently on hand.
+export function useOnlineOrderStock(productIds: string[]) {
+  return useQuery({
+    queryKey: ['online_order_stock', ...[...productIds].sort()],
+    queryFn: async () => {
+      const supabase = getClient()
+      const { data: settings } = await supabase
+        .from('shop_settings')
+        .select('branch_id')
+        .limit(1)
+        .single()
+
+      if (!settings?.branch_id) return {} as Record<string, number>
+
+      const { data: inventory, error } = await supabase
+        .from('branch_inventory')
+        .select('product_id, quantity_on_hand')
+        .eq('branch_id', settings.branch_id)
+        .in('product_id', productIds)
+      if (error) throw new Error(error.message)
+
+      const stock: Record<string, number> = {}
+      for (const row of inventory ?? []) {
+        stock[row.product_id] = Number(row.quantity_on_hand ?? 0)
+      }
+      return stock
+    },
+    enabled: productIds.length > 0,
+    staleTime: 1000 * 30,
+  })
+}
+
+// payment-proofs is a private bucket — payment_proof_url stores the object
+// path, not a public URL. Resolve it to a short-lived signed URL for viewing.
+export function useSignedPaymentProofUrl(path: string | null) {
+  return useQuery({
+    queryKey: ['payment_proof_signed_url', path],
+    queryFn: async () => {
+      const supabase = getClient()
+      const { data, error } = await supabase.storage
+        .from('payment-proofs')
+        .createSignedUrl(path!, 300)
+      if (error) throw new Error(error.message)
+      return data.signedUrl
+    },
+    enabled: !!path,
+    staleTime: 1000 * 60 * 4,
+  })
+}
+
 export function useUpdateOnlineOrderStatus() {
   const qc = useQueryClient()
   return useMutation({
@@ -126,6 +179,42 @@ export function useUpdateOnlineOrderPaymentStatus() {
   })
 }
 
+function logTimestamp() {
+  return new Date().toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })
+}
+
+function appendLog(existing: string | null, entry: string) {
+  const line = `[${logTimestamp()}] ${entry}`
+  return existing ? `${existing}\n${line}` : line
+}
+
+async function recalcOrderTotals(
+  supabase: ReturnType<typeof getClient>,
+  orderId: string,
+  logEntry: string
+) {
+  const { data: lines } = await supabase
+    .from('online_order_lines')
+    .select('line_total')
+    .eq('order_id', orderId)
+
+  const subtotal = (lines ?? []).reduce((s: number, l: any) => s + Number(l.line_total), 0)
+
+  const { data: order } = await supabase
+    .from('online_orders')
+    .select('delivery_fee, staff_log')
+    .eq('id', orderId)
+    .single()
+
+  const delivery_fee = Number(order?.delivery_fee ?? 0)
+  const staff_log = appendLog(order?.staff_log ?? null, logEntry)
+
+  await supabase
+    .from('online_orders')
+    .update({ subtotal, total_amount: subtotal + delivery_fee, staff_log })
+    .eq('id', orderId)
+}
+
 export function useUpdateOnlineOrderLine() {
   const qc = useQueryClient()
   return useMutation({
@@ -133,7 +222,7 @@ export function useUpdateOnlineOrderLine() {
       const supabase = getClient()
       const { data: line, error: fetchErr } = await supabase
         .from('online_order_lines')
-        .select('unit_price, order_id')
+        .select('unit_price, order_id, product_name, quantity, unit_label')
         .eq('id', id)
         .single()
       if (fetchErr) throw new Error(fetchErr.message)
@@ -145,17 +234,8 @@ export function useUpdateOnlineOrderLine() {
         .eq('id', id)
       if (error) throw new Error(error.message)
 
-      // Recalculate order totals
-      const { data: lines } = await supabase
-        .from('online_order_lines')
-        .select('line_total')
-        .eq('order_id', line.order_id)
-
-      const subtotal = (lines ?? []).reduce((s: number, l: any) => s + Number(l.line_total), 0)
-      await supabase
-        .from('online_orders')
-        .update({ subtotal, total_amount: subtotal })
-        .eq('id', line.order_id)
+      const logEntry = `Staff adjusted: Qty of ${line.product_name} changed from ${line.quantity} to ${quantity} ${line.unit_label}`
+      await recalcOrderTotals(supabase, line.order_id, logEntry)
 
       return line.order_id
     },
@@ -173,7 +253,7 @@ export function useDeleteOnlineOrderLine() {
       const supabase = getClient()
       const { data: line, error: fetchErr } = await supabase
         .from('online_order_lines')
-        .select('order_id')
+        .select('order_id, product_name, quantity, unit_label')
         .eq('id', lineId)
         .single()
       if (fetchErr) throw new Error(fetchErr.message)
@@ -184,17 +264,8 @@ export function useDeleteOnlineOrderLine() {
         .eq('id', lineId)
       if (error) throw new Error(error.message)
 
-      // Recalculate totals
-      const { data: lines } = await supabase
-        .from('online_order_lines')
-        .select('line_total')
-        .eq('order_id', line.order_id)
-
-      const subtotal = (lines ?? []).reduce((s: number, l: any) => s + Number(l.line_total), 0)
-      await supabase
-        .from('online_orders')
-        .update({ subtotal, total_amount: subtotal })
-        .eq('id', line.order_id)
+      const logEntry = `Staff removed: ${line.product_name} (was ${line.quantity} ${line.unit_label})`
+      await recalcOrderTotals(supabase, line.order_id, logEntry)
 
       return line.order_id
     },
