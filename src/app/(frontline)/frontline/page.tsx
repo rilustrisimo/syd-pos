@@ -463,12 +463,21 @@ export default function FrontlinePOSPage() {
     }
   }, [sellingUnits, selectedUnitId, selectedProduct])
 
+  // Products currently being added — guards against a rapid double
+  // click/tap firing two overlapping handleAddProduct calls for the same
+  // product, which would otherwise both resolve and double the quantity
+  // (addItem merges by product_id, summing quantity).
+  const addingProductsRef = useRef<Set<string>>(new Set())
+
   // Handle product selection
   const handleAddProduct = useCallback(async (product: any) => {
     if (product.available_stock <= 0) {
       toast.error(`${product.name} is out of stock`)
       return
     }
+
+    if (addingProductsRef.current.has(product.id)) return
+    addingProductsRef.current.add(product.id)
 
     try {
       const units = await getProductSellingUnits(product.id)
@@ -552,6 +561,8 @@ export default function FrontlinePOSPage() {
       })
       setProductSearch('')
       toast.success(`Added ${product.name} to cart`)
+    } finally {
+      addingProductsRef.current.delete(product.id)
     }
   }, [addItem])
 
@@ -702,6 +713,30 @@ export default function FrontlinePOSPage() {
       })
     }
   }, [discountRules, items, getItemMarkup, setDiscountAmount, setDiscountPercentage, setDiscountType, updateItemDiscount])
+
+  // Keep per-item "Standard"/"At Cost" discounts in sync with the cart —
+  // see the matching comment in pos/page.tsx. handleDiscountTypeChange only
+  // computes discount_amount once; this corrects it whenever quantity
+  // changes or an item is added. The tolerance check prevents looping.
+  useEffect(() => {
+    if (discountType === 'standard') {
+      items.forEach((item) => {
+        const markup = getItemMarkup(item)
+        const discPct = getStandardDiscountForMarkup(discountRules, markup)
+        const discAmt = (item.quantity * item.unit_price * discPct) / 100
+        if (Math.abs(discAmt - item.discount_amount) > 0.005) {
+          updateItemDiscount(item.id, discAmt)
+        }
+      })
+    } else if (discountType === 'cost') {
+      items.forEach((item) => {
+        const discAmt = item.quantity * Math.max(0, item.unit_price - item.cogs_per_unit)
+        if (Math.abs(discAmt - item.discount_amount) > 0.005) {
+          updateItemDiscount(item.id, discAmt)
+        }
+      })
+    }
+  }, [items, discountType, discountRules, getItemMarkup, updateItemDiscount])
 
   // Apply fixed / percentage order discount when input changes
   const handleApplyOrderDiscount = useCallback((value: string) => {
@@ -1937,7 +1972,7 @@ export default function FrontlinePOSPage() {
                     key={method.value}
                     variant={selectedPaymentMethod === method.value ? 'default' : 'outline'}
                     className="h-12 text-base"
-                    onClick={() => setSelectedPaymentMethod(method.value)}
+                    onClick={() => { setSelectedPaymentMethod(method.value); setPaymentReference('') }}
                   >
                     <method.icon className="mr-2 h-5 w-5" />
                     <span className="hidden sm:inline">{method.label}</span>

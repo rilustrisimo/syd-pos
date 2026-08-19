@@ -144,6 +144,7 @@ export default function POSPage() {
   const [deliveryPhoneHistoryLoading, setDeliveryPhoneHistoryLoading] = useState(false)
   const [deliveryCoords, setDeliveryCoords] = useState<{ lat: number; lng: number; distanceKm: number; roadBased: boolean } | null>(null)
   const [deliveryGeocodedAddress, setDeliveryGeocodedAddress] = useState<string | null>(null)
+  const [deliveryFeeConfirmed, setDeliveryFeeConfirmed] = useState(false)
 
   // Store
   const {
@@ -425,6 +426,12 @@ export default function POSPage() {
     }
   }, [sellingUnits, selectedUnitId, selectedProduct])
 
+  // Products currently being added — guards against a rapid double
+  // click/tap firing two overlapping handleAddProduct calls for the same
+  // product, which would otherwise both resolve and double the quantity
+  // (addItem merges by product_id, summing quantity).
+  const addingProductsRef = useRef<Set<string>>(new Set())
+
   // Handle product selection
   const handleAddProduct = useCallback(async (product: any) => {
     // Prevent adding out of stock items
@@ -432,7 +439,10 @@ export default function POSPage() {
       toast.error(`${product.name} is out of stock`)
       return
     }
-    
+
+    if (addingProductsRef.current.has(product.id)) return
+    addingProductsRef.current.add(product.id)
+
     // Fetch selling units for this product
     try {
       const units = await getProductSellingUnits(product.id)
@@ -531,9 +541,11 @@ export default function POSPage() {
       })
       setProductSearch('')
       toast.success(`Added ${product.name} to cart`)
+    } finally {
+      addingProductsRef.current.delete(product.id)
     }
   }, [addItem])
-  
+
   // Handle adding product with selected unit
   const handleAddWithUnit = useCallback(() => {
     if (!selectedProduct || !selectedUnitId) return
@@ -690,6 +702,35 @@ export default function POSPage() {
     }
   }, [discountRules, items, getItemMarkup, setDiscountAmount, setDiscountPercentage, setDiscountType, updateItemDiscount])
 
+  // Keep per-item "Standard"/"At Cost" discounts in sync with the cart.
+  // handleDiscountTypeChange only computes discount_amount once, at the
+  // moment the discount type is picked — it goes stale the instant a
+  // quantity changes or a new item is added (new items start at 0). This
+  // recomputes and corrects any item whose stored discount no longer
+  // matches what the rules say it should be, whenever the cart changes.
+  // The tolerance check is what keeps this from looping: the store always
+  // returns a fresh array reference, but once corrected the effect no
+  // longer needs to write, so it settles after one extra pass.
+  useEffect(() => {
+    if (discountType === 'standard') {
+      items.forEach((item) => {
+        const markup = getItemMarkup(item)
+        const discPct = getStandardDiscountForMarkup(discountRules, markup)
+        const discAmt = (item.quantity * item.unit_price * discPct) / 100
+        if (Math.abs(discAmt - item.discount_amount) > 0.005) {
+          updateItemDiscount(item.id, discAmt)
+        }
+      })
+    } else if (discountType === 'cost') {
+      items.forEach((item) => {
+        const discAmt = item.quantity * Math.max(0, item.unit_price - item.cogs_per_unit)
+        if (Math.abs(discAmt - item.discount_amount) > 0.005) {
+          updateItemDiscount(item.id, discAmt)
+        }
+      })
+    }
+  }, [items, discountType, discountRules, getItemMarkup, updateItemDiscount])
+
   // Apply fixed / percentage order discount when input changes
   const handleApplyOrderDiscount = useCallback((value: string) => {
     setDiscountInput(value)
@@ -725,7 +766,8 @@ export default function POSPage() {
     setPaymentReference('')
   }, [paymentAmount, selectedPaymentMethod, paymentReference, customer, addPayment, wouldExceedCreditLimit, getAvailableCredit, getCreditPaymentTotal])
 
-  // Sync discountInput when checkout modal opens (so fixed/percentage shows its current value)
+  // Sync discountInput when checkout modal opens (so fixed/percentage shows its current value);
+  // reset delivery fee confirmation so it must be re-confirmed on every checkout attempt
   useEffect(() => {
     if (isCheckoutOpen) {
       if (discountType === 'fixed' && discountAmount > 0) {
@@ -733,6 +775,7 @@ export default function POSPage() {
       } else if (discountType === 'percentage' && discountPercentage > 0) {
         setDiscountInput(discountPercentage.toString())
       }
+      setDeliveryFeeConfirmed(false)
     }
   }, [isCheckoutOpen]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -775,6 +818,10 @@ export default function POSPage() {
       }
       if (!deliveryPhone.trim()) {
         toast.error('Contact number is required for delivery orders')
+        return
+      }
+      if (!deliveryFeeConfirmed) {
+        toast.error('Please confirm the delivery fee (enter 0 if none).')
         return
       }
     }
@@ -1789,6 +1836,7 @@ export default function POSPage() {
                     onSuggest={(result: MapSuggestResult | null) => {
                       if (result) {
                         setDeliveryFee(result.fee)
+                        setDeliveryFeeConfirmed(true)
                         setDeliveryCoords({ lat: result.lat, lng: result.lng, distanceKm: result.distanceKm, roadBased: result.roadBased })
                         setDeliveryGeocodedAddress(result.geocodedAddress)
                       } else {
@@ -1800,15 +1848,31 @@ export default function POSPage() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label>Delivery Fee <span className="text-xs font-normal text-muted-foreground">(auto-filled · editable)</span></Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    placeholder="0.00"
-                    value={deliveryFee || ''}
-                    onChange={(e) => setDeliveryFee(Number(e.target.value) || 0)}
-                    className="h-12"
-                  />
+                  <Label>Delivery Fee <span className="text-red-500">*</span> <span className="text-xs font-normal text-muted-foreground">(auto-filled · editable)</span></Label>
+                  <div className="flex gap-2">
+                    <Input
+                      type="number"
+                      step="0.01"
+                      placeholder="0.00"
+                      value={deliveryFee === 0 && !deliveryFeeConfirmed ? '' : deliveryFee}
+                      onChange={(e) => {
+                        setDeliveryFee(Number(e.target.value) || 0)
+                        setDeliveryFeeConfirmed(false)
+                      }}
+                      className={`h-12 flex-1 ${!deliveryFeeConfirmed ? 'border-amber-400' : 'border-green-400'}`}
+                    />
+                    <Button
+                      type="button"
+                      variant={deliveryFeeConfirmed ? 'default' : 'outline'}
+                      className={`h-12 px-4 shrink-0 ${deliveryFeeConfirmed ? 'bg-green-600 hover:bg-green-700 text-white' : 'border-amber-400 text-amber-700'}`}
+                      onClick={() => setDeliveryFeeConfirmed(true)}
+                    >
+                      {deliveryFeeConfirmed ? '✓ Confirmed' : 'Confirm'}
+                    </Button>
+                  </div>
+                  {!deliveryFeeConfirmed && (
+                    <p className="text-xs text-amber-600">Please confirm the delivery fee before proceeding</p>
+                  )}
                 </div>
               </div>
             )}
@@ -1879,7 +1943,7 @@ export default function POSPage() {
                     key={method.value}
                     variant={selectedPaymentMethod === method.value ? 'default' : 'outline'}
                     className="h-12 text-base"
-                    onClick={() => setSelectedPaymentMethod(method.value)}
+                    onClick={() => { setSelectedPaymentMethod(method.value); setPaymentReference('') }}
                   >
                     <method.icon className="mr-2 h-5 w-5" />
                     <span className="hidden sm:inline">{method.label}</span>

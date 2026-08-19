@@ -271,11 +271,16 @@ export const usePOSStore = create<POSState>()(
 
       getOrderDiscount: () => {
         const { discountAmount, discountPercentage } = get()
-        if (discountAmount > 0) return discountAmount
+        const subtotal = get().getSubtotal()
+        const itemsDiscount = get().getItemsDiscount()
+        // Cap at what's left after item-level discounts — a fixed discount
+        // typed larger than the order is worth must not itself become the
+        // discount_amount sent to the backend (getTotal() clamping the
+        // *displayed* total to 0 doesn't clamp this underlying value).
+        const remaining = Math.max(0, subtotal - itemsDiscount)
+        if (discountAmount > 0) return Math.min(discountAmount, remaining)
         if (discountPercentage > 0) {
-          const subtotal = get().getSubtotal()
-          const itemsDiscount = get().getItemsDiscount()
-          return ((subtotal - itemsDiscount) * discountPercentage) / 100
+          return (remaining * discountPercentage) / 100
         }
         return 0
       },
