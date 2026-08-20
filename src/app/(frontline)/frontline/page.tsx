@@ -31,6 +31,7 @@ import {
   Check,
   Loader2,
   Receipt,
+  ClipboardCheck,
   UserPlus,
   Percent,
   Tag,
@@ -47,8 +48,7 @@ import {
   Ban,
   BadgeCheck,
 } from 'lucide-react'
-import type { ReceiptData } from '@/components/print/receipt-template'
-import { printThermalTransaction, listAllPrinters, printTestPage, connectBtPrinter, type DiscoveredPrinter } from '@/lib/utils/usb-thermal-print'
+import { printDeliverySlip, printPickupSlip, listAllPrinters, printTestPage, connectBtPrinter, type DiscoveredPrinter, type ReceiptData } from '@/lib/utils/usb-thermal-print'
 import { usePrinterStore } from '@/lib/stores/printer'
 
 import { Button } from '@/components/ui/button'
@@ -167,6 +167,7 @@ export default function FrontlinePOSPage() {
     discountAmount,
     discountPercentage,
     notes,
+    manualInvoiceNumber,
     payments,
     addItem,
     updateItemQuantity,
@@ -185,6 +186,7 @@ export default function FrontlinePOSPage() {
     setDiscountAmount,
     setDiscountPercentage,
     setNotes,
+    setManualInvoiceNumber,
     addPayment,
     removePayment,
     clearPayments,
@@ -403,17 +405,6 @@ export default function FrontlinePOSPage() {
       setTestPrinting(false)
     }
   }
-
-  // Auto-print receipt (+ delivery slip for delivery orders) to thermal printer
-  const autoPrintBluetooth = useCallback(async (receipt: ReceiptData) => {
-    if (typeof window === 'undefined') return
-    if (!btPortPath) return
-    try {
-      await printThermalTransaction(receipt, btPortPath, charWidth)
-    } catch (err: any) {
-      toast.error(`Thermal print error: ${err?.message}`)
-    }
-  }, [btPortPath, charWidth])
 
   // Get authenticated user
   const { user } = useAuthStore()
@@ -878,6 +869,7 @@ export default function FrontlinePOSPage() {
           discount_amount: getTotalDiscount(),
           discount_percentage: discountPercentage,
           notes: notes || null,
+          manual_invoice_number: manualInvoiceNumber.trim() || null,
           transaction_date: createTimestampPH(saleDate),
           referrer_id: referrerId || null,
           commission_rate: referrerId && referrerCommissionRate ? Number(referrerCommissionRate) : null,
@@ -899,7 +891,6 @@ export default function FrontlinePOSPage() {
         userId: user.id,
       })
 
-      toast.success('Transaction completed successfully!')
       setIsCheckoutOpen(false)
 
       resetAll()
@@ -913,7 +904,6 @@ export default function FrontlinePOSPage() {
       setReferrerSearch('')
 
       const invoiceData: InvoiceData = {
-        invoice_number: result.transaction_number.replace('TXN', 'INV'),
         transaction_number: result.transaction_number,
         date: result.transaction_date || new Date().toISOString(),
         branch: {
@@ -1016,9 +1006,22 @@ export default function FrontlinePOSPage() {
       }
       setPendingReceipt(receiptData)
       setPendingInvoice(invoiceData)
-      // Auto-print thermal receipt immediately, then open dialog for A4 invoice
-      autoPrintBluetooth(receiptData)
-      setIsPrintOpen(true)
+      toast.success('Transaction completed successfully!', {
+        action: { label: 'Print', onClick: () => setIsPrintOpen(true) },
+      })
+      // Auto-print the delivery/pickup slip to the connected thermal printer
+      // (frontline register only — not a receipt, so nothing BIR-sensitive
+      // about firing it automatically). Fire-and-forget: failures surface as
+      // their own toast without blocking checkout; the Print action above
+      // still opens the dialog to retry or pick a different printer.
+      if (btPortPath) {
+        const printSlip = receiptData.delivery_type === 'delivery' ? printDeliverySlip : printPickupSlip
+        printSlip(receiptData, btPortPath, charWidth).catch((err: any) => {
+          toast.error(`Auto-print failed: ${err?.message || 'Unknown error'}`, {
+            description: 'Use the Print button above to retry.',
+          })
+        })
+      }
     } catch (error: any) {
       toast.error(error.message || 'Failed to complete transaction')
     }
@@ -1070,15 +1073,11 @@ export default function FrontlinePOSPage() {
         notes: txn.notes,
       }
       toast.dismiss(toastId)
-      // If a thermal printer port is saved in Electron, print directly
-      const isElectron = typeof window !== 'undefined' && (!!window.electronBluetooth || !!window.electronPrint)
-      if (isElectron && btPortPath) {
-        autoPrintBluetooth(receipt)
-        toast.success('Sending to thermal printer…')
-      } else {
-        setReprintReceiptData(receipt)
-        setIsReprintOpen(true)
-      }
+      // Reprinting always opens the dialog (no silent auto-print) so staff
+      // see what's about to print before it happens. PrintDialog picks the
+      // Delivery Slip or Pickup Slip tab based on receipt.delivery_type.
+      setReprintReceiptData(receipt)
+      setIsReprintOpen(true)
     } catch (err: any) {
       toast.error(err?.message || 'Failed to load transaction', { id: toastId })
     } finally {
@@ -1470,7 +1469,7 @@ export default function FrontlinePOSPage() {
 
           <Button className="w-full" size="lg" disabled={items.length === 0}
             onClick={() => { setIsCartOpen(false); setIsCheckoutOpen(true) }}>
-            <Receipt className="mr-2 h-5 w-5" />Checkout
+            <ClipboardCheck className="mr-2 h-5 w-5" />Checkout
           </Button>
         </SheetContent>
       </Sheet>
@@ -1592,7 +1591,7 @@ export default function FrontlinePOSPage() {
         <CardFooter className="pt-0">
           <Button className="w-full" size="lg" disabled={items.length === 0}
             onClick={() => setIsCheckoutOpen(true)}>
-            <Receipt className="mr-2 h-5 w-5" />Checkout
+            <ClipboardCheck className="mr-2 h-5 w-5" />Checkout
           </Button>
         </CardFooter>
       </Card>
@@ -1962,6 +1961,17 @@ export default function FrontlinePOSPage() {
                 onChange={(e) => setNotes(e.target.value)} rows={3} className="text-base" />
             </div>
 
+            {/* Manual Invoice/OR # — cross-reference to the paper booklet, optional */}
+            <div className="space-y-3">
+              <Label className="text-base font-semibold">Invoice/OR # (optional)</Label>
+              <Input
+                placeholder="e.g. 00231 — from paper booklet"
+                value={manualInvoiceNumber}
+                onChange={(e) => setManualInvoiceNumber(e.target.value)}
+                className="h-11 text-base"
+              />
+            </div>
+
             {/* Payment Section */}
             <div className="space-y-4 border-t pt-6">
               <h3 className="font-semibold text-lg">Payment</h3>
@@ -2088,7 +2098,11 @@ export default function FrontlinePOSPage() {
             </div>
           </div>
 
-          <DialogFooter className="gap-3 mt-6 pt-6 border-t">
+          <p className="text-sm text-muted-foreground text-center mt-4">
+            Don&apos;t forget to issue the paper Invoice/OR.
+          </p>
+
+          <DialogFooter className="gap-3 mt-2 pt-6 border-t">
             <Button variant="outline" onClick={() => setIsCheckoutOpen(false)} className="h-12 text-base flex-1">
               Cancel
             </Button>
@@ -2105,11 +2119,11 @@ export default function FrontlinePOSPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Post-checkout Print Dialog */}
+      {/* Post-checkout Print Dialog — opened on demand via the "Print" toast action */}
       <PrintDialog
         open={isPrintOpen}
         onOpenChange={setIsPrintOpen}
-        receiptData={pendingReceipt}
+        deliverySlipData={pendingReceipt}
         invoiceData={pendingInvoice}
         onComplete={() => { setPendingReceipt(null); setPendingInvoice(null) }}
       />
@@ -2121,7 +2135,7 @@ export default function FrontlinePOSPage() {
           setIsReprintOpen(open)
           if (!open) setReprintReceiptData(null)
         }}
-        receiptData={reprintReceiptData}
+        deliverySlipData={reprintReceiptData}
         invoiceData={null}
       />
 
@@ -2258,7 +2272,7 @@ export default function FrontlinePOSPage() {
                                 ? <Loader2 className="h-3 w-3 animate-spin" />
                                 : <Printer className="h-3 w-3" />
                               }
-                              <span className="ml-1">Print</span>
+                              <span className="ml-1">Slip</span>
                             </Button>
                             <Button
                               size="sm"

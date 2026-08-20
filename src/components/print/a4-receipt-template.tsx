@@ -144,7 +144,7 @@ export const A4ReceiptTemplate = forwardRef<HTMLDivElement, A4ReceiptTemplatePro
             minWidth: '175px',
           }}>
             <div style={{ fontSize: '19px', fontWeight: '800', letterSpacing: '2px', lineHeight: 1 }}>
-              {isReturn ? 'RETURN\nRECEIPT' : 'SALES RECEIPT'}
+              {isReturn ? 'RETURN\nSUMMARY' : 'SALES SUMMARY'}
             </div>
             <div style={{ fontSize: '12px', fontWeight: '600', marginTop: '7px', fontFamily: 'Courier New, monospace', letterSpacing: '0.5px' }}>
               #{data.transaction_number}
@@ -322,12 +322,6 @@ export const A4ReceiptTemplate = forwardRef<HTMLDivElement, A4ReceiptTemplatePro
                     <td style={{ padding: '7px 14px', textAlign: 'right', fontSize: '10.5px', color: '#d97706', fontWeight: '600' }}>
                       +{fmt(data.other_fees!)}
                     </td>
-                  </tr>
-                )}
-                {data.tax > 0 && (
-                  <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
-                    <td style={{ padding: '7px 14px', color: '#6b7280', fontSize: '10.5px' }}>VAT</td>
-                    <td style={{ padding: '7px 14px', textAlign: 'right', fontSize: '10.5px' }}>{fmt(data.tax)}</td>
                   </tr>
                 )}
                 <tr style={{ backgroundColor: accentColor, color: '#ffffff' }}>

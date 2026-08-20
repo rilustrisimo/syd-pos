@@ -10,6 +10,7 @@ export interface Transaction {
   delivery_type: 'pickup' | 'delivery'
   delivery_address: string | null
   delivery_phone: string | null
+  manual_invoice_number: string | null
   subtotal: number
   discount_amount: number
   discount_percentage: number
@@ -135,6 +136,7 @@ export interface TransactionInput {
   delivery_longitude?: number | null
   delivery_distance_km?: number | null
   delivery_geocoded_address?: string | null
+  manual_invoice_number?: string | null
 }
 
 export interface TransactionLineInput {
@@ -434,6 +436,16 @@ export async function createTransaction(
         delivery_distance_km: input.delivery_distance_km ?? null,
         delivery_geocoded_address: input.delivery_geocoded_address ?? null,
       } as any)
+      .eq('id', data.id)
+  }
+
+  // Cross-reference the hand-written paper Invoice/OR number, if staff recorded one.
+  // Optional — no inventory/atomicity implications, so a follow-up update is enough.
+  const manualInvoiceNumber = input.manual_invoice_number?.trim()
+  if (manualInvoiceNumber) {
+    await supabase
+      .from('transactions')
+      .update({ manual_invoice_number: manualInvoiceNumber } as any)
       .eq('id', data.id)
   }
 

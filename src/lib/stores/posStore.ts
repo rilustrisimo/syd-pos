@@ -48,6 +48,7 @@ interface POSState {
   discountAmount: number
   discountPercentage: number
   notes: string
+  manualInvoiceNumber: string
 
   // Payments
   payments: Payment[]
@@ -75,6 +76,7 @@ interface POSState {
   setDiscountAmount: (amount: number) => void
   setDiscountPercentage: (percentage: number) => void
   setNotes: (notes: string) => void
+  setManualInvoiceNumber: (value: string) => void
 
   // Actions - Payments
   addPayment: (payment: Omit<Payment, 'id'>) => void
@@ -121,6 +123,7 @@ const initialState = {
   discountPercentage: 0,
   discountType: 'none' as 'none' | 'fixed' | 'percentage' | 'standard' | 'cost',
   notes: '',
+  manualInvoiceNumber: '',
   payments: [] as Payment[],
 }
 
@@ -236,6 +239,10 @@ export const usePOSStore = create<POSState>()(
         set({ notes })
       },
 
+      setManualInvoiceNumber: (value) => {
+        set({ manualInvoiceNumber: value })
+      },
+
       // Payment Actions
       addPayment: (payment) => {
         set((state) => ({
@@ -349,6 +356,7 @@ export const usePOSStore = create<POSState>()(
         discountPercentage: state.discountPercentage,
         discountType: state.discountType,
         notes: state.notes,
+        manualInvoiceNumber: state.manualInvoiceNumber,
         payments: state.payments,
       }),
     }

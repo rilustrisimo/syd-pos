@@ -295,7 +295,7 @@ export default function TransactionHistoryPage() {
       setTimeout(() => {
         if (printRef.current) {
           printElement(printRef.current, {
-            title: `${receiptData.transaction_type === 'return' ? 'Return' : 'Sales'} Receipt - ${receiptData.transaction_number}`,
+            title: `${receiptData.transaction_type === 'return' ? 'Return' : 'Sales'} Summary - ${receiptData.transaction_number}`,
             paperSize: 'a4',
           })
           toast.success('Print dialog opened')
@@ -855,6 +855,18 @@ export default function TransactionHistoryPage() {
                   <p className="text-sm p-3 bg-amber-50 rounded-lg border">{detailsTransaction.notes}</p>
                 </div>
               )}
+
+              {/* Paper Invoice/OR cross-reference */}
+              <div>
+                <p className="text-sm font-semibold mb-2">Paper Invoice/OR</p>
+                <p className="text-sm text-muted-foreground">
+                  {detailsTransaction.manual_invoice_number ? (
+                    <span className="font-mono font-medium text-foreground">{detailsTransaction.manual_invoice_number}</span>
+                  ) : (
+                    'Not recorded'
+                  )}
+                </p>
+              </div>
             </div>
           ) : null}
 

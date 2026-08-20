@@ -147,6 +147,13 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
               {formatDate(txn.transaction_date)} at {formatTime(txn.transaction_date)}
               {branch?.name && ` · ${branch.name}`}
             </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {(txn as any).manual_invoice_number ? (
+                <>Paper Invoice/OR: <span className="font-mono font-medium text-foreground">{(txn as any).manual_invoice_number}</span></>
+              ) : (
+                'No paper Invoice/OR recorded'
+              )}
+            </p>
           </div>
           <Badge variant={paymentStatusVariant[txn.payment_status] || 'outline'} className="capitalize">
             {txn.payment_status}

@@ -32,6 +32,7 @@ import {
   Check,
   Loader2,
   Receipt,
+  ClipboardCheck,
   UserPlus,
   Percent,
   Tag,
@@ -44,6 +45,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { PrintDialog } from '@/components/print/print-dialog'
 import type { InvoiceData } from '@/components/print/invoice-template'
+import type { ReceiptData } from '@/lib/utils/usb-thermal-print'
 import {
   Card,
   CardContent,
@@ -160,6 +162,7 @@ export default function POSPage() {
     discountAmount,
     discountPercentage,
     notes,
+    manualInvoiceNumber,
     payments,
     addItem,
     updateItemQuantity,
@@ -178,6 +181,7 @@ export default function POSPage() {
     setDiscountAmount,
     setDiscountPercentage,
     setNotes,
+    setManualInvoiceNumber,
     addPayment,
     removePayment,
     clearPayments,
@@ -279,6 +283,7 @@ export default function POSPage() {
   const { user } = useAuthStore()
   const [isPrintOpen, setIsPrintOpen] = useState(false)
   const [pendingInvoice, setPendingInvoice] = useState<InvoiceData | null>(null)
+  const [pendingReceipt, setPendingReceipt] = useState<ReceiptData | null>(null)
 
   // Set mounted state and initialize date (client-side only to avoid hydration errors)
   useEffect(() => {
@@ -856,6 +861,8 @@ export default function POSPage() {
       const currentOtherFees = otherFees
       const currentOtherFeesNotes = otherFeesNotes
       const currentNotes = notes
+      const currentDeliveryCoords = deliveryCoords
+      const currentDeliveryGeocodedAddress = deliveryGeocodedAddress
 
       const result = await createTransaction.mutateAsync({
         input: {
@@ -875,6 +882,7 @@ export default function POSPage() {
           discount_amount: getTotalDiscount(),
           discount_percentage: discountPercentage,
           notes: notes || null,
+          manual_invoice_number: manualInvoiceNumber.trim() || null,
           transaction_date: createTimestampPH(saleDate),
           referrer_id: referrerId || null,
           commission_rate: referrerId && referrerCommissionRate ? Number(referrerCommissionRate) : null,
@@ -896,7 +904,6 @@ export default function POSPage() {
         userId: user.id,
       })
 
-      toast.success('Transaction completed successfully!')
       setIsCheckoutOpen(false)
 
       // Mark linked online order as fulfilled
@@ -924,9 +931,8 @@ export default function POSPage() {
       setReferrerCommissionRate('')
       setReferrerSearch('')
 
-      // Build A4 invoice from captured values and open the print dialog
+      // Build the internal sales summary (A4) from captured values
       const invoiceData: InvoiceData = {
-        invoice_number: result.transaction_number.replace('TXN', 'INV'),
         transaction_number: result.transaction_number,
         date: result.transaction_date || new Date().toISOString(),
         branch: {
@@ -988,8 +994,55 @@ export default function POSPage() {
         notes: currentNotes || null,
         prepared_by: user?.fullName || user?.email || 'Staff',
       }
+
+      // Build the delivery slip payload — printed on demand only, never
+      // automatically. No pricing beyond the cash-to-collect figure the
+      // printer derives itself; nothing here functions as a receipt.
+      const receiptData: ReceiptData = {
+        transaction_number: result.transaction_number,
+        date: new Date(result.transaction_date || Date.now()).toLocaleDateString('en-PH'),
+        time: new Date(result.transaction_date || Date.now()).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' }),
+        cashier: user?.fullName || user?.email || 'Staff',
+        branch: currentBranch?.name || 'Main Branch',
+        customer: {
+          name: currentCustomer?.name || 'Walk-in Customer',
+          phone: currentDeliveryPhone?.trim() || currentCustomer?.phone || null,
+        },
+        delivery_type: currentDeliveryType,
+        delivery_address: currentDeliveryAddress || null,
+        delivery_geocoded_address: currentDeliveryGeocodedAddress || null,
+        delivery_distance_km: currentDeliveryCoords?.distanceKm ?? null,
+        delivery_road_based: currentDeliveryCoords?.roadBased ?? null,
+        items: currentItems.map((item) => ({
+          name: item.product_name,
+          quantity: item.quantity,
+          uom: item.uom_name,
+          unit_price: item.unit_price,
+          discount: item.discount_amount,
+          total: Math.round(item.quantity * item.unit_price * 100) / 100,
+        })),
+        subtotal: currentSubtotal,
+        discount: currentTotalDiscount,
+        delivery_fee: currentDeliveryFee > 0 ? currentDeliveryFee : undefined,
+        other_fees: currentOtherFees > 0 ? currentOtherFees : undefined,
+        other_fees_notes: currentOtherFeesNotes || null,
+        tax: 0,
+        total: currentTotal,
+        payments: currentPayments.map((p) => ({
+          method: p.payment_method,
+          amount: p.amount,
+          reference: p.reference_number,
+        })),
+        amount_paid: currentTotalPaid,
+        change: Math.max(0, currentTotalPaid - currentTotal),
+        notes: currentNotes || null,
+      }
+
       setPendingInvoice(invoiceData)
-      setIsPrintOpen(true)
+      setPendingReceipt(receiptData)
+      toast.success('Transaction completed successfully!', {
+        action: { label: 'Print', onClick: () => setIsPrintOpen(true) },
+      })
     } catch (error: any) {
       toast.error(error.message || 'Failed to complete transaction')
     }
@@ -1388,7 +1441,7 @@ export default function POSPage() {
               setIsCheckoutOpen(true)
             }}
           >
-            <Receipt className="mr-2 h-5 w-5" />
+            <ClipboardCheck className="mr-2 h-5 w-5" />
             Checkout
           </Button>
         </SheetContent>
@@ -1551,7 +1604,7 @@ export default function POSPage() {
             disabled={items.length === 0}
             onClick={() => setIsCheckoutOpen(true)}
           >
-            <Receipt className="mr-2 h-5 w-5" />
+            <ClipboardCheck className="mr-2 h-5 w-5" />
             Checkout
           </Button>
         </CardFooter>
@@ -1932,6 +1985,17 @@ export default function POSPage() {
               />
             </div>
 
+            {/* Manual Invoice/OR # — cross-reference to the paper booklet, optional */}
+            <div className="space-y-3">
+              <Label className="text-base font-semibold">Invoice/OR # (optional)</Label>
+              <Input
+                placeholder="e.g. 00231 — from paper booklet"
+                value={manualInvoiceNumber}
+                onChange={(e) => setManualInvoiceNumber(e.target.value)}
+                className="h-11 text-base"
+              />
+            </div>
+
             {/* Payment Section */}
             <div className="space-y-4 border-t pt-6">
               <h3 className="font-semibold text-lg">Payment</h3>
@@ -2092,7 +2156,11 @@ export default function POSPage() {
             </div>
           </div>
 
-          <DialogFooter className="gap-3 mt-6 pt-6 border-t">
+          <p className="text-sm text-muted-foreground text-center mt-4">
+            Don&apos;t forget to issue the paper Invoice/OR.
+          </p>
+
+          <DialogFooter className="gap-3 mt-2 pt-6 border-t">
             <Button variant="outline" onClick={() => setIsCheckoutOpen(false)} className="h-12 text-base flex-1">
               Cancel
             </Button>
@@ -2112,13 +2180,13 @@ export default function POSPage() {
         </DialogContent>
       </Dialog>
 
-      {/* A4 Print Dialog — shown after each completed checkout */}
+      {/* Print dialog — opened on demand via the "Print" toast action, never automatically */}
       <PrintDialog
         open={isPrintOpen}
         onOpenChange={setIsPrintOpen}
-        receiptData={null}
+        deliverySlipData={pendingReceipt}
         invoiceData={pendingInvoice}
-        onComplete={() => setPendingInvoice(null)}
+        onComplete={() => { setPendingInvoice(null); setPendingReceipt(null) }}
       />
 
       {/* Unit Selector Dialog */}

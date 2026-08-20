@@ -1,5 +1,4 @@
-export { ReceiptTemplate } from './receipt-template'
-export type { ReceiptData, ReceiptItem, ReceiptPayment } from './receipt-template'
+export type { ReceiptData, ReceiptItem, ReceiptPayment } from '@/lib/utils/usb-thermal-print'
 
 export { InvoiceTemplate } from './invoice-template'
 export type { InvoiceData, InvoiceItem, InvoicePayment } from './invoice-template'

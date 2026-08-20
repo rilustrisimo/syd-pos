@@ -1,7 +1,7 @@
 'use client'
 
 import { useRef, useState, useEffect } from 'react'
-import { Printer, FileText, Receipt, X, Check, Package, RefreshCw, Bluetooth } from 'lucide-react'
+import { Printer, FileText, Truck, X, Check, Package, RefreshCw, Bluetooth, ClipboardCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -21,17 +21,19 @@ import {
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { ReceiptTemplate, ReceiptData } from './receipt-template'
 import { InvoiceTemplate, InvoiceData } from './invoice-template'
 import { PackingSlipTemplate, PackingSlipData } from './packing-slip-template'
 import { printElement } from '@/lib/utils/print'
-import { printThermalTransaction, listCupsPrinters, type CupsPrinter } from '@/lib/utils/usb-thermal-print'
+import { printDeliverySlip, printPickupSlip, listCupsPrinters, type CupsPrinter, type ReceiptData } from '@/lib/utils/usb-thermal-print'
 import { usePrinterStore } from '@/lib/stores/printer'
 
 interface PrintDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  receiptData: ReceiptData | null
+  // Holds the ReceiptData for whichever slip applies to this order — its
+  // own delivery_type decides whether the Delivery Slip or Pickup Slip tab
+  // is shown; the two are mutually exclusive per order.
+  deliverySlipData: ReceiptData | null
   invoiceData: InvoiceData | null
   packingSlipData?: PackingSlipData | null
   onComplete?: () => void
@@ -40,19 +42,20 @@ interface PrintDialogProps {
 export function PrintDialog({
   open,
   onOpenChange,
-  receiptData,
+  deliverySlipData,
   invoiceData,
   packingSlipData,
   onComplete,
 }: PrintDialogProps) {
-  const hasReceiptTab = receiptData !== null && receiptData !== undefined
-  const [activeTab, setActiveTab] = useState<'receipt' | 'invoice' | 'packing'>('receipt')
+  const hasDeliverySlipTab = deliverySlipData !== null && deliverySlipData !== undefined && deliverySlipData.delivery_type === 'delivery'
+  const hasPickupSlipTab   = deliverySlipData !== null && deliverySlipData !== undefined && deliverySlipData.delivery_type === 'pickup'
+  const [activeTab, setActiveTab] = useState<'delivery' | 'pickup' | 'invoice' | 'packing'>('delivery')
 
-  // Always reset to Receipt tab (or invoice if no receipt) when dialog opens
+  // Always reset to the relevant slip tab (or Sales Summary if neither) when dialog opens
   useEffect(() => {
-    if (open) setActiveTab(hasReceiptTab ? 'receipt' : 'invoice')
-  }, [open, hasReceiptTab])
-  const receiptRef = useRef<HTMLDivElement>(null)
+    if (!open) return
+    setActiveTab(hasDeliverySlipTab ? 'delivery' : hasPickupSlipTab ? 'pickup' : 'invoice')
+  }, [open, hasDeliverySlipTab, hasPickupSlipTab])
   const invoiceRef = useRef<HTMLDivElement>(null)
   const packingRef = useRef<HTMLDivElement>(null)
 
@@ -120,14 +123,20 @@ export function PrintDialog({
   // ── Bluetooth print ──────────────────────────────────────────────────────
   const charWidth = paperWidth === '58mm' ? 32 : 48
 
+  // Same "amount to collect" logic as buildDeliverySlipBytes — shown as a
+  // sanity check before printing, now that printing is a deliberate action.
+  const cashToCollect = (deliverySlipData?.payments ?? [])
+    .filter((p) => p.method === 'cash')
+    .reduce((sum, p) => sum + p.amount, 0)
+
   const handleBluetoothPrint = async () => {
-    if (!receiptData || !btPortPath) return
+    if (!deliverySlipData || !btPortPath) return
     setBtPrinting(true)
     setBtError(null)
     try {
-      // printThermalTransaction uses the unified sendBytes routing:
+      // printDeliverySlip uses the unified sendBytes routing:
       // "usb:vid:pid" → electronPrint (node-usb), else → electronBluetooth COM
-      await printThermalTransaction(receiptData, btPortPath, charWidth)
+      await printDeliverySlip(deliverySlipData, btPortPath, charWidth)
     } catch (err: any) {
       setBtError(err?.message || 'Print failed')
     } finally {
@@ -137,10 +146,36 @@ export function PrintDialog({
 
   // ── macOS CUPS print ─────────────────────────────────────────────────────
   const handleCupsPrint = async () => {
-    if (!receiptData) return
+    if (!deliverySlipData) return
     setCupsPrinting(true)
     try {
-      await printThermalTransaction(receiptData, cupsQueueName, charWidth)
+      await printDeliverySlip(deliverySlipData, cupsQueueName, charWidth)
+    } catch (err: any) {
+      console.error('[cups] Print failed:', err)
+    } finally {
+      setCupsPrinting(false)
+    }
+  }
+
+  // ── Pickup slip print (staff-internal, thermal only) ────────────────────
+  const handlePickupBluetoothPrint = async () => {
+    if (!deliverySlipData || !btPortPath) return
+    setBtPrinting(true)
+    setBtError(null)
+    try {
+      await printPickupSlip(deliverySlipData, btPortPath, charWidth)
+    } catch (err: any) {
+      setBtError(err?.message || 'Print failed')
+    } finally {
+      setBtPrinting(false)
+    }
+  }
+
+  const handlePickupCupsPrint = async () => {
+    if (!deliverySlipData) return
+    setCupsPrinting(true)
+    try {
+      await printPickupSlip(deliverySlipData, cupsQueueName, charWidth)
     } catch (err: any) {
       console.error('[cups] Print failed:', err)
     } finally {
@@ -149,14 +184,8 @@ export function PrintDialog({
   }
 
   // ── A4 print helpers ─────────────────────────────────────────────────────
-  const handlePrintReceipt = () => {
-    if (receiptRef.current) printElement(receiptRef.current, { title: `Receipt - ${receiptData?.transaction_number}`, paperSize: 'a4' })
-  }
   const handlePrintInvoice = () => {
-    if (invoiceRef.current) printElement(invoiceRef.current, { title: `Invoice - ${invoiceData?.invoice_number}`, paperSize: 'a4' })
-  }
-  const handlePrintDeliveryReceipt = () => {
-    if (invoiceRef.current) printElement(invoiceRef.current, { title: `Delivery Receipt - ${invoiceData?.invoice_number}`, paperSize: 'a4' })
+    if (invoiceRef.current) printElement(invoiceRef.current, { title: `Sales Summary - ${invoiceData?.transaction_number}`, paperSize: 'a4' })
   }
   const handlePrintPackingSlip = () => {
     if (packingRef.current) printElement(packingRef.current, { title: `Packing Slip - ${packingSlipData?.slip_number}`, paperSize: 'a4' })
@@ -179,26 +208,32 @@ export function PrintDialog({
             Print Document
           </DialogTitle>
           <DialogDescription>
-            Preview and print the receipt, invoice, or packing slip
+            Preview and print the delivery slip, pickup slip, sales summary, or packing slip
           </DialogDescription>
         </DialogHeader>
 
         <Tabs
           value={activeTab}
-          onValueChange={(v) => setActiveTab(v as 'receipt' | 'invoice' | 'packing')}
+          onValueChange={(v) => setActiveTab(v as 'delivery' | 'pickup' | 'invoice' | 'packing')}
           className="flex-1 overflow-hidden flex flex-col"
         >
-          <TabsList className={`grid w-full grid-cols-${[hasReceiptTab, hasInvoice, hasPackingSlip].filter(Boolean).length || 1}`}>
-            {hasReceiptTab && (
-              <TabsTrigger value="receipt" className="flex items-center gap-2">
-                <Receipt className="h-4 w-4" />
-                Receipt
+          <TabsList className={`grid w-full grid-cols-${[hasDeliverySlipTab, hasPickupSlipTab, hasInvoice, hasPackingSlip].filter(Boolean).length || 1}`}>
+            {hasDeliverySlipTab && (
+              <TabsTrigger value="delivery" className="flex items-center gap-2">
+                <Truck className="h-4 w-4" />
+                Delivery Slip
+              </TabsTrigger>
+            )}
+            {hasPickupSlipTab && (
+              <TabsTrigger value="pickup" className="flex items-center gap-2">
+                <ClipboardCheck className="h-4 w-4" />
+                Pickup Slip
               </TabsTrigger>
             )}
             {hasInvoice && (
             <TabsTrigger value="invoice" className="flex items-center gap-2">
               <FileText className="h-4 w-4" />
-              A4 Invoice
+              Sales Summary
             </TabsTrigger>
             )}
             {hasPackingSlip && (
@@ -209,12 +244,29 @@ export function PrintDialog({
             )}
           </TabsList>
 
-          {hasReceiptTab && (
-            <TabsContent value="receipt" className="flex-1 overflow-auto mt-4 flex flex-col">
-              <div className="flex-1 overflow-auto bg-gray-100 rounded-lg p-4 flex justify-center">
-                <div className="bg-white shadow-lg">
-                  {receiptData && <ReceiptTemplate ref={receiptRef} data={receiptData} width={paperWidth} />}
-                </div>
+          {hasDeliverySlipTab && (
+            <TabsContent value="delivery" className="flex-1 overflow-auto mt-4 flex flex-col">
+              {/* Small sanity-check preview — no full receipt template anymore,
+                  this is a logistics document (recipient + amount to collect),
+                  not a priced document to review line by line. */}
+              <div className="rounded-lg border bg-muted/30 p-4 space-y-1.5 text-sm">
+                <p className="font-medium">{deliverySlipData?.customer.name}</p>
+                {deliverySlipData?.customer.phone && (
+                  <p className="text-muted-foreground">{deliverySlipData.customer.phone}</p>
+                )}
+                {deliverySlipData?.delivery_address && (
+                  <p className="text-muted-foreground">{deliverySlipData.delivery_address}</p>
+                )}
+                <p className="text-xs text-muted-foreground pt-1">
+                  {(deliverySlipData?.items.length ?? 0)} item{(deliverySlipData?.items.length ?? 0) === 1 ? '' : 's'}
+                </p>
+                {cashToCollect > 0 ? (
+                  <p className="font-semibold pt-1">
+                    Amount to collect: {new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: 2 }).format(cashToCollect)}
+                  </p>
+                ) : (
+                  <p className="text-muted-foreground pt-1">No cash to collect on delivery</p>
+                )}
               </div>
 
               {/* ── Thermal printer section ── */}
@@ -334,12 +386,142 @@ export function PrintDialog({
                   </>
                 )}
               </div>
+            </TabsContent>
+          )}
 
-              <div className="mt-3 flex justify-end">
-                <Button variant="outline" onClick={handlePrintReceipt}>
-                  <Printer className="mr-2 h-4 w-4" />
-                  Print A4 Receipt
-                </Button>
+          {hasPickupSlipTab && (
+            <TabsContent value="pickup" className="flex-1 overflow-auto mt-4 flex flex-col">
+              {/* Staff-internal only — never shown to or handed to the customer.
+                  This is the copy staff use to pull stock and hand-write the
+                  real Invoice/OR into the BIR-registered booklet. */}
+              <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+                <p className="font-medium">Staff use only — not for the customer.</p>
+                <p className="text-xs mt-0.5">Use this to pull stock and copy details into the paper Invoice/OR.</p>
+              </div>
+              <div className="rounded-lg border bg-muted/30 p-4 space-y-1.5 text-sm mt-3">
+                <p className="font-medium">{deliverySlipData?.customer.name}</p>
+                <p className="text-xs text-muted-foreground pt-1">
+                  {(deliverySlipData?.items.length ?? 0)} item{(deliverySlipData?.items.length ?? 0) === 1 ? '' : 's'}
+                </p>
+                <p className="font-semibold pt-1">
+                  Total: {new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: 2 }).format(deliverySlipData?.total ?? 0)}
+                </p>
+              </div>
+
+              {/* ── Thermal printer section (same printer selection as the delivery slip) ── */}
+              <div className="mt-4 border rounded-lg p-3 space-y-2 bg-muted/30">
+
+                {(hasBluetooth || isElectron) ? (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm font-medium flex items-center gap-1.5">
+                        <Bluetooth className="h-3.5 w-3.5" />
+                        Thermal Printer
+                      </Label>
+                      <Button variant="ghost" size="sm" onClick={loadPrinters} disabled={loadingPorts}>
+                        <RefreshCw className={`h-3.5 w-3.5 ${loadingPorts ? 'animate-spin' : ''}`} />
+                      </Button>
+                    </div>
+
+                    <Select value={btPortPath} onValueChange={setBtPortPath}>
+                      <SelectTrigger className="h-8 text-sm">
+                        <SelectValue placeholder={loadingPorts ? 'Scanning…' : 'Select printer'} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {serialPorts.length === 0 && usbPrinters.length === 0 && !loadingPorts && (
+                          <SelectItem value="_none" disabled>No printers found — pair Bluetooth or connect USB printer</SelectItem>
+                        )}
+                        {serialPorts.length > 0 && (
+                          <>
+                            <div className="px-2 py-1 text-xs text-muted-foreground font-medium">Bluetooth / COM</div>
+                            {serialPorts.map((p) => (
+                              <SelectItem key={p.path} value={p.path}>
+                                {p.path} {p.displayName !== p.path ? `— ${p.displayName}` : ''}
+                              </SelectItem>
+                            ))}
+                          </>
+                        )}
+                        {usbPrinters.length > 0 && (
+                          <>
+                            <div className="px-2 py-1 text-xs text-muted-foreground font-medium">USB</div>
+                            {usbPrinters.map((u) => (
+                              <SelectItem key={`usb:${u.vendorId}:${u.productId}`} value={`usb:${u.vendorId}:${u.productId}`}>
+                                {u.label}
+                              </SelectItem>
+                            ))}
+                          </>
+                        )}
+                      </SelectContent>
+                    </Select>
+
+                    {/* Paper width */}
+                    <div className="flex gap-2">
+                      {(['58mm', '80mm'] as const).map((w) => (
+                        <Button
+                          key={w}
+                          variant={paperWidth === w ? 'default' : 'outline'}
+                          size="sm"
+                          className="flex-1 h-7 text-xs"
+                          onClick={() => setPaperWidth(w)}
+                        >
+                          {w}
+                        </Button>
+                      ))}
+                    </div>
+
+                    {btError && (
+                      <p className="text-xs text-destructive">{btError}</p>
+                    )}
+
+                    <Button
+                      className="w-full"
+                      size="sm"
+                      onClick={handlePickupBluetoothPrint}
+                      disabled={btPrinting || !btPortPath || btPortPath === '_none'}
+                    >
+                      <Printer className="mr-2 h-3.5 w-3.5" />
+                      {btPrinting ? 'Printing…' : 'Print Pickup Slip'}
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm font-medium">Thermal Printer (CUPS)</Label>
+                    </div>
+
+                    {cupsPrinters.length > 0 ? (
+                      <Select value={cupsQueueName} onValueChange={setCupsQueueName}>
+                        <SelectTrigger className="h-8 text-sm">
+                          <SelectValue placeholder="Select CUPS printer" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {cupsPrinters.map((p) => (
+                            <SelectItem key={p.name} value={p.name}>
+                              {p.name} <span className="text-muted-foreground ml-1">({p.status})</span>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Input
+                        className="h-8 text-sm"
+                        placeholder="CUPS queue name (e.g. STMicroelectronics_POS80…)"
+                        value={cupsQueueName}
+                        onChange={(e) => setCupsQueueName(e.target.value)}
+                      />
+                    )}
+
+                    <Button
+                      className="w-full"
+                      size="sm"
+                      onClick={handlePickupCupsPrint}
+                      disabled={cupsPrinting || !cupsQueueName}
+                    >
+                      <Printer className="mr-2 h-3.5 w-3.5" />
+                      {cupsPrinting ? 'Printing…' : 'Print Pickup Slip'}
+                    </Button>
+                  </>
+                )}
               </div>
             </TabsContent>
           )}
@@ -351,15 +533,9 @@ export function PrintDialog({
               </div>
             </div>
             <div className="mt-4 flex flex-wrap gap-2 justify-end">
-              {invoiceData?.delivery_type === 'delivery' && (
-                <Button variant="outline" onClick={handlePrintDeliveryReceipt}>
-                  <Printer className="mr-2 h-4 w-4" />
-                  Print Delivery Receipt
-                </Button>
-              )}
               <Button onClick={handlePrintInvoice}>
                 <Printer className="mr-2 h-4 w-4" />
-                Print Invoice
+                Print Sales Summary
               </Button>
             </div>
           </TabsContent>

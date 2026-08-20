@@ -1,14 +1,69 @@
 /**
- * Thermal receipt printing — ESC/POS builder + transport layer.
+ * Thermal document printing — ESC/POS builder + transport layer.
  *
- * The ESC/POS format exactly mirrors syd-pos-mobile/lib/escpos-mobile.ts.
+ * The POS no longer prints a customer receipt from here (that path — and its
+ * "This serves as your official receipt." framing — was removed as part of
+ * BIR compliance remediation; see PLAN notes / commit history). This file
+ * builds and sends two non-tax documents instead, mutually exclusive per
+ * order:
+ *  - Delivery slip (`delivery_type === 'delivery'`): logistics doc handed to
+ *    the rider/customer, no pricing, three-signature chain.
+ *  - Pickup slip (`delivery_type === 'pickup'`): staff-internal only, never
+ *    shown to the customer — the source staff copy from when hand-writing
+ *    the real paper Invoice/OR into the BIR-registered booklet.
+ *
  * Transport priority (sendBytes):
  *  1. Electron Bluetooth IPC (window.electronBluetooth) — COM port / SPP
  *  2. Electron USB IPC (window.electronPrint) — node-usb, queue "usb:vid:pid"
  *  3. CUPS API route (/api/print) — macOS only
  */
 
-import type { ReceiptData } from '@/components/print/receipt-template'
+export interface ReceiptItem {
+  name: string
+  quantity: number
+  unit_price: number
+  uom: string
+  discount: number
+  total: number
+}
+
+export interface ReceiptPayment {
+  method: string
+  amount: number
+  reference?: string | null
+}
+
+// Named for the payload shape, not the (now-removed) printed receipt — this
+// is the data a delivery slip is built from (plus fields no longer used by
+// any printed output, kept so callers don't need to change their shape).
+export interface ReceiptData {
+  transaction_number: string
+  date: string
+  time: string
+  cashier: string
+  branch: string
+  customer: {
+    name: string
+    phone?: string | null
+  }
+  delivery_type: 'pickup' | 'delivery'
+  delivery_address?: string | null
+  delivery_geocoded_address?: string | null
+  delivery_distance_km?: number | null
+  delivery_road_based?: boolean | null
+  items: ReceiptItem[]
+  subtotal: number
+  discount: number
+  delivery_fee?: number
+  other_fees?: number
+  other_fees_notes?: string | null
+  tax: number
+  total: number
+  payments: ReceiptPayment[]
+  amount_paid: number
+  change: number
+  notes?: string | null
+}
 
 // ---------------------------------------------------------------------------
 // ESC/POS byte constants
@@ -29,6 +84,26 @@ const CMD = {
   NORMAL_SIZE:   [GS,  0x21, 0x00],
   FEED:  (n: number) => [ESC, 0x64, n],
   CUT:           [GS,  0x56, 0x42, 0x00], // partial cut
+}
+
+/** "PLEASE RECOUNT AND DOUBLE CHECK ITEMS" banner, printed near the top and
+ * bottom of the delivery slip so it's seen both when the order is picked up
+ * and again right before it leaves the store. */
+function pushRecountBanner(
+  bytes: number[],
+  cmd: (...cmds: number[][]) => void,
+  line: (str: string) => void,
+  width: number,
+): void {
+  const stars = '*'.repeat(width)
+  cmd(CMD.CENTER)
+  line(stars)
+  cmd(CMD.BOLD_ON)
+  line('PLEASE RECOUNT AND')
+  line('DOUBLE-CHECK ITEMS')
+  cmd(CMD.BOLD_OFF)
+  line(stars)
+  cmd(CMD.LEFT)
 }
 
 // ---------------------------------------------------------------------------
@@ -80,6 +155,52 @@ function lr(left: string, right: string, width: number): string {
 }
 
 // ---------------------------------------------------------------------------
+// Plain-ASCII "form box" helpers — deliberately not a receipt look. Uses
+// +/-/| only (safe on every ESC/POS printer, no charset risk) to frame the
+// "not a receipt" header/footer and the totals block so the strongest
+// receipt-coded visual cues (branded masthead, underlined grand total) never
+// appear — this should read as an internal reference sheet at a glance, not
+// a till receipt.
+// ---------------------------------------------------------------------------
+
+function boxTop(width: number): string { return '+' + '-'.repeat(width - 2) + '+' }
+function boxBottom(width: number): string { return boxTop(width) }
+
+function boxCenter(text: string, width: number): string {
+  const inner = width - 2
+  const t = text.length > inner ? text.substring(0, inner) : text
+  const pad = inner - t.length
+  const left = Math.floor(pad / 2)
+  return '|' + ' '.repeat(left) + t + ' '.repeat(pad - left) + '|'
+}
+
+/** Mirrors lr()'s wrap-to-second-line behavior (not truncation) when the
+ * amount doesn't fit next to its label — matters on narrow 58mm paper. */
+function boxLR(left: string, right: string, width: number): string {
+  const inner = width - 2
+  const gap = inner - left.length - right.length
+  if (gap < 1) {
+    const firstLine  = '|' + left.substring(0, inner).padEnd(inner) + '|'
+    const secondLine = '|' + right.padStart(inner) + '|'
+    return firstLine + '\n' + secondLine
+  }
+  return '|' + left + ' '.repeat(gap) + right + '|'
+}
+
+/** Bold, bracketed section label — "[ ITEMS ]" — instead of a bare divider
+ * line, so the layout reads as a labeled worksheet rather than receipt
+ * sections separated by plain rules. */
+function sectionHeader(
+  cmd: (...cmds: number[][]) => void,
+  line: (str: string) => void,
+  label: string,
+): void {
+  cmd(CMD.BOLD_ON)
+  line(`[ ${label} ]`)
+  cmd(CMD.BOLD_OFF)
+}
+
+// ---------------------------------------------------------------------------
 // Store constants (matches escpos-mobile.ts)
 // ---------------------------------------------------------------------------
 
@@ -87,162 +208,15 @@ const STORE_ADDRESS  = 'Sitio Landing, Talakag, Bukidnon'
 const STORE_CONTACTS = '09164527225 / 09274746352'
 
 const PAYMENT_LABELS: Record<string, string> = {
-  cash:          'Cash',
-  gcash:         'GCash',
-  maya:          'Maya',
+  cash: 'Cash',
+  gcash: 'GCash',
+  maya: 'Maya',
   bank_transfer: 'Bank Transfer',
-  credit:        'Credit/AR',
+  credit: 'Credit (Charge)',
+  government_withholding: 'Gov\'t Withholding',
 }
-
-// ---------------------------------------------------------------------------
-// ESC/POS receipt builder — identical format to escpos-mobile.ts
-// ---------------------------------------------------------------------------
-
-/**
- * @param data   Receipt data
- * @param width  Character width: 32 for 58mm paper, 48 for 80mm paper (default)
- */
-export function buildReceiptBytes(data: ReceiptData, width = 48): Uint8Array {
-  const bytes: number[] = []
-  const divider     = '='.repeat(width)
-  const thinDivider = '-'.repeat(width)
-
-  function cmd(...cmds: number[][]): void {
-    for (const c of cmds) bytes.push(...c)
-  }
-  function text(str: string): void { bytes.push(...strBytes(str)) }
-  function line(str: string): void { text(str); bytes.push(LF) }
-
-  // ── Init ──────────────────────────────────────────────────────────────────
-  cmd(CMD.INIT, CMD.CHARSET_PC437)
-
-  // ── Header ────────────────────────────────────────────────────────────────
-  cmd(CMD.CENTER, CMD.BOLD_ON, CMD.DOUBLE_SIZE)
-  line('SYD CONSTRUCTION')
-  line('SUPPLIES TRADING')
-  cmd(CMD.NORMAL_SIZE, CMD.BOLD_OFF)
-  line('Construction Materials & Hardware')
-  line(STORE_ADDRESS)
-  line(STORE_CONTACTS)
-
-  // ── Divider ───────────────────────────────────────────────────────────────
-  cmd(CMD.LEFT)
-  line(divider)
-
-  // ── Transaction info ──────────────────────────────────────────────────────
-  line(lr('TXN#:',     data.transaction_number,       width))
-  line(lr('Date:',     data.date,                     width))
-  line(lr('Time:',     data.time,                     width))
-  line(lr('Cashier:',  data.cashier,                  width))
-  line(lr('Customer:', data.customer.name,             width))
-  if (data.customer.phone) {
-    line(lr('Phone:', data.customer.phone, width))
-  }
-  line(lr('Type:', data.delivery_type.toUpperCase(), width))
-  if (data.delivery_type === 'delivery') {
-    if (data.delivery_address) {
-      line('Deliver to:')
-      line('  ' + data.delivery_address)
-    }
-    if (data.delivery_geocoded_address) {
-      line('  Near: ' + data.delivery_geocoded_address.substring(0, width - 8))
-    }
-    if (data.delivery_distance_km != null) {
-      const routeLabel = data.delivery_road_based ? 'road' : 'est.'
-      line(lr('Distance:', data.delivery_distance_km + ' km (' + routeLabel + ')', width))
-    }
-  }
-
-  line(thinDivider)
-
-  // ── Items header ──────────────────────────────────────────────────────────
-  cmd(CMD.BOLD_ON)
-  line(lr('ITEM', 'AMOUNT', width))
-  cmd(CMD.BOLD_OFF)
-
-  // ── Items ─────────────────────────────────────────────────────────────────
-  for (const item of data.items) {
-    const name = item.name.length > width ? item.name.substring(0, width) : item.name
-    line(name)
-    const qty = `  ${item.quantity} ${item.uom} x ${fmt(item.unit_price)}`
-    line(lr(qty, fmt(item.total), width))
-    if (item.discount > 0) {
-      line(lr('  Discount', '-' + fmt(item.discount), width))
-    }
-  }
-
-  line(thinDivider)
-
-  // ── Totals ────────────────────────────────────────────────────────────────
-  line(lr('Subtotal:', fmt(data.subtotal), width))
-  if (data.discount > 0) {
-    line(lr('Discount:', '-' + fmt(data.discount), width))
-  }
-  if ((data.delivery_fee ?? 0) > 0) {
-    line(lr('Delivery Fee:', fmt(data.delivery_fee!), width))
-  }
-  if ((data.other_fees ?? 0) > 0) {
-    line(lr('Other Fees:', fmt(data.other_fees!), width))
-    if (data.other_fees_notes) {
-      line('  ' + data.other_fees_notes.substring(0, width - 2))
-    }
-  }
-  if (data.tax > 0) {
-    line(lr('Tax:', fmt(data.tax), width))
-  }
-  cmd(CMD.BOLD_ON)
-  line(lr('TOTAL:', 'PHP ' + fmt(data.total), width))
-  cmd(CMD.BOLD_OFF)
-
-  line(thinDivider)
-
-  // ── Payments ──────────────────────────────────────────────────────────────
-  cmd(CMD.BOLD_ON)
-  line('PAYMENT(S):')
-  cmd(CMD.BOLD_OFF)
-  for (const payment of data.payments) {
-    const label = PAYMENT_LABELS[payment.method] ?? payment.method
-    const ref   = payment.reference ? ` #${payment.reference}` : ''
-    line(lr(`  ${label}${ref}`, fmt(payment.amount), width))
-  }
-  line(lr('Amount Paid:', fmt(data.amount_paid), width))
-  if (data.change > 0) {
-    cmd(CMD.BOLD_ON)
-    line(lr('Change:', 'PHP ' + fmt(data.change), width))
-    cmd(CMD.BOLD_OFF)
-  }
-
-  // ── Notes ─────────────────────────────────────────────────────────────────
-  if (data.notes) {
-    line(thinDivider)
-    cmd(CMD.BOLD_ON)
-    line('Notes:')
-    cmd(CMD.BOLD_OFF)
-    line('  ' + data.notes)
-  }
-
-  line(divider)
-
-  // ── Footer ────────────────────────────────────────────────────────────────
-  cmd(CMD.CENTER, CMD.BOLD_ON)
-  line('Thank you for your purchase!')
-  cmd(CMD.BOLD_OFF)
-  line('Please keep this receipt.')
-  bytes.push(LF)
-  line('Returns due to change of mind')
-  line('will NOT be accepted.')
-  line('Items may be exchanged only')
-  line('if in good condition.')
-  bytes.push(LF)
-  line('This serves as your official receipt.')
-  bytes.push(LF)
-  line('--- END OF RECEIPT ---')
-
-  // Feed + cut
-  cmd(CMD.FEED(4))
-  cmd(CMD.CUT)
-
-  return new Uint8Array(bytes)
+function paymentLabel(method: string): string {
+  return PAYMENT_LABELS[method] || method.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 }
 
 // ---------------------------------------------------------------------------
@@ -265,10 +239,6 @@ function toBase64(bytes: Uint8Array): string {
   let binary = ''
   for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
   return btoa(binary)
-}
-
-function wait(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 /**
@@ -331,7 +301,6 @@ export async function connectBtPrinter(portPath: string): Promise<void> {
 
 export function buildDeliverySlipBytes(data: ReceiptData, width = 48): Uint8Array {
   const bytes: number[] = []
-  const divider     = '='.repeat(width)
   const thinDivider = '-'.repeat(width)
 
   function cmd(...cmds: number[][]): void {
@@ -340,30 +309,46 @@ export function buildDeliverySlipBytes(data: ReceiptData, width = 48): Uint8Arra
   function text(str: string): void { bytes.push(...strBytes(str)) }
   function line(str: string): void { text(str); bytes.push(LF) }
 
+  const blank = (label: string) => {
+    const fill = '_'.repeat(width - label.length - 1)
+    line(`${label} ${fill}`)
+    bytes.push(LF)
+  }
+
   cmd(CMD.INIT, CMD.CHARSET_PC437)
 
-  // ── Header ────────────────────────────────────────────────────────────────
-  cmd(CMD.CENTER, CMD.BOLD_ON, CMD.DOUBLE_SIZE)
-  line('DELIVERY SLIP')
-  cmd(CMD.NORMAL_SIZE, CMD.BOLD_OFF)
-  line('SYD CONSTRUCTION SUPPLIES TRADING')
-  line('Construction Materials & Hardware')
+  // ── Header — leads with the "not a receipt" framing in a plain form box,
+  // not a branded store masthead. Store name/contacts follow underneath in
+  // small, plain text — de-emphasized on purpose so the first thing anyone
+  // sees is "this is a reference sheet," not the store's name in big bold
+  // type the way a till receipt would open. ─────────────────────────────────
+  cmd(CMD.CENTER)
+  line(boxTop(width))
+  cmd(CMD.BOLD_ON)
+  line(boxCenter('STAFF / DELIVERY REFERENCE', width))
+  line(boxCenter('NOT AN OFFICIAL RECEIPT', width))
+  cmd(CMD.BOLD_OFF)
+  line(boxBottom(width))
+  line('SYD Construction Supplies Trading')
   line(STORE_ADDRESS)
   line(STORE_CONTACTS)
   cmd(CMD.LEFT)
-  line(divider)
+  line(thinDivider)
+
+  // ── Recount reminder (top) ──────────────────────────────────────────────
+  pushRecountBanner(bytes, cmd, line, width)
+  line(thinDivider)
 
   // ── Transaction reference ─────────────────────────────────────────────────
+  sectionHeader(cmd, line, 'ORDER INFO')
   line(lr('TXN#:', data.transaction_number, width))
   line(lr('Date:', data.date, width))
   line(lr('Time:', data.time, width))
-  line(lr('Prepared by:', data.cashier, width))
+  line(lr('Cashier:', data.cashier, width))
   line(thinDivider)
 
   // ── Recipient info ────────────────────────────────────────────────────────
-  cmd(CMD.BOLD_ON)
-  line('DELIVER TO:')
-  cmd(CMD.BOLD_OFF)
+  sectionHeader(cmd, line, 'DELIVER TO')
   cmd(CMD.DOUBLE_SIZE)
   line(data.customer.name.substring(0, width))
   cmd(CMD.NORMAL_SIZE)
@@ -372,14 +357,14 @@ export function buildDeliverySlipBytes(data: ReceiptData, width = 48): Uint8Arra
   }
   if (data.delivery_address || data.delivery_geocoded_address) {
     cmd(CMD.BOLD_ON)
-    line('Address:')
-    cmd(CMD.BOLD_OFF)
+    line('ADDRESS:')
     if (data.delivery_address) {
       const addr = data.delivery_address
       for (let i = 0; i < addr.length; i += width - 2) {
         line('  ' + addr.substring(i, i + width - 2))
       }
     }
+    cmd(CMD.BOLD_OFF)
     if (data.delivery_geocoded_address) {
       line('  Near: ' + data.delivery_geocoded_address.substring(0, width - 8))
     }
@@ -392,36 +377,86 @@ export function buildDeliverySlipBytes(data: ReceiptData, width = 48): Uint8Arra
   line(thinDivider)
 
   // ── Items ─────────────────────────────────────────────────────────────────
-  cmd(CMD.BOLD_ON)
-  line(lr('ITEM', 'QTY', width))
-  cmd(CMD.BOLD_OFF)
+  // No pricing shown here — this stays a non-tax logistics document. Each
+  // item gets a checkbox to pen-mark as it's loaded, and its own bold,
+  // double-size QTY line so the quantity can't be misread at a glance
+  // (the single highest-value legibility fix for preventing inventory
+  // discrepancies at dispatch/delivery).
+  sectionHeader(cmd, line, 'ITEMS -- CHECK OFF AS LOADED')
   for (const item of data.items) {
-    const maxNameLen = width - 12
+    const maxNameLen = width - 4
     const name = item.name.length > maxNameLen ? item.name.substring(0, maxNameLen - 1) + '...' : item.name
-    line(lr(name, `${item.quantity} ${item.uom}`, width))
+    line('[ ] ' + name)
+    cmd(CMD.CENTER, CMD.BOLD_ON, CMD.DOUBLE_SIZE)
+    line(`QTY: ${item.quantity} ${item.uom}`)
+    cmd(CMD.NORMAL_SIZE, CMD.BOLD_OFF, CMD.LEFT)
   }
   line(thinDivider)
 
-  // ── Totals ────────────────────────────────────────────────────────────────
-  if ((data.delivery_fee ?? 0) > 0) {
-    line(lr('Delivery Fee:', 'PHP ' + fmt(data.delivery_fee!), width))
+  // ── Amount to collect — boxed, not a receipt-style bold total line. The
+  // only figure shown is what the rider should collect on delivery (recorded
+  // as a cash payment at dispatch time), and only when there's actually a
+  // cash payment to collect. ─────────────────────────────────────────────
+  const cashAmount = data.payments
+    .filter(p => p.method === 'cash')
+    .reduce((sum, p) => sum + p.amount, 0)
+  if (cashAmount > 0) {
+    line(boxTop(width))
+    line(boxLR('AMOUNT TO COLLECT:', 'PHP ' + fmt(cashAmount), width))
+    line(boxBottom(width))
+    line(thinDivider)
   }
-  if ((data.other_fees ?? 0) > 0) {
-    line(lr('Other Fees:', 'PHP ' + fmt(data.other_fees!), width))
-    if (data.other_fees_notes) {
-      line('  ' + data.other_fees_notes.substring(0, width - 2))
-    }
-  }
-  cmd(CMD.BOLD_ON)
-  line(lr('TOTAL AMOUNT:', 'PHP ' + fmt(data.total), width))
-  cmd(CMD.BOLD_OFF)
-  line(divider)
 
-  // ── Acknowledgement ───────────────────────────────────────────────────────
-  cmd(CMD.CENTER, CMD.BOLD_ON)
-  line('RECEIVED IN GOOD CONDITION')
-  cmd(CMD.BOLD_OFF, CMD.LEFT)
+  // ── Signatures — grouped: staff verification, then customer ────────────────
+  sectionHeader(cmd, line, 'STAFF ONLY')
+  blank('Prepared by:')
+  blank('Checked by: ')
+  line(thinDivider)
+
+  sectionHeader(cmd, line, 'CUSTOMER')
+  line('NOT AN OFFICIAL RECEIPT')
+  line('Your Invoice/OR is provided separately.')
   bytes.push(LF)
+  blank('Received by:')
+  blank('Date:        ')
+
+  line(thinDivider)
+
+  // ── Recount reminder (bottom) ───────────────────────────────────────────
+  pushRecountBanner(bytes, cmd, line, width)
+
+  // ── Footer — bookends the header box so "not a receipt" is the last thing
+  // seen too, not a receipt-style "thank you" / "end of transaction" line.
+  cmd(CMD.CENTER)
+  line(boxTop(width))
+  cmd(CMD.BOLD_ON)
+  line(boxCenter('END OF REFERENCE SHEET', width))
+  line(boxCenter('NOT A RECEIPT', width))
+  cmd(CMD.BOLD_OFF)
+  line(boxBottom(width))
+
+  cmd(CMD.FEED(4))
+  cmd(CMD.CUT)
+
+  return new Uint8Array(bytes)
+}
+
+// ---------------------------------------------------------------------------
+// Pickup slip builder — staff-internal only, never shown to the customer.
+// Source document staff copy from when hand-writing the real paper
+// Invoice/OR into the BIR-registered booklet. Carries real pricing (unlike
+// the delivery slip) since that's exactly what it's used to transcribe.
+// ---------------------------------------------------------------------------
+
+export function buildPickupSlipBytes(data: ReceiptData, width = 48): Uint8Array {
+  const bytes: number[] = []
+  const thinDivider = '-'.repeat(width)
+
+  function cmd(...cmds: number[][]): void {
+    for (const c of cmds) bytes.push(...c)
+  }
+  function text(str: string): void { bytes.push(...strBytes(str)) }
+  function line(str: string): void { text(str); bytes.push(LF) }
 
   const blank = (label: string) => {
     const fill = '_'.repeat(width - label.length - 1)
@@ -429,13 +464,92 @@ export function buildDeliverySlipBytes(data: ReceiptData, width = 48): Uint8Arra
     bytes.push(LF)
   }
 
-  blank('Print Name:')
-  blank('Signature: ')
-  blank('Date:      ')
-  blank('Remarks:   ')
+  cmd(CMD.INIT, CMD.CHARSET_PC437)
 
+  // ── Header — same "not a receipt" framing as the delivery slip: a plain
+  // form box leads, store branding is small/plain text underneath, not a
+  // big bold masthead. ───────────────────────────────────────────────────
   cmd(CMD.CENTER)
-  line('--- END OF DELIVERY SLIP ---')
+  line(boxTop(width))
+  cmd(CMD.BOLD_ON)
+  line(boxCenter('STAFF REFERENCE', width))
+  line(boxCenter('NOT AN OFFICIAL RECEIPT', width))
+  cmd(CMD.BOLD_OFF)
+  line(boxBottom(width))
+  line('SYD Construction Supplies Trading')
+  line(STORE_ADDRESS)
+  line(STORE_CONTACTS)
+  cmd(CMD.LEFT)
+  line('Internal use only -- do not tell or imply')
+  line('to the customer that this replaces their')
+  line('Invoice/OR.')
+  line(thinDivider)
+
+  // ── Transaction reference ───────────────────────────────────────────────
+  sectionHeader(cmd, line, 'ORDER INFO')
+  line(lr('TXN#:', data.transaction_number, width))
+  line(lr('Date:', data.date, width))
+  line(lr('Time:', data.time, width))
+  line(lr('Customer:', data.customer.name, width))
+  if (data.customer.phone) {
+    line(lr('Tel:', data.customer.phone, width))
+  }
+  line(thinDivider)
+
+  // ── Items — full pricing detail + checkbox, this is the staff's copy
+  // source for hand-writing the real Invoice/OR. Quantity + UOM get their
+  // own bold, double-size line — same legibility treatment as the delivery
+  // slip — since a misread quantity here is exactly what causes inventory
+  // discrepancies later.
+  sectionHeader(cmd, line, 'ITEMS -- CHECK OFF AS PULLED')
+  for (const item of data.items) {
+    const maxNameLen = width - 4
+    const name = item.name.length > maxNameLen ? item.name.substring(0, maxNameLen - 1) + '...' : item.name
+    line('[ ] ' + name)
+    cmd(CMD.CENTER, CMD.BOLD_ON, CMD.DOUBLE_SIZE)
+    line(`QTY: ${item.quantity} ${item.uom}`)
+    cmd(CMD.NORMAL_SIZE, CMD.BOLD_OFF, CMD.LEFT)
+    const priceLine = `  ${item.quantity} ${item.uom} x ${fmt(item.unit_price)}`
+    line(lr(priceLine, fmt(item.total), width))
+  }
+  line(thinDivider)
+
+  // ── Totals — boxed and labeled "for reference only" instead of a
+  // receipt-style underlined grand total. ───────────────────────────────
+  line(boxTop(width))
+  line(boxCenter('FOR INTERNAL REFERENCE ONLY', width))
+  line(boxLR('Subtotal:', 'PHP ' + fmt(data.subtotal), width))
+  if (data.discount > 0) {
+    line(boxLR('Discount:', '-PHP ' + fmt(data.discount), width))
+  }
+  line(boxLR('TOTAL:', 'PHP ' + fmt(data.total), width))
+  line(boxBottom(width))
+  line(thinDivider)
+
+  // ── Payment ───────────────────────────────────────────────────────────────
+  sectionHeader(cmd, line, 'PAYMENT')
+  for (const payment of data.payments) {
+    line(lr(paymentLabel(payment.method) + ':', 'PHP ' + fmt(payment.amount), width))
+  }
+  line(lr('Amount Paid:', 'PHP ' + fmt(data.amount_paid), width))
+  if (data.change > 0) {
+    line(lr('Change:', 'PHP ' + fmt(data.change), width))
+  }
+  line(thinDivider)
+
+  // ── Prepared-by ───────────────────────────────────────────────────────────
+  sectionHeader(cmd, line, 'SIGN-OFF')
+  blank('Prepared by:')
+  blank('Date:        ')
+
+  // ── Footer — bookends the header box, same as the delivery slip. ────────
+  cmd(CMD.CENTER)
+  line(boxTop(width))
+  cmd(CMD.BOLD_ON)
+  line(boxCenter('END OF REFERENCE SHEET', width))
+  line(boxCenter('NOT A RECEIPT', width))
+  cmd(CMD.BOLD_OFF)
+  line(boxBottom(width))
 
   cmd(CMD.FEED(4))
   cmd(CMD.CUT)
@@ -448,34 +562,21 @@ export function buildDeliverySlipBytes(data: ReceiptData, width = 48): Uint8Arra
 // ---------------------------------------------------------------------------
 
 /**
- * Print receipt, then — for delivery transactions — also print the delivery
- * slip. This is the correct function to call after a completed transaction.
+ * Print the delivery slip for a delivery transaction. No-op for pickup
+ * orders — see printPickupSlip for those.
  */
-export async function printThermalTransaction(data: ReceiptData, printerQueue: string, width = 48): Promise<void> {
-  await sendBytes(buildReceiptBytes(data, width), printerQueue)
-  if (data.delivery_type === 'delivery') {
-    const slipBytes = buildDeliverySlipBytes(data, width)
-    const isDesktopBluetooth =
-      typeof window !== 'undefined' &&
-      !!window.electronBluetooth &&
-      !printerQueue.startsWith('usb:')
+export async function printDeliverySlip(data: ReceiptData, printerQueue: string, width = 48): Promise<void> {
+  if (data.delivery_type !== 'delivery') return
+  await sendBytes(buildDeliverySlipBytes(data, width), printerQueue)
+}
 
-    if (!isDesktopBluetooth) {
-      await sendBytes(slipBytes, printerQueue)
-      return
-    }
-
-    // Desktop BT opens/closes COM per job; give Windows a short settle time
-    // before sending the second document (delivery slip).
-    await wait(250)
-    try {
-      await sendBytes(slipBytes, printerQueue)
-    } catch {
-      // One retry handles transient "port busy/not ready" between back-to-back jobs.
-      await wait(700)
-      await sendBytes(slipBytes, printerQueue)
-    }
-  }
+/**
+ * Print the staff-internal pickup slip. No-op for delivery orders (they get
+ * a delivery slip instead — the two are mutually exclusive per order).
+ */
+export async function printPickupSlip(data: ReceiptData, printerQueue: string, width = 48): Promise<void> {
+  if (data.delivery_type !== 'pickup') return
+  await sendBytes(buildPickupSlipBytes(data, width), printerQueue)
 }
 
 export interface CupsPrinter {
@@ -499,7 +600,7 @@ export async function listCupsPrinters(): Promise<CupsPrinter[]> {
 // ---------------------------------------------------------------------------
 
 export interface DiscoveredPrinter {
-  value: string          // the queue/path to pass to sendBytes / printThermalTransaction
+  value: string          // the queue/path to pass to sendBytes / printDeliverySlip
   label: string          // human-readable display name
   type: 'bluetooth' | 'usb' | 'cups'
 }

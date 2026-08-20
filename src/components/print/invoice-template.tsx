@@ -20,7 +20,6 @@ interface InvoicePayment {
 }
 
 interface InvoiceData {
-  invoice_number: string
   transaction_number: string
   date: string
   due_date?: string | null
@@ -53,7 +52,6 @@ interface InvoiceData {
 
 interface InvoiceTemplateProps {
   data: InvoiceData
-  showPrices?: boolean
 }
 
 const paymentMethodLabels: Record<string, string> = {
@@ -82,7 +80,7 @@ function formatDate(dateStr: string): string {
 }
 
 export const InvoiceTemplate = forwardRef<HTMLDivElement, InvoiceTemplateProps>(
-  ({ data, showPrices = true }, ref) => {
+  ({ data }, ref) => {
     const isPaid = data.balance_due <= 0
 
     return (
@@ -120,7 +118,7 @@ export const InvoiceTemplate = forwardRef<HTMLDivElement, InvoiceTemplateProps>(
             </div>
           </div>
 
-          {/* Invoice badge */}
+          {/* Sales summary badge — internal document, not a tax invoice/receipt */}
           <div style={{
             backgroundColor: '#111827',
             color: '#ffffff',
@@ -130,12 +128,9 @@ export const InvoiceTemplate = forwardRef<HTMLDivElement, InvoiceTemplateProps>(
             minWidth: '170px',
           }}>
             <div style={{ fontSize: '20px', fontWeight: '800', letterSpacing: '2px', lineHeight: 1 }}>
-              {showPrices ? 'INVOICE' : 'DELIVERY\nRECEIPT'}
+              SALES SUMMARY
             </div>
-            <div style={{ fontSize: '13px', fontWeight: '600', marginTop: '6px', opacity: 0.9 }}>
-              #{data.invoice_number}
-            </div>
-            <div style={{ fontSize: '9.5px', opacity: 0.55, marginTop: '2px' }}>
+            <div style={{ fontSize: '9.5px', opacity: 0.55, marginTop: '6px' }}>
               TXN: {data.transaction_number}
             </div>
           </div>
@@ -149,7 +144,7 @@ export const InvoiceTemplate = forwardRef<HTMLDivElement, InvoiceTemplateProps>(
           {/* Bill To */}
           <div style={{ width: '52%' }}>
             <div style={{ fontSize: '9px', fontWeight: '700', color: '#9ca3af', letterSpacing: '1.5px', textTransform: 'uppercase', marginBottom: '4px' }}>
-              {showPrices ? 'Bill To' : 'Client'}
+              Bill To
             </div>
             <div style={{ fontSize: '13px', fontWeight: '700', color: '#111827' }}>
               {data.customer.name}
@@ -188,20 +183,18 @@ export const InvoiceTemplate = forwardRef<HTMLDivElement, InvoiceTemplateProps>(
                   <td style={{ padding: '5px 10px', color: '#6b7280', fontSize: '9.5px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Type</td>
                   <td style={{ padding: '5px 10px', textAlign: 'right', fontWeight: '600', fontSize: '10px', textTransform: 'capitalize' }}>{data.delivery_type}</td>
                 </tr>
-                {showPrices && (
-                  <tr style={{ backgroundColor: isPaid ? '#f0fdf4' : '#fef2f2' }}>
-                    <td style={{ padding: '5px 10px', color: '#6b7280', fontSize: '9.5px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Status</td>
-                    <td style={{
-                      padding: '5px 10px',
-                      textAlign: 'right',
-                      fontWeight: '800',
-                      fontSize: '10px',
-                      color: isPaid ? '#16a34a' : '#dc2626',
-                    }}>
-                      {isPaid ? 'PAID' : 'UNPAID'}
-                    </td>
-                  </tr>
-                )}
+                <tr style={{ backgroundColor: isPaid ? '#f0fdf4' : '#fef2f2' }}>
+                  <td style={{ padding: '5px 10px', color: '#6b7280', fontSize: '9.5px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Status</td>
+                  <td style={{
+                    padding: '5px 10px',
+                    textAlign: 'right',
+                    fontWeight: '800',
+                    fontSize: '10px',
+                    color: isPaid ? '#16a34a' : '#dc2626',
+                  }}>
+                    {isPaid ? 'PAID' : 'UNPAID'}
+                  </td>
+                </tr>
               </tbody>
             </table>
           </div>
@@ -235,13 +228,9 @@ export const InvoiceTemplate = forwardRef<HTMLDivElement, InvoiceTemplateProps>(
               <th style={{ padding: '8px 10px', textAlign: 'left', fontSize: '9.5px', fontWeight: '700', letterSpacing: '0.5px' }}>Description</th>
               <th style={{ padding: '8px 10px', textAlign: 'center', fontSize: '9.5px', fontWeight: '700', letterSpacing: '0.5px', width: '48px' }}>Qty</th>
               <th style={{ padding: '8px 10px', textAlign: 'center', fontSize: '9.5px', fontWeight: '700', letterSpacing: '0.5px', width: '44px' }}>Unit</th>
-              {showPrices && (
-                <>
-                  <th style={{ padding: '8px 10px', textAlign: 'right', fontSize: '9.5px', fontWeight: '700', letterSpacing: '0.5px', width: '80px' }}>Unit Price</th>
-                  <th style={{ padding: '8px 10px', textAlign: 'right', fontSize: '9.5px', fontWeight: '700', letterSpacing: '0.5px', width: '72px' }}>Discount</th>
-                  <th style={{ padding: '8px 10px', textAlign: 'right', fontSize: '9.5px', fontWeight: '700', letterSpacing: '0.5px', width: '84px' }}>Amount</th>
-                </>
-              )}
+              <th style={{ padding: '8px 10px', textAlign: 'right', fontSize: '9.5px', fontWeight: '700', letterSpacing: '0.5px', width: '80px' }}>Unit Price</th>
+              <th style={{ padding: '8px 10px', textAlign: 'right', fontSize: '9.5px', fontWeight: '700', letterSpacing: '0.5px', width: '72px' }}>Discount</th>
+              <th style={{ padding: '8px 10px', textAlign: 'right', fontSize: '9.5px', fontWeight: '700', letterSpacing: '0.5px', width: '84px' }}>Amount</th>
             </tr>
           </thead>
           <tbody>
@@ -252,78 +241,66 @@ export const InvoiceTemplate = forwardRef<HTMLDivElement, InvoiceTemplateProps>(
                 <td style={{ padding: '7px 10px', borderBottom: '1px solid #e5e7eb', fontSize: '11px', color: '#111827', fontWeight: '500' }}>{item.name}</td>
                 <td style={{ padding: '7px 10px', borderBottom: '1px solid #e5e7eb', fontSize: '11px', textAlign: 'center', fontWeight: '700' }}>{item.quantity}</td>
                 <td style={{ padding: '7px 10px', borderBottom: '1px solid #e5e7eb', fontSize: '10px', textAlign: 'center', color: '#6b7280' }}>{item.uom}</td>
-                {showPrices && (
-                  <>
-                    <td style={{ padding: '7px 10px', borderBottom: '1px solid #e5e7eb', fontSize: '10.5px', textAlign: 'right', color: '#374151' }}>
-                      {formatCurrency(item.unit_price)}
-                    </td>
-                    <td style={{ padding: '7px 10px', borderBottom: '1px solid #e5e7eb', fontSize: '10.5px', textAlign: 'right', color: item.discount > 0 ? '#16a34a' : '#d1d5db' }}>
-                      {item.discount > 0 ? `−${formatCurrency(item.discount)}` : '—'}
-                    </td>
-                    <td style={{ padding: '7px 10px', borderBottom: '1px solid #e5e7eb', fontSize: '11px', textAlign: 'right', fontWeight: '700', color: '#111827' }}>
-                      {formatCurrency(item.total)}
-                    </td>
-                  </>
-                )}
+                <td style={{ padding: '7px 10px', borderBottom: '1px solid #e5e7eb', fontSize: '10.5px', textAlign: 'right', color: '#374151' }}>
+                  {formatCurrency(item.unit_price)}
+                </td>
+                <td style={{ padding: '7px 10px', borderBottom: '1px solid #e5e7eb', fontSize: '10.5px', textAlign: 'right', color: item.discount > 0 ? '#16a34a' : '#d1d5db' }}>
+                  {item.discount > 0 ? `−${formatCurrency(item.discount)}` : '—'}
+                </td>
+                <td style={{ padding: '7px 10px', borderBottom: '1px solid #e5e7eb', fontSize: '11px', textAlign: 'right', fontWeight: '700', color: '#111827' }}>
+                  {formatCurrency(item.total)}
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
 
         {/* ── Totals ──────────────────────────────────────────────── */}
-        {showPrices && (
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '5mm' }}>
-            <div style={{ width: '258px', border: '1px solid #e5e7eb', borderRadius: '8px', overflow: 'hidden' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <tbody>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '5mm' }}>
+          <div style={{ width: '258px', border: '1px solid #e5e7eb', borderRadius: '8px', overflow: 'hidden' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <tbody>
+                <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
+                  <td style={{ padding: '7px 14px', color: '#6b7280', fontSize: '10.5px' }}>Subtotal</td>
+                  <td style={{ padding: '7px 14px', textAlign: 'right', fontSize: '10.5px' }}>{formatCurrency(data.subtotal)}</td>
+                </tr>
+                {data.discount > 0 && (
                   <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
-                    <td style={{ padding: '7px 14px', color: '#6b7280', fontSize: '10.5px' }}>Subtotal</td>
-                    <td style={{ padding: '7px 14px', textAlign: 'right', fontSize: '10.5px' }}>{formatCurrency(data.subtotal)}</td>
-                  </tr>
-                  {data.discount > 0 && (
-                    <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ padding: '7px 14px', color: '#6b7280', fontSize: '10.5px' }}>Discount</td>
-                      <td style={{ padding: '7px 14px', textAlign: 'right', fontSize: '10.5px', color: '#16a34a', fontWeight: '600' }}>
-                        −{formatCurrency(data.discount)}
-                      </td>
-                    </tr>
-                  )}
-                  {data.tax > 0 && (
-                    <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ padding: '7px 14px', color: '#6b7280', fontSize: '10.5px' }}>VAT</td>
-                      <td style={{ padding: '7px 14px', textAlign: 'right', fontSize: '10.5px' }}>{formatCurrency(data.tax)}</td>
-                    </tr>
-                  )}
-                  <tr style={{ backgroundColor: '#111827', color: '#ffffff' }}>
-                    <td style={{ padding: '10px 14px', fontWeight: '800', fontSize: '13px' }}>TOTAL</td>
-                    <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: '800', fontSize: '13px' }}>
-                      {formatCurrency(data.total)}
+                    <td style={{ padding: '7px 14px', color: '#6b7280', fontSize: '10.5px' }}>Discount</td>
+                    <td style={{ padding: '7px 14px', textAlign: 'right', fontSize: '10.5px', color: '#16a34a', fontWeight: '600' }}>
+                      −{formatCurrency(data.discount)}
                     </td>
                   </tr>
-                  {data.amount_paid > 0 && (
-                    <tr style={{ borderTop: '1px solid #f1f5f9', backgroundColor: '#f9fafb' }}>
-                      <td style={{ padding: '7px 14px', color: '#6b7280', fontSize: '10.5px' }}>Amount Paid</td>
-                      <td style={{ padding: '7px 14px', textAlign: 'right', fontSize: '10.5px', color: '#16a34a', fontWeight: '600' }}>
-                        {formatCurrency(data.amount_paid)}
-                      </td>
-                    </tr>
-                  )}
-                  {data.balance_due > 0 && (
-                    <tr style={{ backgroundColor: '#fef2f2', borderTop: '1px solid #fecaca' }}>
-                      <td style={{ padding: '8px 14px', color: '#dc2626', fontWeight: '700', fontSize: '11px' }}>Balance Due</td>
-                      <td style={{ padding: '8px 14px', textAlign: 'right', color: '#dc2626', fontWeight: '700', fontSize: '11px' }}>
-                        {formatCurrency(data.balance_due)}
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+                )}
+                <tr style={{ backgroundColor: '#111827', color: '#ffffff' }}>
+                  <td style={{ padding: '10px 14px', fontWeight: '800', fontSize: '13px' }}>TOTAL</td>
+                  <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: '800', fontSize: '13px' }}>
+                    {formatCurrency(data.total)}
+                  </td>
+                </tr>
+                {data.amount_paid > 0 && (
+                  <tr style={{ borderTop: '1px solid #f1f5f9', backgroundColor: '#f9fafb' }}>
+                    <td style={{ padding: '7px 14px', color: '#6b7280', fontSize: '10.5px' }}>Amount Paid</td>
+                    <td style={{ padding: '7px 14px', textAlign: 'right', fontSize: '10.5px', color: '#16a34a', fontWeight: '600' }}>
+                      {formatCurrency(data.amount_paid)}
+                    </td>
+                  </tr>
+                )}
+                {data.balance_due > 0 && (
+                  <tr style={{ backgroundColor: '#fef2f2', borderTop: '1px solid #fecaca' }}>
+                    <td style={{ padding: '8px 14px', color: '#dc2626', fontWeight: '700', fontSize: '11px' }}>Balance Due</td>
+                    <td style={{ padding: '8px 14px', textAlign: 'right', color: '#dc2626', fontWeight: '700', fontSize: '11px' }}>
+                      {formatCurrency(data.balance_due)}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
-        )}
+        </div>
 
         {/* ── Payment Details ──────────────────────────────────────── */}
-        {showPrices && data.payments.length > 0 && (
+        {data.payments.length > 0 && (
           <div style={{ marginBottom: '5mm' }}>
             <div style={{ fontSize: '9px', fontWeight: '700', color: '#9ca3af', letterSpacing: '1.5px', textTransform: 'uppercase', marginBottom: '4px' }}>
               Payment Details
