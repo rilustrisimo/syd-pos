@@ -81,6 +81,7 @@ const CMD = {
   BOLD_ON:       [ESC, 0x45, 0x01],
   BOLD_OFF:      [ESC, 0x45, 0x00],
   DOUBLE_SIZE:   [GS,  0x21, 0x11], // double width + double height
+  HEIGHT_DOUBLE: [GS,  0x21, 0x01], // double height only — bigger than body text, smaller than QTY's full double size
   NORMAL_SIZE:   [GS,  0x21, 0x00],
   FEED:  (n: number) => [ESC, 0x64, n],
   CUT:           [GS,  0x56, 0x42, 0x00], // partial cut
@@ -317,18 +318,17 @@ export function buildDeliverySlipBytes(data: ReceiptData, width = 48): Uint8Arra
 
   cmd(CMD.INIT, CMD.CHARSET_PC437)
 
-  // ── Header — leads with the "not a receipt" framing in a plain form box,
-  // not a branded store masthead. Store name/contacts follow underneath in
-  // small, plain text — de-emphasized on purpose so the first thing anyone
-  // sees is "this is a reference sheet," not the store's name in big bold
-  // type the way a till receipt would open. ─────────────────────────────────
-  cmd(CMD.CENTER)
+  // ── Header — document type is the very first thing printed (so it's
+  // identified at a glance), then the "not a receipt" disclaimer box, then
+  // store name/contacts in small, plain text underneath — de-emphasized on
+  // purpose so nothing here reads as a branded till-receipt masthead. ──────
+  cmd(CMD.CENTER, CMD.BOLD_ON, CMD.DOUBLE_SIZE)
+  line('DELIVERY SLIP')
+  cmd(CMD.NORMAL_SIZE)
   line(boxTop(width))
-  cmd(CMD.BOLD_ON)
-  line(boxCenter('STAFF / DELIVERY REFERENCE', width))
   line(boxCenter('NOT AN OFFICIAL RECEIPT', width))
-  cmd(CMD.BOLD_OFF)
   line(boxBottom(width))
+  cmd(CMD.BOLD_OFF)
   line('SYD Construction Supplies Trading')
   line(STORE_ADDRESS)
   line(STORE_CONTACTS)
@@ -376,36 +376,48 @@ export function buildDeliverySlipBytes(data: ReceiptData, width = 48): Uint8Arra
   }
   line(thinDivider)
 
-  // ── Items ─────────────────────────────────────────────────────────────────
-  // No pricing shown here — this stays a non-tax logistics document. Each
-  // item gets a checkbox to pen-mark as it's loaded, and its own bold,
-  // double-size QTY line so the quantity can't be misread at a glance
-  // (the single highest-value legibility fix for preventing inventory
-  // discrepancies at dispatch/delivery).
+  // ── Items — checkbox to pen-mark as loaded, plus its own bold, double-size
+  // QTY line so the quantity can't be misread at a glance (the single
+  // highest-value legibility fix for preventing inventory discrepancies at
+  // dispatch/delivery). Unit price + line total shown below, same as the
+  // pickup slip's item format. ─────────────────────────────────────────────
   sectionHeader(cmd, line, 'ITEMS -- CHECK OFF AS LOADED')
   for (const item of data.items) {
     const maxNameLen = width - 4
     const name = item.name.length > maxNameLen ? item.name.substring(0, maxNameLen - 1) + '...' : item.name
+    cmd(CMD.BOLD_ON, CMD.HEIGHT_DOUBLE)
     line('[ ] ' + name)
+    cmd(CMD.NORMAL_SIZE, CMD.BOLD_OFF)
     cmd(CMD.CENTER, CMD.BOLD_ON, CMD.DOUBLE_SIZE)
     line(`QTY: ${item.quantity} ${item.uom}`)
     cmd(CMD.NORMAL_SIZE, CMD.BOLD_OFF, CMD.LEFT)
+    const priceLine = `  ${item.quantity} ${item.uom} x ${fmt(item.unit_price)}`
+    line(lr(priceLine, fmt(item.total), width))
   }
   line(thinDivider)
 
-  // ── Amount to collect — boxed, not a receipt-style bold total line. The
-  // only figure shown is what the rider should collect on delivery (recorded
-  // as a cash payment at dispatch time), and only when there's actually a
-  // cash payment to collect. ─────────────────────────────────────────────
-  const cashAmount = data.payments
-    .filter(p => p.method === 'cash')
-    .reduce((sum, p) => sum + p.amount, 0)
-  if (cashAmount > 0) {
-    line(boxTop(width))
-    line(boxLR('AMOUNT TO COLLECT:', 'PHP ' + fmt(cashAmount), width))
-    line(boxBottom(width))
-    line(thinDivider)
+  // ── Totals — boxed and labeled "for reference only", same treatment as
+  // the pickup slip, so the order value is verifiable against the items
+  // above without looking like a receipt-style underlined grand total.
+  // Includes delivery fee so the items + fee actually add up to the total —
+  // labeled "TOTAL AMOUNT," not "amount to collect," since not every
+  // delivery is COD (some are already paid, this is just the reference
+  // figure either way). ─────────────────────────────────────────────────
+  line(boxTop(width))
+  line(boxCenter('FOR INTERNAL REFERENCE ONLY', width))
+  line(boxLR('Subtotal:', 'PHP ' + fmt(data.subtotal), width))
+  if (data.delivery_fee && data.delivery_fee > 0) {
+    line(boxLR('Delivery Fee:', 'PHP ' + fmt(data.delivery_fee), width))
   }
+  if (data.other_fees && data.other_fees > 0) {
+    line(boxLR('Other Fees:', 'PHP ' + fmt(data.other_fees), width))
+  }
+  if (data.discount > 0) {
+    line(boxLR('Discount:', '-PHP ' + fmt(data.discount), width))
+  }
+  line(boxLR('TOTAL AMOUNT:', 'PHP ' + fmt(data.total), width))
+  line(boxBottom(width))
+  line(thinDivider)
 
   // ── Signatures — grouped: staff verification, then customer ────────────────
   sectionHeader(cmd, line, 'STAFF ONLY')
@@ -466,16 +478,15 @@ export function buildPickupSlipBytes(data: ReceiptData, width = 48): Uint8Array 
 
   cmd(CMD.INIT, CMD.CHARSET_PC437)
 
-  // ── Header — same "not a receipt" framing as the delivery slip: a plain
-  // form box leads, store branding is small/plain text underneath, not a
-  // big bold masthead. ───────────────────────────────────────────────────
-  cmd(CMD.CENTER)
+  // ── Header — document type first, same as the delivery slip, then the
+  // "not a receipt" disclaimer box, then de-emphasized store branding. ────
+  cmd(CMD.CENTER, CMD.BOLD_ON, CMD.DOUBLE_SIZE)
+  line('PICKUP SLIP')
+  cmd(CMD.NORMAL_SIZE)
   line(boxTop(width))
-  cmd(CMD.BOLD_ON)
-  line(boxCenter('STAFF REFERENCE', width))
   line(boxCenter('NOT AN OFFICIAL RECEIPT', width))
-  cmd(CMD.BOLD_OFF)
   line(boxBottom(width))
+  cmd(CMD.BOLD_OFF)
   line('SYD Construction Supplies Trading')
   line(STORE_ADDRESS)
   line(STORE_CONTACTS)
@@ -505,7 +516,9 @@ export function buildPickupSlipBytes(data: ReceiptData, width = 48): Uint8Array 
   for (const item of data.items) {
     const maxNameLen = width - 4
     const name = item.name.length > maxNameLen ? item.name.substring(0, maxNameLen - 1) + '...' : item.name
+    cmd(CMD.BOLD_ON, CMD.HEIGHT_DOUBLE)
     line('[ ] ' + name)
+    cmd(CMD.NORMAL_SIZE, CMD.BOLD_OFF)
     cmd(CMD.CENTER, CMD.BOLD_ON, CMD.DOUBLE_SIZE)
     line(`QTY: ${item.quantity} ${item.uom}`)
     cmd(CMD.NORMAL_SIZE, CMD.BOLD_OFF, CMD.LEFT)
