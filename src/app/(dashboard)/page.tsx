@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -26,6 +27,8 @@ import {
   Landmark,
   FileWarning,
   Banknote,
+  Eye,
+  EyeOff,
 } from 'lucide-react'
 import Link from 'next/link'
 import {
@@ -49,6 +52,26 @@ import {
   BarChart,
   Bar,
 } from 'recharts'
+
+const MASKED_VALUE = '₱ ••••••'
+
+/** Blurs a sales chart when values are hidden, with a small overlay hint —
+ * so a customer glancing at the screen can't read revenue trends off the
+ * chart shape either, not just the labeled numbers. */
+function SensitiveChart({ hidden, children }: { hidden: boolean; children: React.ReactNode }) {
+  if (!hidden) return <>{children}</>
+  return (
+    <div className="relative">
+      <div className="blur-md pointer-events-none select-none opacity-60">{children}</div>
+      <div className="absolute inset-0 flex items-center justify-center">
+        <div className="flex items-center gap-2 rounded-full bg-background/80 px-3 py-1.5 text-sm text-muted-foreground border">
+          <EyeOff className="h-4 w-4" />
+          Sales hidden
+        </div>
+      </div>
+    </div>
+  )
+}
 
 function StatCard({
   title,
@@ -173,6 +196,11 @@ export default function DashboardPage() {
 
   const isLoading = statsLoading
 
+  // Sales figures censored by default (screen is visible to walk-in
+  // customers) — always resets to hidden on navigation/reload, not
+  // persisted, so it can't be left revealed unintentionally.
+  const [showSales, setShowSales] = useState(false)
+
   return (
     <div className="space-y-6">
       {/* Page header */}
@@ -183,33 +211,47 @@ export default function DashboardPage() {
             Welcome to SYD Construction Supplies POS System
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => refetchStats()}
-          disabled={isLoading}
-        >
-          {isLoading ? (
-            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-          ) : (
-            <RefreshCw className="h-4 w-4 mr-2" />
-          )}
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowSales((v) => !v)}
+          >
+            {showSales ? (
+              <EyeOff className="h-4 w-4 mr-2" />
+            ) : (
+              <Eye className="h-4 w-4 mr-2" />
+            )}
+            {showSales ? 'Hide Sales' : 'Show Sales'}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => refetchStats()}
+            disabled={isLoading}
+          >
+            {isLoading ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4 mr-2" />
+            )}
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {/* Stats grid */}
       <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         <StatCard
           title="Today's Sales"
-          value={stats ? formatCurrency(stats.todaySales) : '₱0.00'}
+          value={showSales ? (stats ? formatCurrency(stats.todaySales) : '₱0.00') : MASKED_VALUE}
           description={`${stats?.todayTransactions || 0} transactions`}
           icon={DollarSign}
           href="/pos/history"
         />
         <StatCard
           title="This Month"
-          value={stats ? formatCurrency(stats.monthSales) : '₱0.00'}
+          value={showSales ? (stats ? formatCurrency(stats.monthSales) : '₱0.00') : MASKED_VALUE}
           description={`${stats?.monthTransactions || 0} transactions`}
           icon={TrendingUp}
         />
@@ -238,7 +280,7 @@ export default function DashboardPage() {
         />
         <StatCard
           title="Outstanding AR"
-          value={stats ? formatCurrency(stats.totalOutstanding) : '₱0.00'}
+          value={showSales ? (stats ? formatCurrency(stats.totalOutstanding) : '₱0.00') : MASKED_VALUE}
           description={`${stats?.totalCustomers || 0} customers`}
           icon={CreditCard}
           iconColor={stats?.totalOutstanding ? 'text-orange-500' : undefined}
@@ -260,7 +302,9 @@ export default function DashboardPage() {
                 <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
               </div>
             ) : salesTrend && salesTrend.length > 0 ? (
-              <SalesTrendChart data={salesTrend} />
+              <SensitiveChart hidden={!showSales}>
+                <SalesTrendChart data={salesTrend} />
+              </SensitiveChart>
             ) : (
               <div className="flex h-[300px] items-center justify-center text-muted-foreground">
                 No sales data yet
@@ -281,7 +325,9 @@ export default function DashboardPage() {
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
               </div>
             ) : hourlySales && hourlySales.some(h => h.sales > 0) ? (
-              <HourlySalesChart data={hourlySales} />
+              <SensitiveChart hidden={!showSales}>
+                <HourlySalesChart data={hourlySales} />
+              </SensitiveChart>
             ) : (
               <div className="flex h-[200px] items-center justify-center text-muted-foreground">
                 No sales today
@@ -320,7 +366,7 @@ export default function DashboardPage() {
                       </p>
                     </div>
                     <span className="text-sm font-medium">
-                      {formatCurrency(product.total_revenue)}
+                      {showSales ? formatCurrency(product.total_revenue) : MASKED_VALUE}
                     </span>
                   </div>
                 ))}
@@ -406,7 +452,7 @@ export default function DashboardPage() {
                       </p>
                     </div>
                     <div className="text-right">
-                      <p className="font-medium">{formatCurrency(txn.total_amount)}</p>
+                      <p className="font-medium">{showSales ? formatCurrency(txn.total_amount) : MASKED_VALUE}</p>
                       <Badge
                         variant={
                           txn.payment_status === 'paid'

@@ -39,6 +39,8 @@ import {
   Handshake,
   Ban,
   BadgeCheck,
+  Eye,
+  EyeOff,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -119,6 +121,9 @@ const paymentMethods = [
 export default function POSPage() {
   const [productSearch, setProductSearch] = useState('')
   const [customerSearch, setCustomerSearch] = useState('')
+  // Censored by default — this card sits at the top of the screen the
+  // cashier faces the customer across, resets to hidden on every visit.
+  const [showTodaysSales, setShowTodaysSales] = useState(false)
   const [isCustomerOpen, setIsCustomerOpen] = useState(false)
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false)
   const [mapExpanded, setMapExpanded] = useState(false)
@@ -1062,9 +1067,20 @@ export default function POSPage() {
         {/* Today's Summary */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-4">
           <Card className="p-4">
-            <div className="text-sm text-muted-foreground">Today's Sales</div>
+            <div className="flex items-center justify-between">
+              <div className="text-sm text-muted-foreground">Today's Sales</div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 -mr-1.5 -mt-1"
+                onClick={() => setShowTodaysSales((v) => !v)}
+                title={showTodaysSales ? 'Hide sales' : 'Show sales'}
+              >
+                {showTodaysSales ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+              </Button>
+            </div>
             <div className="text-xl sm:text-2xl font-bold">
-              {formatCurrency(todaysSummary?.netSales || 0)}
+              {showTodaysSales ? formatCurrency(todaysSummary?.netSales || 0) : '₱ ••••••'}
             </div>
           </Card>
           <Card className="p-4">
