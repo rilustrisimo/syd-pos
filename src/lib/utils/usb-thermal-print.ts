@@ -550,9 +550,18 @@ export function buildPickupSlipBytes(data: ReceiptData, width = 48): Uint8Array 
   }
   line(thinDivider)
 
-  // ── Prepared-by ───────────────────────────────────────────────────────────
-  sectionHeader(cmd, line, 'SIGN-OFF')
+  // ── Signatures — grouped: staff verification, then customer, same as the
+  // delivery slip. "Received by" here is the customer picking up in person. ──
+  sectionHeader(cmd, line, 'STAFF ONLY')
   blank('Prepared by:')
+  blank('Checked by: ')
+  line(thinDivider)
+
+  sectionHeader(cmd, line, 'CUSTOMER')
+  line('NOT AN OFFICIAL RECEIPT')
+  line('Your Invoice/OR is provided separately.')
+  bytes.push(LF)
+  blank('Received by:')
   blank('Date:        ')
 
   // ── Footer — bookends the header box, same as the delivery slip. ────────
