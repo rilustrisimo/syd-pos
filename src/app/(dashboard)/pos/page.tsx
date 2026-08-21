@@ -339,6 +339,25 @@ export default function POSPage() {
         }
       }
 
+      // Carry over fulfillment + fees from the online order — not just the
+      // items and total. Delivery fee still needs the cashier's explicit
+      // "Confirm" click (deliveryFeeConfirmed stays false) even though the
+      // value is pre-filled correctly, same safety gate as manual entry.
+      setDeliveryType(order.fulfillment)
+      if (order.fulfillment === 'delivery') {
+        setDeliveryAddress(order.address || '')
+        setDeliveryPhone(order.customer_phone || '')
+        setDeliveryFee(Number(order.delivery_fee) || 0)
+        if (order.latitude != null && order.longitude != null) {
+          setDeliveryCoords({
+            lat: Number(order.latitude),
+            lng: Number(order.longitude),
+            distanceKm: Number(order.distance_km) || 0,
+            roadBased: true,
+          })
+        }
+      }
+
       // Fetch product details for each line to get uom_id, cogs, etc.
       const lines: any[] = order.lines ?? []
       const productIds = lines.map((l: any) => l.product_id).filter(Boolean)
