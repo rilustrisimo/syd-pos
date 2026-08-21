@@ -32,10 +32,94 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { User, Building, Bell, Lock, Loader2, Percent, Plus, Trash2, Pencil, Check, X } from 'lucide-react'
+import { Textarea } from '@/components/ui/textarea'
+import { User, Building, Bell, Lock, Loader2, Percent, Plus, Trash2, Pencil, Check, X, Phone } from 'lucide-react'
 import { toast } from 'sonner'
 import { useDiscountRules, useCreateDiscountRule, useUpdateDiscountRule, useDeleteDiscountRule } from '@/hooks/useDiscountRules'
 import type { DiscountRule } from '@/lib/supabase/queries/discount-rules'
+import { useStoreContactInfo, useUpdateStoreContactInfo } from '@/hooks/useShopSettings'
+
+function StoreContactCard() {
+  const { data: info, isLoading } = useStoreContactInfo()
+  const updateInfo = useUpdateStoreContactInfo()
+
+  const [address, setAddress] = useState('')
+  const [phone, setPhone] = useState('')
+
+  // Populate the form once the settings load — a plain effect, not a
+  // controlled-by-query field, since the admin needs to be able to edit
+  // freely without every keystroke racing the query cache.
+  useEffect(() => {
+    if (info) {
+      setAddress(info.store_address)
+      setPhone(info.store_phone)
+    }
+  }, [info])
+
+  const handleSave = async () => {
+    if (!info?.id) {
+      toast.error('Store settings not loaded yet')
+      return
+    }
+    try {
+      await updateInfo.mutateAsync({ id: info.id, store_address: address, store_phone: phone })
+      toast.success('Store contact info updated')
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to update store contact info')
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center gap-2">
+          <Phone className="h-5 w-5" />
+          <div>
+            <CardTitle>Store Contact & Address</CardTitle>
+            <CardDescription className="mt-1">
+              Printed on the delivery slip, pickup slip, and other internal documents — and shared
+              live with the online shop (syd-shop), so it only needs to be set in one place.
+            </CardDescription>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {isLoading ? (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : (
+          <>
+            <div className="space-y-1.5">
+              <Label>Store Address</Label>
+              <Textarea
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                rows={2}
+                placeholder="e.g. Sitio Landing, Talakag, Bukidnon"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Contact Number</Label>
+              <Input
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="e.g. 09765524334"
+              />
+              <p className="text-xs text-muted-foreground">
+                A single number — this replaces the two numbers previously printed side by side.
+              </p>
+            </div>
+            <Button onClick={handleSave} disabled={updateInfo.isPending}>
+              {updateInfo.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+              Save
+            </Button>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
 
 function DiscountRulesCard() {
   const { data: rules = [], isLoading } = useDiscountRules()
@@ -270,6 +354,9 @@ export default function SettingsPage() {
 
       {/* Discount Rules — full width */}
       <DiscountRulesCard />
+
+      {/* Store Contact & Address — full width */}
+      <StoreContactCard />
 
       <div className="grid gap-6 md:grid-cols-2">
 

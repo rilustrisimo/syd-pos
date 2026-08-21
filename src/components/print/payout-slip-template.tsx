@@ -1,6 +1,7 @@
 'use client'
 
 import type { Referrer, ReferrerStats, PayoutRow } from '@/lib/supabase/queries/referrers'
+import { useStoreContactInfo } from '@/hooks/useShopSettings'
 
 // ── Brand colours ─────────────────────────────────────────────────────────────
 const GOLD = '#ffc107'
@@ -11,8 +12,10 @@ const GRAY600 = '#4b5563'
 const GRAY700 = '#374151'
 
 // ── Store info ────────────────────────────────────────────────────────────────
-const STORE_ADDRESS = 'Sitio Landing, Talakag, Bukidnon'
-const STORE_CONTACTS = '09164527225 / 09274746352'
+// Fallbacks only — real values come from shop_settings (Settings > Store
+// Contact & Address in syd-pos), shared with syd-shop.
+const DEFAULT_STORE_ADDRESS = 'Sitio Landing, Talakag, Bukidnon'
+const DEFAULT_STORE_PHONE   = '09765524334'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -54,6 +57,9 @@ interface PayoutSlipTemplateProps {
 }
 
 export function PayoutSlipTemplate({ referrer, payout, stats, logoUrl }: PayoutSlipTemplateProps) {
+  const { data: storeInfo } = useStoreContactInfo()
+  const storeAddress = storeInfo?.store_address || DEFAULT_STORE_ADDRESS
+  const storePhone   = storeInfo?.store_phone   || DEFAULT_STORE_PHONE
   // Balance BEFORE this payout
   const balanceBefore = stats.balance + payout.amount
   const balanceAfter = stats.balance
@@ -104,8 +110,8 @@ export function PayoutSlipTemplate({ referrer, payout, stats, logoUrl }: PayoutS
             </div>
             <div style={{ fontSize: '9.5px', color: GRAY600, lineHeight: 1.7, marginTop: '5px' }}>
               <div>Construction Materials &amp; Hardware</div>
-              <div style={{ marginTop: '2px' }}>{STORE_ADDRESS}</div>
-              <div style={{ marginTop: '2px' }}>{STORE_CONTACTS}</div>
+              <div style={{ marginTop: '2px' }}>{storeAddress}</div>
+              <div style={{ marginTop: '2px' }}>{storePhone}</div>
             </div>
           </div>
         </div>
@@ -297,7 +303,7 @@ export function PayoutSlipTemplate({ referrer, payout, stats, logoUrl }: PayoutS
       }}>
         This is a computer-generated payout receipt. No additional signature required unless signed above.
         <br />
-        SYD Construction Supplies Trading — {STORE_ADDRESS} — {STORE_CONTACTS}
+        SYD Construction Supplies Trading — {storeAddress} — {storePhone}
       </div>
     </div>
   )

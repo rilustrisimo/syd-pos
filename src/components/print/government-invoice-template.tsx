@@ -1,6 +1,7 @@
 'use client'
 
 import { forwardRef } from 'react'
+import { useStoreContactInfo } from '@/hooks/useShopSettings'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -50,8 +51,10 @@ export interface GovInvoiceData {
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
-const STORE_ADDRESS  = 'Sitio Landing, Talakag, Bukidnon'
-const STORE_CONTACTS = '09164527225 / 09274746352'
+// Fallbacks only — real values come from shop_settings (Settings > Store
+// Contact & Address in syd-pos), shared with syd-shop.
+const DEFAULT_STORE_ADDRESS = 'Sitio Landing, Talakag, Bukidnon'
+const DEFAULT_STORE_PHONE   = '09765524334'
 
 const GOLD      = '#ffc107'
 const DARK      = '#111827'
@@ -102,6 +105,9 @@ interface Props {
 
 export const GovernmentInvoiceTemplate = forwardRef<HTMLDivElement, Props>(
   ({ data, logoUrl }, ref) => {
+    const { data: storeInfo } = useStoreContactInfo()
+    const storeAddress = storeInfo?.store_address || DEFAULT_STORE_ADDRESS
+    const storePhone   = storeInfo?.store_phone   || DEFAULT_STORE_PHONE
     const status = statusConfig[data.payment_status]
     const hasDelivery  = (data.delivery_fee || 0) > 0
     const hasOtherFees = (data.other_fees || 0) > 0
@@ -138,8 +144,8 @@ export const GovernmentInvoiceTemplate = forwardRef<HTMLDivElement, Props>(
               <div style={{ fontSize: '13px', fontWeight: '700', color: GRAY700, letterSpacing: '0.8px', marginTop: '1px' }}>SUPPLIES TRADING</div>
               <div style={{ fontSize: '9.5px', color: GRAY600, lineHeight: 1.7, marginTop: '5px' }}>
                 <div>Construction Materials & Hardware</div>
-                <div>{STORE_ADDRESS}</div>
-                <div>{STORE_CONTACTS}</div>
+                <div>{storeAddress}</div>
+                <div>{storePhone}</div>
               </div>
             </div>
           </div>

@@ -1,6 +1,7 @@
 'use client'
 
 import { forwardRef } from 'react'
+import { useStoreContactInfo } from '@/hooks/useShopSettings'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -59,8 +60,10 @@ interface A4ReceiptTemplateProps {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const STORE_ADDRESS  = 'Sitio Landing, Talakag, Bukidnon'
-const STORE_CONTACTS = '09164527225 / 09274746352'
+// Fallbacks only — real values come from shop_settings (Settings > Store
+// Contact & Address in syd-pos), shared with syd-shop.
+const DEFAULT_STORE_ADDRESS = 'Sitio Landing, Talakag, Bukidnon'
+const DEFAULT_STORE_PHONE   = '09765524334'
 
 const paymentMethodLabels: Record<string, string> = {
   cash: 'Cash',
@@ -97,6 +100,9 @@ function fmtDate(dateStr: string): string {
 
 export const A4ReceiptTemplate = forwardRef<HTMLDivElement, A4ReceiptTemplateProps>(
   ({ data }, ref) => {
+    const { data: storeInfo } = useStoreContactInfo()
+    const storeAddress = storeInfo?.store_address || DEFAULT_STORE_ADDRESS
+    const storePhone   = storeInfo?.store_phone   || DEFAULT_STORE_PHONE
     const isReturn = data.transaction_type === 'return'
     const statusCfg = paymentStatusConfig[data.payment_status] ?? paymentStatusConfig.unpaid
     const accentColor = isReturn ? '#ea580c' : '#111827'
@@ -129,8 +135,8 @@ export const A4ReceiptTemplate = forwardRef<HTMLDivElement, A4ReceiptTemplatePro
             </div>
             <div style={{ marginTop: '6px', fontSize: '10.5px', color: '#6b7280', lineHeight: 1.65 }}>
               <div>Construction Materials &amp; Hardware</div>
-              <div>{STORE_ADDRESS}</div>
-              <div>{STORE_CONTACTS}</div>
+              <div>{storeAddress}</div>
+              <div>{storePhone}</div>
             </div>
           </div>
 
@@ -428,7 +434,7 @@ export const A4ReceiptTemplate = forwardRef<HTMLDivElement, A4ReceiptTemplatePro
             {isReturn ? 'Thank you. Your return has been processed.' : 'Thank you for your business!'}
           </div>
           <div style={{ fontSize: '8.5px', color: '#9ca3af' }}>
-            For inquiries, contact us at {STORE_CONTACTS}
+            For inquiries, contact us at {storePhone}
           </div>
           <div style={{ fontSize: '8px', color: '#d1d5db', marginTop: '3px' }}>
             This is a computer-generated document. No signature required unless for delivery. Items sold are non-refundable unless defective.

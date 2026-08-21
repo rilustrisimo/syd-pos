@@ -1,6 +1,7 @@
 'use client'
 
 import { forwardRef } from 'react'
+import { useStoreContactInfo } from '@/hooks/useShopSettings'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -71,8 +72,10 @@ const GRAY600 = '#4b5563'
 const GRAY700 = '#374151'
 
 // ── Store info (matches thermal receipt format) ──────────────────────────────
-const STORE_ADDRESS  = 'Sitio Landing, Talakag, Bukidnon'
-const STORE_CONTACTS = '09164527225 / 09274746352'
+// Fallbacks only — real values come from shop_settings (Settings > Store
+// Contact & Address in syd-pos), shared with syd-shop.
+const DEFAULT_STORE_ADDRESS = 'Sitio Landing, Talakag, Bukidnon'
+const DEFAULT_STORE_PHONE   = '09765524334'
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -85,6 +88,9 @@ interface CanvasTemplateProps {
 
 export const CanvasTemplate = forwardRef<HTMLDivElement, CanvasTemplateProps>(
   ({ data, logoUrl }, ref) => {
+    const { data: storeInfo } = useStoreContactInfo()
+    const storeAddress = storeInfo?.store_address || DEFAULT_STORE_ADDRESS
+    const storePhone   = storeInfo?.store_phone   || DEFAULT_STORE_PHONE
     const hasDiscount   = data.discount_amount > 0
     const hasDelivery   = data.delivery_fee > 0
     const hasOtherFees  = data.other_fees > 0
@@ -140,8 +146,8 @@ export const CanvasTemplate = forwardRef<HTMLDivElement, CanvasTemplateProps>(
               </div>
               <div style={{ fontSize: '9.5px', color: GRAY600, lineHeight: 1.7, marginTop: '5px' }}>
                 <div>Construction Materials & Hardware</div>
-                <div style={{ marginTop: '2px' }}>{STORE_ADDRESS}</div>
-                <div style={{ marginTop: '2px' }}>{STORE_CONTACTS}</div>
+                <div style={{ marginTop: '2px' }}>{storeAddress}</div>
+                <div style={{ marginTop: '2px' }}>{storePhone}</div>
               </div>
             </div>
           </div>

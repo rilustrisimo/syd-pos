@@ -18,6 +18,8 @@
  *  3. CUPS API route (/api/print) — macOS only
  */
 
+import { getStoreContactInfo } from '@/lib/supabase/queries/shop-settings'
+
 export interface ReceiptItem {
   name: string
   quantity: number
@@ -202,11 +204,14 @@ function sectionHeader(
 }
 
 // ---------------------------------------------------------------------------
-// Store constants (matches escpos-mobile.ts)
+// Store info — fallbacks only. The real values live in the shop_settings
+// table (shared with syd-shop; editable from Settings > Store Contact &
+// Address in syd-pos) and are fetched fresh by printDeliverySlip/
+// printPickupSlip. These constants are just what prints if that fetch fails.
 // ---------------------------------------------------------------------------
 
-const STORE_ADDRESS  = 'Sitio Landing, Talakag, Bukidnon'
-const STORE_CONTACTS = '09164527225 / 09274746352'
+const DEFAULT_STORE_ADDRESS = 'Sitio Landing, Talakag, Bukidnon'
+const DEFAULT_STORE_PHONE   = '09765524334'
 
 const PAYMENT_LABELS: Record<string, string> = {
   cash: 'Cash',
@@ -300,7 +305,13 @@ export async function connectBtPrinter(portPath: string): Promise<void> {
 // Delivery slip builder (mirrors escpos-mobile.ts buildDeliverySlipBytes)
 // ---------------------------------------------------------------------------
 
-export function buildDeliverySlipBytes(data: ReceiptData, width = 48): Uint8Array {
+export function buildDeliverySlipBytes(
+  data: ReceiptData,
+  width = 48,
+  storeInfo?: { address: string; phone: string }
+): Uint8Array {
+  const storeAddress = storeInfo?.address || DEFAULT_STORE_ADDRESS
+  const storePhone   = storeInfo?.phone   || DEFAULT_STORE_PHONE
   const bytes: number[] = []
   const thinDivider = '-'.repeat(width)
 
@@ -330,8 +341,8 @@ export function buildDeliverySlipBytes(data: ReceiptData, width = 48): Uint8Arra
   line(boxBottom(width))
   cmd(CMD.BOLD_OFF)
   line('SYD Construction Supplies Trading')
-  line(STORE_ADDRESS)
-  line(STORE_CONTACTS)
+  line(storeAddress)
+  line(storePhone)
   cmd(CMD.LEFT)
   line(thinDivider)
 
@@ -460,7 +471,13 @@ export function buildDeliverySlipBytes(data: ReceiptData, width = 48): Uint8Arra
 // the delivery slip) since that's exactly what it's used to transcribe.
 // ---------------------------------------------------------------------------
 
-export function buildPickupSlipBytes(data: ReceiptData, width = 48): Uint8Array {
+export function buildPickupSlipBytes(
+  data: ReceiptData,
+  width = 48,
+  storeInfo?: { address: string; phone: string }
+): Uint8Array {
+  const storeAddress = storeInfo?.address || DEFAULT_STORE_ADDRESS
+  const storePhone   = storeInfo?.phone   || DEFAULT_STORE_PHONE
   const bytes: number[] = []
   const thinDivider = '-'.repeat(width)
 
@@ -488,8 +505,8 @@ export function buildPickupSlipBytes(data: ReceiptData, width = 48): Uint8Array 
   line(boxBottom(width))
   cmd(CMD.BOLD_OFF)
   line('SYD Construction Supplies Trading')
-  line(STORE_ADDRESS)
-  line(STORE_CONTACTS)
+  line(storeAddress)
+  line(storePhone)
   cmd(CMD.LEFT)
   line('Internal use only -- do not tell or imply')
   line('to the customer that this replaces their')
@@ -589,7 +606,8 @@ export function buildPickupSlipBytes(data: ReceiptData, width = 48): Uint8Array 
  */
 export async function printDeliverySlip(data: ReceiptData, printerQueue: string, width = 48): Promise<void> {
   if (data.delivery_type !== 'delivery') return
-  await sendBytes(buildDeliverySlipBytes(data, width), printerQueue)
+  const storeInfo = await fetchStoreInfo()
+  await sendBytes(buildDeliverySlipBytes(data, width, storeInfo), printerQueue)
 }
 
 /**
@@ -598,7 +616,20 @@ export async function printDeliverySlip(data: ReceiptData, printerQueue: string,
  */
 export async function printPickupSlip(data: ReceiptData, printerQueue: string, width = 48): Promise<void> {
   if (data.delivery_type !== 'pickup') return
-  await sendBytes(buildPickupSlipBytes(data, width), printerQueue)
+  const storeInfo = await fetchStoreInfo()
+  await sendBytes(buildPickupSlipBytes(data, width, storeInfo), printerQueue)
+}
+
+/** Best-effort fetch of the live store address/phone (shop_settings) —
+ * falls back to the hardcoded defaults on any error so a DB hiccup never
+ * blocks printing. */
+async function fetchStoreInfo(): Promise<{ address: string; phone: string }> {
+  try {
+    const info = await getStoreContactInfo()
+    return { address: info.store_address, phone: info.store_phone }
+  } catch {
+    return { address: DEFAULT_STORE_ADDRESS, phone: DEFAULT_STORE_PHONE }
+  }
 }
 
 export interface CupsPrinter {
