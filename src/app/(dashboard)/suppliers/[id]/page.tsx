@@ -7,6 +7,7 @@ import {
   useSupplier,
   useSupplierStats,
   useSupplierTopProducts,
+  useSupplierProductInventory,
   useSupplierPurchaseHistory,
   useUpdateSupplier,
 } from '@/hooks/useSuppliers'
@@ -251,6 +252,7 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
   const { data: supplier, isLoading: supplierLoading } = useSupplier(id)
   const { data: stats } = useSupplierStats(id)
   const { data: topProducts = [] } = useSupplierTopProducts(id)
+  const { data: productInventory = [] } = useSupplierProductInventory(id)
   const { data: poHistory } = useSupplierPurchaseHistory(id, { page: poPage, limit: 15 })
 
   if (supplierLoading) {
@@ -379,6 +381,9 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
           </TabsTrigger>
           <TabsTrigger value="products">
             Top Products ({topProducts.length})
+          </TabsTrigger>
+          <TabsTrigger value="inventory">
+            Inventory ({productInventory.length})
           </TabsTrigger>
         </TabsList>
 
@@ -512,6 +517,77 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
                           </TableCell>
                           <TableCell className="text-right text-muted-foreground text-sm">
                             {formatCurrency(p.po_count > 0 ? p.total_spend / p.po_count : 0)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Inventory / Replenishment Tab */}
+        <TabsContent value="inventory" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Stock Levels for Products Sourced from This Supplier</CardTitle>
+              <CardDescription>
+                Sorted lowest quantity first — what needs replenishing. Items at zero for 30+ days
+                are greyed out at the bottom.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {productInventory.length === 0 ? (
+                <p className="text-center text-muted-foreground py-8">No product data yet.</p>
+              ) : (
+                <div className="border rounded-lg overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-8">#</TableHead>
+                        <TableHead>Code</TableHead>
+                        <TableHead>Product</TableHead>
+                        <TableHead>Branch</TableHead>
+                        <TableHead className="text-right">On Hand</TableHead>
+                        <TableHead>Last Movement</TableHead>
+                        <TableHead>Price</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {productInventory.map((row, i) => (
+                        <TableRow
+                          key={`${row.product_id}|${row.branch_id}`}
+                          className={row.is_stale_zero ? 'opacity-60 bg-muted/30' : ''}
+                        >
+                          <TableCell className="text-muted-foreground text-sm">{i + 1}</TableCell>
+                          <TableCell className="font-mono text-sm">{row.product_code}</TableCell>
+                          <TableCell className="font-medium">
+                            <Link href={`/products/${row.product_id}`} className="hover:underline hover:text-primary flex items-center gap-1">
+                              {row.product_name}
+                              <ExternalLink className="h-3 w-3 opacity-40" />
+                            </Link>
+                          </TableCell>
+                          <TableCell className="text-sm">{row.branch_name}</TableCell>
+                          <TableCell className={`text-right font-mono ${row.quantity_on_hand === 0 ? 'text-red-600' : ''}`}>
+                            {row.quantity_on_hand.toLocaleString()} <span className="text-xs text-muted-foreground">{row.uom}</span>
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {row.has_inventory_record ? formatDate(row.last_movement_at) : 'Not yet received'}
+                          </TableCell>
+                          <TableCell>
+                            {row.own_best_unit_cost === null ? (
+                              <span className="text-xs text-muted-foreground">No price history</span>
+                            ) : row.supplier_count <= 1 ? (
+                              <Badge variant="outline" className="text-muted-foreground">Only Supplier</Badge>
+                            ) : row.is_cheapest_supplier ? (
+                              <Badge variant="secondary" className="text-[10px] py-0 h-4">Cheapest</Badge>
+                            ) : (
+                              <Badge variant="outline">
+                                {formatCurrency(row.price_diff ?? 0)} more than {row.cheapest_supplier_name}
+                              </Badge>
+                            )}
                           </TableCell>
                         </TableRow>
                       ))}

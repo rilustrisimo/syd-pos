@@ -270,6 +270,225 @@ export async function getSupplierTopProducts(supplierId: string): Promise<Suppli
   return Array.from(productMap.values()).sort((a, b) => b.total_spend - a.total_spend)
 }
 
+// ── Replenishment / stock-vs-supplier view ──────────────────────────────────
+// Every product ever bought from this supplier, with current stock (one row
+// per product+branch, no cross-branch summing) and a cross-supplier price
+// comparison, so staff can see both "what's running low" and "are we even
+// buying it from the cheapest source."
+
+export interface SupplierProductInventoryRow {
+  product_id: string
+  product_code: string
+  product_name: string
+  uom: string
+  branch_id: string
+  branch_name: string
+  quantity_on_hand: number
+  last_movement_at: string | null
+  has_inventory_record: boolean   // false = never actually received into this branch yet
+  is_stale_zero: boolean          // qty === 0 && last_movement_at is 30+ days old
+  own_best_unit_cost: number | null
+  cheapest_unit_cost: number | null
+  cheapest_supplier_id: string | null
+  cheapest_supplier_name: string | null
+  is_cheapest_supplier: boolean
+  price_diff: number | null       // own_best_unit_cost - cheapest_unit_cost, only when not cheapest
+  supplier_count: number          // distinct suppliers with received-price history for this product
+}
+
+const STALE_ZERO_MS = 30 * 24 * 60 * 60 * 1000
+
+export async function getSupplierProductInventory(supplierId: string): Promise<SupplierProductInventoryRow[]> {
+  const supabase = getClient()
+
+  // Step 1: this supplier's non-cancelled, non-deleted POs + their branch
+  const { data: pos, error: posErr } = await supabase
+    .from('purchase_orders')
+    .select('id, branch_id')
+    .eq('supplier_id', supplierId)
+    .eq('is_deleted', false)
+    .neq('status', 'cancelled')
+
+  if (posErr) throw posErr
+  const poRows = (pos as any[]) || []
+  if (poRows.length === 0) return []
+
+  const poIdToBranch = new Map<string, string>(poRows.map((p: any) => [p.id, p.branch_id]))
+  const poIds = poRows.map((p: any) => p.id)
+
+  // Step 2: every line ever ordered from this supplier — gives the full
+  // (product, branch) pair set, including products from POs not yet
+  // received (so they show up at qty 0, not marked stale).
+  const { data: lines, error: linesErr } = await supabase
+    .from('purchase_order_lines')
+    .select(`
+      po_id,
+      product_id,
+      product:products(id, code, name),
+      uom:units_of_measure(code, name)
+    `)
+    .in('po_id', poIds)
+
+  if (linesErr) throw linesErr
+
+  const productMeta = new Map<string, { code: string; name: string; uom: string }>()
+  const pairMap = new Map<string, { product_id: string; branch_id: string }>()
+
+  for (const line of (lines as any[]) || []) {
+    const pid = line.product?.id || line.product_id
+    if (!pid) continue
+    const branchId = poIdToBranch.get(line.po_id)
+    if (!branchId) continue
+
+    if (!productMeta.has(pid)) {
+      productMeta.set(pid, {
+        code: line.product?.code || '—',
+        name: line.product?.name || 'Unknown',
+        uom: line.uom?.code || line.uom?.name || 'pc',
+      })
+    }
+    pairMap.set(`${pid}|${branchId}`, { product_id: pid, branch_id: branchId })
+  }
+
+  const productIds = [...productMeta.keys()]
+  if (productIds.length === 0) return []
+
+  // Step 3: current inventory for this product set, batched (no N+1)
+  const { data: inventory, error: invErr } = await supabase
+    .from('branch_inventory')
+    .select('product_id, branch_id, quantity_on_hand, last_movement_at, branch:branches(id, name)')
+    .in('product_id', productIds)
+
+  if (invErr) throw invErr
+
+  const invMap = new Map<string, { quantity_on_hand: number; last_movement_at: string | null; branch_name: string }>()
+  for (const inv of (inventory as any[]) || []) {
+    const branch = Array.isArray(inv.branch) ? inv.branch[0] : inv.branch
+    invMap.set(`${inv.product_id}|${inv.branch_id}`, {
+      quantity_on_hand: Number(inv.quantity_on_hand || 0),
+      last_movement_at: inv.last_movement_at,
+      branch_name: branch?.name || '—',
+    })
+  }
+
+  // Branch names for pairs with no inventory row yet (never received) — fall
+  // back to a plain branches lookup for just the branch ids we need.
+  const branchIds = [...new Set(poRows.map((p: any) => p.branch_id))]
+  const { data: branches } = await supabase.from('branches').select('id, name').in('id', branchIds)
+  const branchNameMap = new Map<string, string>(((branches as any[]) || []).map((b: any) => [b.id, b.name]))
+
+  // Step 4: cross-supplier price history for the same product set — same
+  // "best-ever cost per supplier, tie-broken by recency" logic already used
+  // by getAutoReorderSuggestions in purchases.ts.
+  const { data: priceLines, error: priceErr } = await supabase
+    .from('purchase_order_lines')
+    .select(`
+      product_id,
+      unit_cost,
+      purchase_order:purchase_orders!purchase_order_lines_po_id_fkey(
+        po_date, status, is_deleted,
+        supplier:suppliers(id, name)
+      )
+    `)
+    .in('product_id', productIds)
+
+  if (priceErr) throw priceErr
+
+  const validPriceLines = ((priceLines as any[]) || []).filter((line: any) =>
+    !line.purchase_order?.is_deleted &&
+    ['received', 'partially_received'].includes(line.purchase_order?.status)
+  )
+
+  const supplierMap: Record<string, Record<string, { best_unit_cost: number; last_po_date: string; supplier_name: string }>> = {}
+
+  for (const line of validPriceLines) {
+    const pid = line.product_id
+    const po = line.purchase_order
+    const supplierRaw = po?.supplier
+    const supplier = Array.isArray(supplierRaw) ? supplierRaw[0] : supplierRaw
+    if (!supplier || !pid) continue
+
+    const sid = supplier.id
+    const cost = Number(line.unit_cost)
+    const date = po?.po_date ?? ''
+
+    if (!supplierMap[pid]) supplierMap[pid] = {}
+
+    const existing = supplierMap[pid][sid]
+    if (!existing || cost < existing.best_unit_cost || (cost === existing.best_unit_cost && date > existing.last_po_date)) {
+      supplierMap[pid][sid] = { best_unit_cost: cost, last_po_date: date, supplier_name: supplier.name }
+    }
+  }
+
+  // Step 5: assemble rows
+  const now = Date.now()
+  const rows: SupplierProductInventoryRow[] = []
+
+  for (const { product_id, branch_id } of pairMap.values()) {
+    const meta = productMeta.get(product_id)!
+    const key = `${product_id}|${branch_id}`
+    const inv = invMap.get(key)
+
+    const quantity_on_hand = inv?.quantity_on_hand ?? 0
+    const last_movement_at = inv?.last_movement_at ?? null
+    const has_inventory_record = !!inv
+    const is_stale_zero =
+      quantity_on_hand === 0 &&
+      last_movement_at !== null &&
+      now - new Date(last_movement_at).getTime() >= STALE_ZERO_MS
+
+    const priceOptions = supplierMap[product_id] ?? {}
+    const priceEntries = Object.entries(priceOptions)
+    const own = priceOptions[supplierId]
+    const own_best_unit_cost = own?.best_unit_cost ?? null
+
+    let cheapest_unit_cost: number | null = null
+    let cheapest_supplier_id: string | null = null
+    let cheapest_supplier_name: string | null = null
+    for (const [sid, info] of priceEntries) {
+      if (cheapest_unit_cost === null || info.best_unit_cost < cheapest_unit_cost) {
+        cheapest_unit_cost = info.best_unit_cost
+        cheapest_supplier_id = sid
+        cheapest_supplier_name = info.supplier_name
+      }
+    }
+
+    const is_cheapest_supplier = own_best_unit_cost !== null && own_best_unit_cost === cheapest_unit_cost
+    const price_diff =
+      own_best_unit_cost !== null && cheapest_unit_cost !== null && !is_cheapest_supplier
+        ? own_best_unit_cost - cheapest_unit_cost
+        : null
+
+    rows.push({
+      product_id,
+      product_code: meta.code,
+      product_name: meta.name,
+      uom: meta.uom,
+      branch_id,
+      branch_name: inv?.branch_name || branchNameMap.get(branch_id) || '—',
+      quantity_on_hand,
+      last_movement_at,
+      has_inventory_record,
+      is_stale_zero,
+      own_best_unit_cost,
+      cheapest_unit_cost,
+      cheapest_supplier_id,
+      cheapest_supplier_name,
+      is_cheapest_supplier,
+      price_diff,
+      supplier_count: priceEntries.length,
+    })
+  }
+
+  rows.sort((a, b) => {
+    if (a.is_stale_zero !== b.is_stale_zero) return a.is_stale_zero ? 1 : -1
+    if (a.quantity_on_hand !== b.quantity_on_hand) return a.quantity_on_hand - b.quantity_on_hand
+    return a.product_name.localeCompare(b.product_name)
+  })
+
+  return rows
+}
+
 // Aggregated stats for all suppliers (for the list page columns)
 export interface SupplierListStat {
   supplier_id: string

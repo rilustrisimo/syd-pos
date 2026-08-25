@@ -11,6 +11,7 @@ import {
   getSupplierPurchaseHistory,
   getSupplierStats,
   getSupplierTopProducts,
+  getSupplierProductInventory,
   getAllSupplierStats,
 } from '@/lib/supabase/queries/suppliers'
 import type { InsertTables, UpdateTables } from '@/types/database'
@@ -102,6 +103,15 @@ export function useSupplierTopProducts(id: string) {
   return useQuery({
     queryKey: ['supplier-top-products', id],
     queryFn: () => getSupplierTopProducts(id),
+    enabled: !!id,
+    staleTime: 60000,
+  })
+}
+
+export function useSupplierProductInventory(id: string) {
+  return useQuery({
+    queryKey: ['supplier-product-inventory', id],
+    queryFn: () => getSupplierProductInventory(id),
     enabled: !!id,
     staleTime: 60000,
   })
