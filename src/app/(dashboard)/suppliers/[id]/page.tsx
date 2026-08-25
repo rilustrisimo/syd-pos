@@ -31,9 +31,11 @@ import {
   CheckCircle2,
   Clock,
   XCircle,
+  Copy,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Card,
   CardContent,
@@ -248,6 +250,7 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
   const router = useRouter()
   const [isEditOpen, setIsEditOpen] = useState(false)
   const [poPage, setPoPage] = useState(1)
+  const [checkedRows, setCheckedRows] = useState<Set<string>>(new Set())
 
   const { data: supplier, isLoading: supplierLoading } = useSupplier(id)
   const { data: stats } = useSupplierStats(id)
@@ -275,6 +278,40 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
   }
 
   const totalPages = poHistory?.totalPages || 1
+
+  // ── Inventory tab: checkbox selection + copy-names-to-clipboard ──────────
+  const rowKey = (row: { product_id: string; branch_id: string }) => `${row.product_id}|${row.branch_id}`
+  const allInventoryChecked = productInventory.length > 0 && productInventory.every(r => checkedRows.has(rowKey(r)))
+
+  const toggleRow = (key: string, value: boolean) => {
+    setCheckedRows(prev => {
+      const next = new Set(prev)
+      if (value) next.add(key)
+      else next.delete(key)
+      return next
+    })
+  }
+
+  const toggleAllRows = (value: boolean) => {
+    setCheckedRows(value ? new Set(productInventory.map(rowKey)) : new Set())
+  }
+
+  const handleCopyNames = async () => {
+    const checked = productInventory.filter(r => checkedRows.has(rowKey(r)))
+    if (checked.length === 0) {
+      toast.error('No items selected')
+      return
+    }
+    // Dedupe — the same product can appear once per branch, but the paste
+    // target only cares about the product, not which branch row it came from.
+    const names = Array.from(new Set(checked.map(r => r.product_name)))
+    try {
+      await navigator.clipboard.writeText(names.join('\n'))
+      toast.success(`Copied ${names.length} product name${names.length !== 1 ? 's' : ''} to clipboard`)
+    } catch {
+      toast.error('Failed to copy to clipboard')
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -531,12 +568,24 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
         {/* Inventory / Replenishment Tab */}
         <TabsContent value="inventory" className="mt-4">
           <Card>
-            <CardHeader>
-              <CardTitle>Stock Levels for Products Sourced from This Supplier</CardTitle>
-              <CardDescription>
-                Sorted lowest quantity first — what needs replenishing. Items at zero for 30+ days
-                are greyed out at the bottom.
-              </CardDescription>
+            <CardHeader className="flex flex-row items-start justify-between gap-4">
+              <div>
+                <CardTitle>Stock Levels for Products Sourced from This Supplier</CardTitle>
+                <CardDescription>
+                  Sorted lowest quantity first — what needs replenishing. Items at zero for 30+ days
+                  are greyed out at the bottom. Check items to copy their names for a restock request.
+                </CardDescription>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="shrink-0"
+                onClick={handleCopyNames}
+                disabled={checkedRows.size === 0}
+              >
+                <Copy className="mr-2 h-4 w-4" />
+                Copy Names ({checkedRows.size})
+              </Button>
             </CardHeader>
             <CardContent>
               {productInventory.length === 0 ? (
@@ -546,6 +595,13 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
                   <Table>
                     <TableHeader>
                       <TableRow>
+                        <TableHead className="w-8">
+                          <Checkbox
+                            checked={allInventoryChecked}
+                            onCheckedChange={v => toggleAllRows(!!v)}
+                            aria-label="Select all"
+                          />
+                        </TableHead>
                         <TableHead className="w-8">#</TableHead>
                         <TableHead>Code</TableHead>
                         <TableHead>Product</TableHead>
@@ -556,11 +612,20 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {productInventory.map((row, i) => (
+                      {productInventory.map((row, i) => {
+                        const key = rowKey(row)
+                        return (
                         <TableRow
-                          key={`${row.product_id}|${row.branch_id}`}
+                          key={key}
                           className={row.is_stale_zero ? 'opacity-60 bg-muted/30' : ''}
                         >
+                          <TableCell>
+                            <Checkbox
+                              checked={checkedRows.has(key)}
+                              onCheckedChange={v => toggleRow(key, !!v)}
+                              aria-label={`Select ${row.product_name}`}
+                            />
+                          </TableCell>
                           <TableCell className="text-muted-foreground text-sm">{i + 1}</TableCell>
                           <TableCell className="font-mono text-sm">{row.product_code}</TableCell>
                           <TableCell className="font-medium">
@@ -590,7 +655,8 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
                             )}
                           </TableCell>
                         </TableRow>
-                      ))}
+                        )
+                      })}
                     </TableBody>
                   </Table>
                 </div>
