@@ -287,6 +287,8 @@ export interface SupplierProductInventoryRow {
   last_movement_at: string | null
   has_inventory_record: boolean   // false = never actually received into this branch yet
   is_stale_zero: boolean          // qty === 0 && last_movement_at is 30+ days old
+  last_purchased_at: string | null   // most recent po_date for this product from THIS supplier
+  is_stale_supplier_purchase: boolean // qty === 0 && last_purchased_at is 3+ months old
   own_best_unit_cost: number | null
   cheapest_unit_cost: number | null
   cheapest_supplier_id: string | null
@@ -301,10 +303,10 @@ const STALE_ZERO_MS = 30 * 24 * 60 * 60 * 1000
 export async function getSupplierProductInventory(supplierId: string): Promise<SupplierProductInventoryRow[]> {
   const supabase = getClient()
 
-  // Step 1: this supplier's non-cancelled, non-deleted POs + their branch
+  // Step 1: this supplier's non-cancelled, non-deleted POs + their branch/date
   const { data: pos, error: posErr } = await supabase
     .from('purchase_orders')
-    .select('id, branch_id')
+    .select('id, branch_id, po_date')
     .eq('supplier_id', supplierId)
     .eq('is_deleted', false)
     .neq('status', 'cancelled')
@@ -314,6 +316,7 @@ export async function getSupplierProductInventory(supplierId: string): Promise<S
   if (poRows.length === 0) return []
 
   const poIdToBranch = new Map<string, string>(poRows.map((p: any) => [p.id, p.branch_id]))
+  const poIdToDate = new Map<string, string>(poRows.map((p: any) => [p.id, p.po_date]))
   const poIds = poRows.map((p: any) => p.id)
 
   // Step 2: every line ever ordered from this supplier — gives the full
@@ -333,6 +336,7 @@ export async function getSupplierProductInventory(supplierId: string): Promise<S
 
   const productMeta = new Map<string, { code: string; name: string; uom: string }>()
   const pairMap = new Map<string, { product_id: string; branch_id: string }>()
+  const lastPurchaseMap = new Map<string, string>() // pairKey -> most recent po_date from this supplier
 
   for (const line of (lines as any[]) || []) {
     const pid = line.product?.id || line.product_id
@@ -347,7 +351,16 @@ export async function getSupplierProductInventory(supplierId: string): Promise<S
         uom: line.uom?.code || line.uom?.name || 'pc',
       })
     }
-    pairMap.set(`${pid}|${branchId}`, { product_id: pid, branch_id: branchId })
+    const pairKey = `${pid}|${branchId}`
+    pairMap.set(pairKey, { product_id: pid, branch_id: branchId })
+
+    const poDate = poIdToDate.get(line.po_id)
+    if (poDate) {
+      const existingDate = lastPurchaseMap.get(pairKey)
+      if (!existingDate || poDate > existingDate) {
+        lastPurchaseMap.set(pairKey, poDate)
+      }
+    }
   }
 
   const productIds = [...productMeta.keys()]
@@ -422,6 +435,9 @@ export async function getSupplierProductInventory(supplierId: string): Promise<S
 
   // Step 5: assemble rows
   const now = Date.now()
+  const threeMonthsAgo = new Date()
+  threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3)
+  const staleSupplierCutoff = threeMonthsAgo.toISOString().slice(0, 10) // po_date is a DATE column
   const rows: SupplierProductInventoryRow[] = []
 
   for (const { product_id, branch_id } of pairMap.values()) {
@@ -436,6 +452,12 @@ export async function getSupplierProductInventory(supplierId: string): Promise<S
       quantity_on_hand === 0 &&
       last_movement_at !== null &&
       now - new Date(last_movement_at).getTime() >= STALE_ZERO_MS
+
+    const last_purchased_at = lastPurchaseMap.get(key) ?? null
+    const is_stale_supplier_purchase =
+      quantity_on_hand === 0 &&
+      last_purchased_at !== null &&
+      last_purchased_at <= staleSupplierCutoff
 
     const priceOptions = supplierMap[product_id] ?? {}
     const priceEntries = Object.entries(priceOptions)
@@ -470,6 +492,8 @@ export async function getSupplierProductInventory(supplierId: string): Promise<S
       last_movement_at,
       has_inventory_record,
       is_stale_zero,
+      last_purchased_at,
+      is_stale_supplier_purchase,
       own_best_unit_cost,
       cheapest_unit_cost,
       cheapest_supplier_id,
@@ -481,7 +505,9 @@ export async function getSupplierProductInventory(supplierId: string): Promise<S
   }
 
   rows.sort((a, b) => {
-    if (a.is_stale_zero !== b.is_stale_zero) return a.is_stale_zero ? 1 : -1
+    const aStale = a.is_stale_zero || a.is_stale_supplier_purchase
+    const bStale = b.is_stale_zero || b.is_stale_supplier_purchase
+    if (aStale !== bStale) return aStale ? 1 : -1
     if (a.quantity_on_hand !== b.quantity_on_hand) return a.quantity_on_hand - b.quantity_on_hand
     return a.product_name.localeCompare(b.product_name)
   })

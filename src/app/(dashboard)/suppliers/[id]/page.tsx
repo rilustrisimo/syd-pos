@@ -572,8 +572,9 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
               <div>
                 <CardTitle>Stock Levels for Products Sourced from This Supplier</CardTitle>
                 <CardDescription>
-                  Sorted lowest quantity first — what needs replenishing. Items at zero for 30+ days
-                  are greyed out at the bottom. Check items to copy their names for a restock request.
+                  Sorted lowest quantity first — what needs replenishing. Items at zero for 30+ days,
+                  or not bought from this supplier in 3+ months, are greyed out at the bottom. Check
+                  items to copy their names for a restock request.
                 </CardDescription>
               </div>
               <Button
@@ -608,6 +609,7 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
                         <TableHead>Branch</TableHead>
                         <TableHead className="text-right">On Hand</TableHead>
                         <TableHead>Last Movement</TableHead>
+                        <TableHead>Last Purchased</TableHead>
                         <TableHead>Price</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -617,7 +619,7 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
                         return (
                         <TableRow
                           key={key}
-                          className={row.is_stale_zero ? 'opacity-60 bg-muted/30' : ''}
+                          className={(row.is_stale_zero || row.is_stale_supplier_purchase) ? 'opacity-60 bg-muted/30' : ''}
                         >
                           <TableCell>
                             <Checkbox
@@ -640,6 +642,9 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
                           </TableCell>
                           <TableCell className="text-sm text-muted-foreground">
                             {row.has_inventory_record ? formatDate(row.last_movement_at) : 'Not yet received'}
+                          </TableCell>
+                          <TableCell className={`text-sm ${row.is_stale_supplier_purchase ? 'text-amber-600' : 'text-muted-foreground'}`}>
+                            {formatDate(row.last_purchased_at)}
                           </TableCell>
                           <TableCell>
                             {row.own_best_unit_cost === null ? (
