@@ -21,6 +21,7 @@ import {
   User,
   Truck,
   Package,
+  PackageX,
   Trash2,
   Plus,
   Minus,
@@ -45,6 +46,7 @@ import {
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { CartQuantityInput } from '@/components/pos/cart-quantity-input'
 import { PrintDialog } from '@/components/print/print-dialog'
 import type { InvoiceData } from '@/components/print/invoice-template'
 import type { ReceiptData } from '@/lib/utils/usb-thermal-print'
@@ -1280,15 +1282,17 @@ export default function POSPage() {
                                 {product.name}
                               </div>
                               <div className="flex items-center justify-between mt-1">
-                                <span className="font-bold text-primary text-sm">
+                                <span className="font-bold text-foreground text-base">
                                   {formatCurrency(product.unit_price)}
                                 </span>
                                 {isOutOfStock ? (
-                                  <Badge variant="destructive" className="text-xs">
+                                  <Badge variant="destructive" className="text-xs gap-1">
+                                    <PackageX className="h-3 w-3" />
                                     Out of Stock
                                   </Badge>
                                 ) : (
-                                  <Badge variant="outline" className="text-xs">
+                                  <Badge className="text-xs gap-1 bg-green-100 text-green-700 border-green-300 hover:bg-green-100">
+                                    <Package className="h-3 w-3" />
                                     {product.available_stock} {product.uom_abbreviation}
                                   </Badge>
                                 )}
@@ -1385,15 +1389,9 @@ export default function POSPage() {
                         >
                           <Minus className="h-3 w-3" />
                         </Button>
-                        <Input
-                          type="number"
+                        <CartQuantityInput
                           value={item.quantity}
-                          onChange={(e) =>
-                            updateItemQuantity(item.id, parseFloat(e.target.value) || 1)
-                          }
-                          className="w-16 h-7 text-center"
-                          min="0.01"
-                          step="1"
+                          onChange={(qty) => updateItemQuantity(item.id, qty)}
                         />
                         <Button
                           variant="outline"
@@ -1533,15 +1531,9 @@ export default function POSPage() {
                         >
                           <Minus className="h-3 w-3" />
                         </Button>
-                        <Input
-                          type="number"
+                        <CartQuantityInput
                           value={item.quantity}
-                          onChange={(e) =>
-                            updateItemQuantity(item.id, parseFloat(e.target.value) || 1)
-                          }
-                          className="w-16 h-7 text-center"
-                          min="0.01"
-                          step="1"
+                          onChange={(qty) => updateItemQuantity(item.id, qty)}
                         />
                         <Button
                           variant="outline"
@@ -2115,23 +2107,23 @@ export default function POSPage() {
                 <Button
                   variant="secondary"
                   className="h-10 text-sm"
-                  onClick={() => setPaymentAmount(balance.toFixed(2))}
+                  onClick={() => setPaymentAmount(((parseFloat(paymentAmount) || 0) + 100).toString())}
                 >
-                  Exact
+                  +100
                 </Button>
                 <Button
                   variant="secondary"
                   className="h-10 text-sm"
-                  onClick={() => setPaymentAmount((Math.ceil(total / 100) * 100).toString())}
-                >
-                  Round Up
-                </Button>
-                <Button
-                  variant="secondary"
-                  className="h-10 text-sm"
-                  onClick={() => setPaymentAmount((Math.ceil(total / 500) * 500).toString())}
+                  onClick={() => setPaymentAmount(((parseFloat(paymentAmount) || 0) + 500).toString())}
                 >
                   +500
+                </Button>
+                <Button
+                  variant="secondary"
+                  className="h-10 text-sm"
+                  onClick={() => setPaymentAmount(((parseFloat(paymentAmount) || 0) + 1000).toString())}
+                >
+                  +1000
                 </Button>
               </div>
 

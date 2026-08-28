@@ -20,6 +20,7 @@ import {
   User,
   Truck,
   Package,
+  PackageX,
   Trash2,
   Plus,
   Minus,
@@ -54,6 +55,7 @@ import { usePrinterStore } from '@/lib/stores/printer'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { NumericInput } from '@/components/ui/numeric-input'
+import { CartQuantityInput } from '@/components/pos/cart-quantity-input'
 import { PrintDialog } from '@/components/print/print-dialog'
 import type { InvoiceData } from '@/components/print/invoice-template'
 import {
@@ -1316,15 +1318,17 @@ export default function FrontlinePOSPage() {
                                 {product.name}
                               </div>
                               <div className="flex items-center justify-between mt-1">
-                                <span className="font-bold text-primary text-sm">
+                                <span className="font-bold text-foreground text-base">
                                   {formatCurrency(product.unit_price)}
                                 </span>
                                 {isOutOfStock ? (
-                                  <Badge variant="destructive" className="text-xs">
+                                  <Badge variant="destructive" className="text-xs gap-1">
+                                    <PackageX className="h-3 w-3" />
                                     Out of Stock
                                   </Badge>
                                 ) : (
-                                  <Badge variant="outline" className="text-xs">
+                                  <Badge className="text-xs gap-1 bg-green-100 text-green-700 border-green-300 hover:bg-green-100">
+                                    <Package className="h-3 w-3" />
                                     {product.available_stock} {product.uom_abbreviation}
                                   </Badge>
                                 )}
@@ -1412,9 +1416,10 @@ export default function FrontlinePOSPage() {
                           onClick={() => updateItemQuantity(item.id, item.quantity - 1)}>
                           <Minus className="h-3 w-3" />
                         </Button>
-                        <NumericInput value={item.quantity}
-                          onChange={(e) => updateItemQuantity(item.id, parseFloat(e.target.value) || 1)}
-                          className="w-16 h-7 text-center" min="0.01" step="1" />
+                        <CartQuantityInput
+                          value={item.quantity}
+                          onChange={(qty) => updateItemQuantity(item.id, qty)}
+                        />
                         <Button variant="outline" size="icon" className="h-7 w-7"
                           onClick={() => updateItemQuantity(item.id, item.quantity + 1)}>
                           <Plus className="h-3 w-3" />
@@ -1516,9 +1521,10 @@ export default function FrontlinePOSPage() {
                           onClick={() => updateItemQuantity(item.id, item.quantity - 1)}>
                           <Minus className="h-3 w-3" />
                         </Button>
-                        <NumericInput value={item.quantity}
-                          onChange={(e) => updateItemQuantity(item.id, parseFloat(e.target.value) || 1)}
-                          className="w-16 h-7 text-center" min="0.01" step="1" />
+                        <CartQuantityInput
+                          value={item.quantity}
+                          onChange={(qty) => updateItemQuantity(item.id, qty)}
+                        />
                         <Button variant="outline" size="icon" className="h-7 w-7"
                           onClick={() => updateItemQuantity(item.id, item.quantity + 1)}>
                           <Plus className="h-3 w-3" />
@@ -2040,16 +2046,16 @@ export default function FrontlinePOSPage() {
 
               <div className="grid grid-cols-3 gap-2">
                 <Button variant="secondary" className="h-10 text-sm"
-                  onClick={() => setPaymentAmount(balance.toFixed(2))}>
-                  Exact
+                  onClick={() => setPaymentAmount(((parseFloat(paymentAmount) || 0) + 100).toString())}>
+                  +100
                 </Button>
                 <Button variant="secondary" className="h-10 text-sm"
-                  onClick={() => setPaymentAmount((Math.ceil(total / 100) * 100).toString())}>
-                  Round Up
-                </Button>
-                <Button variant="secondary" className="h-10 text-sm"
-                  onClick={() => setPaymentAmount((Math.ceil(total / 500) * 500).toString())}>
+                  onClick={() => setPaymentAmount(((parseFloat(paymentAmount) || 0) + 500).toString())}>
                   +500
+                </Button>
+                <Button variant="secondary" className="h-10 text-sm"
+                  onClick={() => setPaymentAmount(((parseFloat(paymentAmount) || 0) + 1000).toString())}>
+                  +1000
                 </Button>
               </div>
 
