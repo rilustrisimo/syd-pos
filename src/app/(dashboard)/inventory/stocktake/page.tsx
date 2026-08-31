@@ -75,19 +75,56 @@ interface UnmatchedRow {
 type FilterMode = 'all' | 'variances'
 
 // ── CSV parsing (native, no library) ─────────────────────────────────────────
+// RFC 4180-aware: handles quoted fields containing commas, newlines, and
+// doubled-quote escapes (e.g. `"Marine Plywood 1/4"""` -> `Marine Plywood 1/4"`).
 
 function parseCSV(text: string): string[][] {
-  return text
-    .trim()
-    .replace(/\r\n/g, '\n')
-    .replace(/\r/g, '\n')
-    .split('\n')
-    .map((line) =>
-      line
-        .match(/("([^"]*)"|[^,]*)/g)
-        ?.map((cell) => cell.trim().replace(/^"|"$/g, '').trim()) ?? []
-    )
-    .filter((row) => row.some((c) => c !== ''))
+  const rows: string[][] = []
+  let row: string[] = []
+  let field = ''
+  let inQuotes = false
+  const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+
+  for (let i = 0; i < normalized.length; i++) {
+    const char = normalized[i]
+
+    if (inQuotes) {
+      if (char === '"') {
+        if (normalized[i + 1] === '"') {
+          field += '"'
+          i++
+        } else {
+          inQuotes = false
+        }
+      } else {
+        field += char
+      }
+      continue
+    }
+
+    if (char === '"') {
+      inQuotes = true
+    } else if (char === ',') {
+      row.push(field)
+      field = ''
+    } else if (char === '\n') {
+      row.push(field)
+      rows.push(row)
+      row = []
+      field = ''
+    } else {
+      field += char
+    }
+  }
+
+  if (field !== '' || row.length > 0) {
+    row.push(field)
+    rows.push(row)
+  }
+
+  return rows
+    .map((r) => r.map((cell) => cell.trim()))
+    .filter((r) => r.some((c) => c !== ''))
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
