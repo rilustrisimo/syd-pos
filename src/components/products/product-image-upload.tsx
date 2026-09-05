@@ -13,8 +13,9 @@ import {
   addProductImageRecord,
   removeProductImageRecord,
   setPrimaryImage,
-  validateImageFile,
-  compressImage,
+  validateImageType,
+  compressImageToLimit,
+  MAX_IMAGE_SIZE,
   type ProductImage,
 } from '@/lib/supabase/storage/product-images'
 
@@ -41,10 +42,12 @@ export function ProductImageUpload({
 
     const file = files[0]
 
-    // Validate file
-    const validationError = validateImageFile(file)
-    if (validationError) {
-      toast.error(validationError)
+    // Only check file type upfront — size is handled by compression below,
+    // so an oversized original (e.g. a 10MB phone photo) gets shrunk to
+    // fit instead of being rejected outright.
+    const typeError = validateImageType(file)
+    if (typeError) {
+      toast.error(typeError)
       return
     }
 
@@ -56,9 +59,15 @@ export function ProductImageUpload({
     setUploading(true)
 
     try {
-      // Compress image before upload
+      // Compress image before upload, automatically reducing resolution
+      // further if needed until it fits the upload size limit.
       toast.info('Compressing image...')
-      const compressedFile = await compressImage(file)
+      const compressedFile = await compressImageToLimit(file)
+
+      if (compressedFile.size > MAX_IMAGE_SIZE) {
+        toast.error('This image is too large even after compression. Please choose a smaller image.')
+        return
+      }
 
       // Upload to storage
       toast.info('Uploading image...')
