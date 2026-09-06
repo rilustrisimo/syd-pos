@@ -178,7 +178,10 @@ export default function OnlineOrdersPage() {
                     </TableCell>
                     <TableCell>
                       <div className="space-y-0.5">
-                        <p className="text-xs capitalize">{order.payment_method.replace('_', ' ')}</p>
+                        <p className="text-xs capitalize">
+                          {order.payment_method.replace('_', ' ')}
+                          {order.payment_method === 'qr' && order.payment_qr_label && ` (${order.payment_qr_label})`}
+                        </p>
                         <Badge
                           variant="outline"
                           className={`text-xs ${PAYMENT_STATUS_COLORS[order.payment_status]}`}

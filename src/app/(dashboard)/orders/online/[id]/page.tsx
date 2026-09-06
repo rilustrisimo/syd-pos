@@ -478,7 +478,10 @@ export default function OnlineOrderDetailPage({ params }: { params: Promise<{ id
             <CardContent className="space-y-3 text-sm">
               <div className="flex justify-between items-center">
                 <span className="text-slate-500">Method</span>
-                <span className="capitalize font-medium">{order.payment_method.replace('_', ' ')}</span>
+                <span className="capitalize font-medium">
+                  {order.payment_method.replace('_', ' ')}
+                  {order.payment_method === 'qr' && order.payment_qr_label && ` (${order.payment_qr_label})`}
+                </span>
               </div>
               {order.payment_reference_no && (
                 <div className="flex justify-between items-center">

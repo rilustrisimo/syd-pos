@@ -38,6 +38,7 @@ export interface OnlineOrder {
   payment_status: OnlineOrderPaymentStatus
   payment_proof_url: string | null
   payment_reference_no: string | null
+  payment_qr_label: string | null
   subtotal: number
   delivery_fee: number
   total_amount: number
