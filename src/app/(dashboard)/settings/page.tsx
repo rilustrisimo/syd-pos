@@ -33,11 +33,17 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Textarea } from '@/components/ui/textarea'
-import { User, Building, Bell, Lock, Loader2, Percent, Plus, Trash2, Pencil, Check, X, Phone } from 'lucide-react'
+import { Switch } from '@/components/ui/switch'
+import { User, Building, Bell, Lock, Loader2, Percent, Plus, Trash2, Pencil, Check, X, Phone, QrCode, Landmark } from 'lucide-react'
 import { toast } from 'sonner'
 import { useDiscountRules, useCreateDiscountRule, useUpdateDiscountRule, useDeleteDiscountRule } from '@/hooks/useDiscountRules'
 import type { DiscountRule } from '@/lib/supabase/queries/discount-rules'
 import { useStoreContactInfo, useUpdateStoreContactInfo } from '@/hooks/useShopSettings'
+import { useShopQrCodes, useCreateShopQrCode, useUpdateShopQrCode, useDeleteShopQrCode } from '@/hooks/useShopQrCodes'
+import type { ShopQrCode } from '@/lib/supabase/queries/shop-qr-codes'
+import { useShopBankAccounts, useCreateShopBankAccount, useUpdateShopBankAccount, useDeleteShopBankAccount } from '@/hooks/useShopBankAccounts'
+import type { ShopBankAccount } from '@/lib/supabase/queries/shop-bank-accounts'
+import { uploadShopQrImage, deleteShopQrImage, validateQrImageType, compressQrImageToLimit } from '@/lib/supabase/storage/shop-qr-images'
 
 function StoreContactCard() {
   const { data: info, isLoading } = useStoreContactInfo()
@@ -344,6 +350,412 @@ function DiscountRulesCard() {
   )
 }
 
+function PaymentQrCodesCard() {
+  const { data: qrCodes = [], isLoading } = useShopQrCodes()
+  const createQrCode = useCreateShopQrCode()
+  const updateQrCode = useUpdateShopQrCode()
+  const deleteQrCode = useDeleteShopQrCode()
+
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [showAddForm, setShowAddForm] = useState(false)
+  const [newLabel, setNewLabel] = useState('')
+  const [newFile, setNewFile] = useState<File | null>(null)
+  const [uploading, setUploading] = useState(false)
+
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editLabel, setEditLabel] = useState('')
+
+  const handleAdd = async () => {
+    if (!newLabel || !newFile) {
+      toast.error('Label and QR image are required')
+      return
+    }
+    const typeError = validateQrImageType(newFile)
+    if (typeError) {
+      toast.error(typeError)
+      return
+    }
+    setUploading(true)
+    try {
+      const compressed = await compressQrImageToLimit(newFile)
+      const imageUrl = await uploadShopQrImage(compressed)
+      await createQrCode.mutateAsync({
+        label: newLabel,
+        image_url: imageUrl,
+        sort_order: qrCodes.length,
+      })
+      toast.success('QR code added')
+      setNewLabel('')
+      setNewFile(null)
+      setShowAddForm(false)
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to add QR code')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const handleEditSave = async (qr: ShopQrCode) => {
+    if (!editLabel) {
+      toast.error('Label is required')
+      return
+    }
+    try {
+      await updateQrCode.mutateAsync({ id: qr.id, updates: { label: editLabel } })
+      toast.success('QR code updated')
+      setEditingId(null)
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to update QR code')
+    }
+  }
+
+  const handleToggleActive = async (qr: ShopQrCode) => {
+    try {
+      await updateQrCode.mutateAsync({ id: qr.id, updates: { is_active: !qr.is_active } })
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to update QR code')
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!deletingId) return
+    const qr = qrCodes.find((q) => q.id === deletingId)
+    try {
+      await deleteQrCode.mutateAsync(deletingId)
+      if (qr) await deleteShopQrImage(qr.image_url).catch(() => {})
+      toast.success('QR code deleted')
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to delete QR code')
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
+  return (
+    <>
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <QrCode className="h-5 w-5" />
+              <div>
+                <CardTitle>Payment QR Codes</CardTitle>
+                <CardDescription className="mt-1">
+                  QR codes shown at checkout on the online shop (e.g. GCash, BDO, BPI, GoTyme).
+                  Only active codes are shown to customers.
+                </CardDescription>
+              </div>
+            </div>
+            <Button size="sm" onClick={() => setShowAddForm((v) => !v)}>
+              <Plus className="mr-2 h-4 w-4" />
+              Add QR Code
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {showAddForm && (
+            <div className="border rounded-lg p-4 bg-muted/30 space-y-3">
+              <p className="text-sm font-medium">New QR Code</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Label</Label>
+                  <Input placeholder="e.g. GCash" value={newLabel} onChange={(e) => setNewLabel(e.target.value)} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">QR Image</Label>
+                  <Input type="file" accept="image/jpeg,image/jpg,image/png,image/webp" onChange={(e) => setNewFile(e.target.files?.[0] || null)} />
+                </div>
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button variant="outline" size="sm" onClick={() => { setShowAddForm(false); setNewLabel(''); setNewFile(null) }}>Cancel</Button>
+                <Button size="sm" onClick={handleAdd} disabled={uploading}>
+                  {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save QR Code'}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {isLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : qrCodes.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-6">No QR codes yet. Add one above.</p>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+              {qrCodes.map((qr) => (
+                <div key={qr.id} className="border rounded-lg p-3 space-y-2">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={qr.image_url} alt={qr.label} className="w-full aspect-square object-contain rounded bg-white border" />
+                  {editingId === qr.id ? (
+                    <div className="space-y-2">
+                      <Input value={editLabel} onChange={(e) => setEditLabel(e.target.value)} className="h-8" />
+                      <div className="flex gap-1 justify-end">
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleEditSave(qr)} disabled={updateQrCode.isPending}>
+                          <Check className="h-4 w-4 text-green-600" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditingId(null)}>
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="text-sm font-medium truncate">{qr.label}</p>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <Switch checked={qr.is_active} onCheckedChange={() => handleToggleActive(qr)} className="scale-90" />
+                          <span className="text-xs text-muted-foreground">{qr.is_active ? 'Active' : 'Hidden'}</span>
+                        </div>
+                        <div className="flex gap-1">
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setEditingId(qr.id); setEditLabel(qr.label) }}>
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setDeletingId(qr.id)}>
+                            <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                          </Button>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <AlertDialog open={!!deletingId} onOpenChange={(open) => !open && setDeletingId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete QR code?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This QR code will no longer be shown at checkout on the online shop.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              {deleteQrCode.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  )
+}
+
+function BankAccountsCard() {
+  const { data: accounts = [], isLoading } = useShopBankAccounts()
+  const createAccount = useCreateShopBankAccount()
+  const updateAccount = useUpdateShopBankAccount()
+  const deleteAccount = useDeleteShopBankAccount()
+
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [showAddForm, setShowAddForm] = useState(false)
+
+  const blankForm = { bank_name: '', account_name: '', account_number: '' }
+  const [form, setForm] = useState(blankForm)
+  const [editForm, setEditForm] = useState<Record<string, string>>({})
+
+  const handleAdd = async () => {
+    if (!form.bank_name || !form.account_name || !form.account_number) {
+      toast.error('Bank name, account name, and account number are required')
+      return
+    }
+    try {
+      await createAccount.mutateAsync({ ...form, sort_order: accounts.length })
+      toast.success('Bank account added')
+      setForm(blankForm)
+      setShowAddForm(false)
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to add bank account')
+    }
+  }
+
+  const handleEditSave = async (id: string) => {
+    try {
+      await updateAccount.mutateAsync({
+        id,
+        updates: {
+          bank_name: editForm.bank_name,
+          account_name: editForm.account_name,
+          account_number: editForm.account_number,
+        },
+      })
+      toast.success('Bank account updated')
+      setEditingId(null)
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to update bank account')
+    }
+  }
+
+  const handleToggleActive = async (account: ShopBankAccount) => {
+    try {
+      await updateAccount.mutateAsync({ id: account.id, updates: { is_active: !account.is_active } })
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to update bank account')
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!deletingId) return
+    try {
+      await deleteAccount.mutateAsync(deletingId)
+      toast.success('Bank account deleted')
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to delete bank account')
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
+  const startEdit = (account: ShopBankAccount) => {
+    setEditingId(account.id)
+    setEditForm({
+      bank_name: account.bank_name,
+      account_name: account.account_name,
+      account_number: account.account_number,
+    })
+  }
+
+  return (
+    <>
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Landmark className="h-5 w-5" />
+              <div>
+                <CardTitle>Bank Transfer Accounts</CardTitle>
+                <CardDescription className="mt-1">
+                  Accounts shown at checkout on the online shop for direct bank transfer.
+                  Only active accounts are shown to customers.
+                </CardDescription>
+              </div>
+            </div>
+            <Button size="sm" onClick={() => setShowAddForm((v) => !v)}>
+              <Plus className="mr-2 h-4 w-4" />
+              Add Account
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {showAddForm && (
+            <div className="border rounded-lg p-4 bg-muted/30 space-y-3">
+              <p className="text-sm font-medium">New Bank Account</p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                <div className="space-y-1">
+                  <Label className="text-xs">Bank Name</Label>
+                  <Input placeholder="e.g. BDO" value={form.bank_name} onChange={(e) => setForm({ ...form, bank_name: e.target.value })} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Account Name</Label>
+                  <Input placeholder="e.g. Juan Dela Cruz" value={form.account_name} onChange={(e) => setForm({ ...form, account_name: e.target.value })} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Account Number</Label>
+                  <Input placeholder="e.g. 006120301223" value={form.account_number} onChange={(e) => setForm({ ...form, account_number: e.target.value })} />
+                </div>
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button variant="outline" size="sm" onClick={() => { setShowAddForm(false); setForm(blankForm) }}>Cancel</Button>
+                <Button size="sm" onClick={handleAdd} disabled={createAccount.isPending}>
+                  {createAccount.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save Account'}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {isLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : accounts.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-6">No bank accounts yet. Add one above.</p>
+          ) : (
+            <div className="border rounded-lg">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Bank</TableHead>
+                    <TableHead>Account Name</TableHead>
+                    <TableHead>Account Number</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="w-[100px]"></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {accounts.map((account) =>
+                    editingId === account.id ? (
+                      <TableRow key={account.id}>
+                        <TableCell><Input value={editForm.bank_name} onChange={(e) => setEditForm({ ...editForm, bank_name: e.target.value })} className="h-8" /></TableCell>
+                        <TableCell><Input value={editForm.account_name} onChange={(e) => setEditForm({ ...editForm, account_name: e.target.value })} className="h-8" /></TableCell>
+                        <TableCell><Input value={editForm.account_number} onChange={(e) => setEditForm({ ...editForm, account_number: e.target.value })} className="h-8" /></TableCell>
+                        <TableCell className="text-muted-foreground text-xs">{account.is_active ? 'Active' : 'Hidden'}</TableCell>
+                        <TableCell>
+                          <div className="flex gap-1 justify-end">
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleEditSave(account.id)} disabled={updateAccount.isPending}>
+                              <Check className="h-4 w-4 text-green-600" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditingId(null)}>
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      <TableRow key={account.id}>
+                        <TableCell className="font-medium">{account.bank_name}</TableCell>
+                        <TableCell>{account.account_name}</TableCell>
+                        <TableCell className="font-mono">{account.account_number}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1.5">
+                            <Switch checked={account.is_active} onCheckedChange={() => handleToggleActive(account)} className="scale-90" />
+                            <span className="text-xs text-muted-foreground">{account.is_active ? 'Active' : 'Hidden'}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex gap-1 justify-end">
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => startEdit(account)}>
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setDeletingId(account.id)}>
+                              <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <AlertDialog open={!!deletingId} onOpenChange={(open) => !open && setDeletingId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete bank account?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This account will no longer be shown at checkout on the online shop.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              {deleteAccount.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  )
+}
+
 export default function SettingsPage() {
   return (
     <div className="space-y-6">
@@ -357,6 +769,12 @@ export default function SettingsPage() {
 
       {/* Store Contact & Address — full width */}
       <StoreContactCard />
+
+      {/* Payment QR Codes — full width */}
+      <PaymentQrCodesCard />
+
+      {/* Bank Transfer Accounts — full width */}
+      <BankAccountsCard />
 
       <div className="grid gap-6 md:grid-cols-2">
 
