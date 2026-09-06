@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -365,6 +365,36 @@ function PaymentQrCodesCard() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editLabel, setEditLabel] = useState('')
 
+  const [logoUploadTargetId, setLogoUploadTargetId] = useState<string | null>(null)
+  const [uploadingLogoId, setUploadingLogoId] = useState<string | null>(null)
+  const logoInputRef = useRef<HTMLInputElement>(null)
+
+  const handleLogoFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    const targetId = logoUploadTargetId
+    e.target.value = ''
+    if (!file || !targetId) return
+
+    const typeError = validateQrImageType(file)
+    if (typeError) {
+      toast.error(typeError)
+      return
+    }
+    setUploadingLogoId(targetId)
+    try {
+      // Logos are small brand marks, not the QR itself — a tighter cap
+      // keeps them crisp without the 5MB bucket ceiling being necessary.
+      const compressed = await compressQrImageToLimit(file, 500 * 1024)
+      const logoUrl = await uploadShopQrImage(compressed)
+      await updateQrCode.mutateAsync({ id: targetId, updates: { logo_url: logoUrl } })
+      toast.success('Logo updated')
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to upload logo')
+    } finally {
+      setUploadingLogoId(null)
+    }
+  }
+
   const handleAdd = async () => {
     if (!newLabel || !newFile) {
       toast.error('Label and QR image are required')
@@ -475,6 +505,14 @@ function PaymentQrCodesCard() {
             </div>
           )}
 
+          <input
+            ref={logoInputRef}
+            type="file"
+            accept="image/jpeg,image/jpg,image/png,image/webp"
+            className="hidden"
+            onChange={handleLogoFileSelected}
+          />
+
           {isLoading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -502,6 +540,22 @@ function PaymentQrCodesCard() {
                   ) : (
                     <>
                       <p className="text-sm font-medium truncate">{qr.label}</p>
+                      <div className="flex items-center gap-1.5">
+                        {qr.logo_url ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={qr.logo_url} alt="" className="w-5 h-5 rounded-full object-contain bg-white border flex-shrink-0" />
+                        ) : (
+                          <div className="w-5 h-5 rounded-full border border-dashed flex-shrink-0" />
+                        )}
+                        <button
+                          type="button"
+                          className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 disabled:opacity-50"
+                          disabled={uploadingLogoId === qr.id}
+                          onClick={() => { setLogoUploadTargetId(qr.id); logoInputRef.current?.click() }}
+                        >
+                          {uploadingLogoId === qr.id ? 'Uploading…' : qr.logo_url ? 'Change logo' : 'Add logo'}
+                        </button>
+                      </div>
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-1.5">
                           <Switch checked={qr.is_active} onCheckedChange={() => handleToggleActive(qr)} className="scale-90" />
