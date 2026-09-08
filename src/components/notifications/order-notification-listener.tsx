@@ -4,7 +4,6 @@ import { useEffect, useRef } from 'react'
 import { toast } from 'sonner'
 import { useQueryClient } from '@tanstack/react-query'
 import { getClient } from '@/lib/supabase/client'
-import { useOnlineOrderNotifications } from '@/lib/stores/onlineOrderNotifications'
 
 function playBell() {
   try {
@@ -49,7 +48,6 @@ function openOrder(url: string) {
 }
 
 export function OrderNotificationListener() {
-  const { increment } = useOnlineOrderNotifications()
   const queryClient = useQueryClient()
   const channelRef = useRef<ReturnType<ReturnType<typeof getClient>['channel']> | null>(null)
 
@@ -65,7 +63,6 @@ export function OrderNotificationListener() {
         { event: 'INSERT', schema: 'public', table: 'online_orders' },
         (payload) => {
           const order = payload.new as any
-          increment()
           playBell()
           queryClient.invalidateQueries({ queryKey: ['online_orders', 'pending-banner'] })
 
@@ -100,7 +97,7 @@ export function OrderNotificationListener() {
       channel.unsubscribe()
       channelRef.current = null
     }
-  }, [increment, queryClient])
+  }, [queryClient])
 
   return null
 }

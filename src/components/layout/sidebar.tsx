@@ -45,7 +45,7 @@ import { getClient } from '@/lib/supabase/client'
 import { useAuthStore, clearAllAuthData } from '@/lib/stores/auth'
 import { toast } from 'sonner'
 import { useQueryClient } from '@tanstack/react-query'
-import { useOnlineOrderNotifications } from '@/lib/stores/onlineOrderNotifications'
+import { usePendingOnlineOrdersBanner } from '@/hooks/useOnlineOrders'
 
 const navigation = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
@@ -135,7 +135,8 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname()
   const queryClient = useQueryClient()
   const [isSigningOut, setIsSigningOut] = useState(false)
-  const { unreadCount: onlineOrderUnread, markAllRead } = useOnlineOrderNotifications()
+  const { data: pendingOnlineOrders = [] } = usePendingOnlineOrdersBanner()
+  const pendingOnlineOrderCount = pendingOnlineOrders.length
 
   const handleSignOut = async () => {
     if (isSigningOut) return // Prevent double-click
@@ -234,16 +235,13 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
           }
 
           const isOnlineOrders = item.href === '/orders/online'
-          const showBadge = isOnlineOrders && onlineOrderUnread > 0
+          const showBadge = isOnlineOrders && pendingOnlineOrderCount > 0
 
           return (
             <Link
               key={item.name}
               href={item.href}
-              onClick={() => {
-                if (isOnlineOrders) markAllRead()
-                onNavigate?.()
-              }}
+              onClick={onNavigate}
               className={cn(
                 'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
                 isActive
@@ -255,7 +253,7 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
               {item.name}
               {showBadge && (
                 <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
-                  {onlineOrderUnread > 99 ? '99+' : onlineOrderUnread}
+                  {pendingOnlineOrderCount > 99 ? '99+' : pendingOnlineOrderCount}
                 </span>
               )}
             </Link>
