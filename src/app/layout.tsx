@@ -11,10 +11,10 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   title: {
-    template: '%s · SYD POS',
-    default: 'SYD POS',
+    template: '%s · SYD Construction Supplies',
+    default: 'SYD Construction Supplies',
   },
-  description: 'Point of Sale and inventory management for SYD Construction Supplies Trading.',
+  description: 'Internal inventory and order management for SYD Construction Supplies Trading.',
   icons: { icon: '/icon.svg' },
 }
 

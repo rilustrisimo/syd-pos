@@ -6,7 +6,7 @@ import Link from 'next/link'
 import {
   ArrowLeft, MapPin, Package, CreditCard, Truck,
   Check, X, Edit2, Trash2, ExternalLink, ShoppingCart,
-  User, Phone, FileImage, AlertCircle,
+  User, Phone, FileImage, AlertCircle, Plus, Percent, Search,
 } from 'lucide-react'
 import { PageTitle } from '@/components/page-title'
 import {
@@ -17,9 +17,17 @@ import {
   useUpdateOnlineOrderPaymentStatus,
   useUpdateOnlineOrderLine,
   useDeleteOnlineOrderLine,
+  useAddOnlineOrderLine,
+  useUpdateOnlineOrderLineDiscount,
+  useUpdateOnlineOrderDiscount,
   type OnlineOrderStatus,
   type OnlineOrderPaymentStatus,
 } from '@/hooks/useOnlineOrders'
+import { usePOSProductSearch } from '@/hooks/useTransactions'
+import { useShopBranchId } from '@/hooks/useShopSettings'
+import { useDiscountRules } from '@/hooks/useDiscountRules'
+import { getStandardDiscountForMarkup } from '@/lib/supabase/queries/discount-rules'
+import { getClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -81,6 +89,15 @@ const PAYMENT_STATUS_OPTIONS: { value: OnlineOrderPaymentStatus; label: string }
   { value: 'refunded', label: 'Refunded' },
 ]
 
+type DiscountType = 'none' | 'fixed' | 'percentage' | 'standard' | 'cost'
+const DISCOUNT_TYPE_OPTIONS: { value: DiscountType; label: string }[] = [
+  { value: 'none', label: 'None' },
+  { value: 'fixed', label: 'Fixed' },
+  { value: 'percentage', label: 'Percentage' },
+  { value: 'standard', label: 'Standard' },
+  { value: 'cost', label: 'At Cost' },
+]
+
 export default function OnlineOrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const router = useRouter()
@@ -90,9 +107,22 @@ export default function OnlineOrderDetailPage({ params }: { params: Promise<{ id
   const updatePaymentStatus = useUpdateOnlineOrderPaymentStatus()
   const updateLine = useUpdateOnlineOrderLine()
   const deleteLine = useDeleteOnlineOrderLine()
+  const addLine = useAddOnlineOrderLine()
+  const updateLineDiscount = useUpdateOnlineOrderLineDiscount()
+  const updateOrderDiscount = useUpdateOnlineOrderDiscount()
+  const { data: branchId } = useShopBranchId()
+  const { data: discountRules = [] } = useDiscountRules()
 
   const [editingLineId, setEditingLineId] = useState<string | null>(null)
   const [editingQty, setEditingQty] = useState<string>('')
+
+  const [showAddProduct, setShowAddProduct] = useState(false)
+  const [productQuery, setProductQuery] = useState('')
+  const { data: searchResults = [], isLoading: isSearching } = usePOSProductSearch(productQuery, branchId ?? '')
+
+  const [showDiscountPanel, setShowDiscountPanel] = useState(false)
+  const [discountInput, setDiscountInput] = useState('')
+  const [applyingDiscount, setApplyingDiscount] = useState(false)
 
   const productIds = (order?.lines ?? [])
     .map(l => l.product_id)
@@ -172,6 +202,100 @@ export default function OnlineOrderDetailPage({ params }: { params: Promise<{ id
 
   function handleConvertToSale() {
     router.push(`/pos?from_order=${id}`)
+  }
+
+  function handleAddProduct(product: { id: string; code: string; name: string; unit_price: number; selling_uom_abbreviation: string }) {
+    addLine.mutate(
+      {
+        order_id: id,
+        product_id: product.id,
+        product_code: product.code,
+        product_name: product.name,
+        unit_label: product.selling_uom_abbreviation,
+        unit_price: product.unit_price,
+        quantity: 1,
+      },
+      {
+        onSuccess: () => {
+          toast.success(`${product.name} added to order`)
+          setProductQuery('')
+        },
+        onError: (e) => toast.error(e.message),
+      }
+    )
+  }
+
+  // Standard/At Cost are per-line, computed fresh from each line's product
+  // (online_order_lines doesn't snapshot markup/cost the way POS cart items
+  // do), mirroring the exact formulas used in POS checkout's discount panel.
+  async function applyDiscountType(type: DiscountType) {
+    if (!order) return
+    setApplyingDiscount(true)
+    try {
+      if (type === 'none') {
+        await updateOrderDiscount.mutateAsync({ order_id: id, discount_amount: 0, discount_percentage: 0 })
+        for (const line of order.lines ?? []) {
+          if (line.discount_amount > 0) {
+            await updateLineDiscount.mutateAsync({ id: line.id, discount_amount: 0 })
+          }
+        }
+        return
+      }
+
+      if (type === 'fixed' || type === 'percentage') {
+        for (const line of order.lines ?? []) {
+          if (line.discount_amount > 0) {
+            await updateLineDiscount.mutateAsync({ id: line.id, discount_amount: 0 })
+          }
+        }
+        const value = parseFloat(discountInput) || 0
+        await updateOrderDiscount.mutateAsync({
+          order_id: id,
+          discount_amount: type === 'fixed' ? value : 0,
+          discount_percentage: type === 'percentage' ? Math.min(100, value) : 0,
+        })
+        return
+      }
+
+      // standard / cost — clear any order-level discount first, then apply per-line
+      await updateOrderDiscount.mutateAsync({ order_id: id, discount_amount: 0, discount_percentage: 0 })
+
+      const lines = order.lines ?? []
+      const productIds = lines.map(l => l.product_id).filter((v): v is string => !!v)
+      if (productIds.length === 0) return
+
+      const supabase = getClient()
+      const { data: products, error: productsErr } = await supabase
+        .from('products')
+        .select('id, markup_percentage, latest_cogs')
+        .in('id', productIds)
+      if (productsErr) throw new Error(productsErr.message)
+
+      const productMap = new Map((products ?? []).map((p: any) => [p.id, p]))
+
+      for (const line of lines) {
+        if (!line.product_id) continue
+        const product = productMap.get(line.product_id)
+        if (!product) continue
+
+        const cogsPerUnit = Number(product.latest_cogs ?? 0)
+        let discAmt = 0
+        if (type === 'standard') {
+          const markup = cogsPerUnit > 0
+            ? ((line.unit_price / cogsPerUnit - 1) * 100)
+            : Number(product.markup_percentage ?? 0)
+          const discPct = getStandardDiscountForMarkup(discountRules, markup)
+          discAmt = (line.quantity * line.unit_price * discPct) / 100
+        } else {
+          discAmt = line.quantity * Math.max(0, line.unit_price - cogsPerUnit)
+        }
+        await updateLineDiscount.mutateAsync({ id: line.id, discount_amount: discAmt })
+      }
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to apply discount')
+    } finally {
+      setApplyingDiscount(false)
+    }
   }
 
   return (
@@ -259,9 +383,103 @@ export default function OnlineOrderDetailPage({ params }: { params: Promise<{ id
           {/* Order lines */}
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <Package className="w-4 h-4" /> Items
-              </CardTitle>
+              <div className="flex items-center justify-between gap-2">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                  <Package className="w-4 h-4" /> Items
+                </CardTitle>
+                {order.status !== 'cancelled' && !order.transaction_id && (
+                  <div className="flex gap-1.5">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs gap-1"
+                      onClick={() => { setShowAddProduct(v => !v); setShowDiscountPanel(false) }}
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Add Product
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs gap-1"
+                      onClick={() => { setShowDiscountPanel(v => !v); setShowAddProduct(false) }}
+                    >
+                      <Percent className="w-3.5 h-3.5" /> Discount
+                    </Button>
+                  </div>
+                )}
+              </div>
+
+              {showAddProduct && (
+                <div className="mt-2 border rounded-lg p-3 bg-muted/30 space-y-2">
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <Input
+                      placeholder="Search product by name or code..."
+                      value={productQuery}
+                      onChange={e => setProductQuery(e.target.value)}
+                      className="h-8 pl-8 text-xs"
+                      autoFocus
+                    />
+                  </div>
+                  {productQuery.length >= 2 && (
+                    <div className="max-h-56 overflow-y-auto border rounded-md bg-white divide-y">
+                      {isSearching ? (
+                        <p className="text-xs text-slate-400 p-3 text-center">Searching...</p>
+                      ) : searchResults.length === 0 ? (
+                        <p className="text-xs text-slate-400 p-3 text-center">No products found</p>
+                      ) : (
+                        searchResults.map((product: any) => (
+                          <button
+                            key={product.id}
+                            type="button"
+                            onClick={() => handleAddProduct(product)}
+                            disabled={addLine.isPending}
+                            className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left hover:bg-slate-50 disabled:opacity-50"
+                          >
+                            <div className="min-w-0">
+                              <p className="text-xs font-medium truncate">{product.name}</p>
+                              <p className="text-[11px] text-slate-400">{product.code} · {product.available_stock} {product.uom_abbreviation} in stock</p>
+                            </div>
+                            <span className="text-xs font-semibold flex-shrink-0">{formatPrice(product.unit_price)}</span>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {showDiscountPanel && (
+                <div className="mt-2 border rounded-lg p-3 bg-muted/30 space-y-2">
+                  <div className="flex flex-wrap gap-1.5">
+                    {DISCOUNT_TYPE_OPTIONS.map(opt => (
+                      <Button
+                        key={opt.value}
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs"
+                        disabled={applyingDiscount}
+                        onClick={() => applyDiscountType(opt.value)}
+                      >
+                        {opt.label}
+                      </Button>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      min="0"
+                      placeholder="Amount (Fixed) or % (Percentage)"
+                      value={discountInput}
+                      onChange={e => setDiscountInput(e.target.value)}
+                      className="h-8 text-xs"
+                    />
+                    <p className="text-[11px] text-slate-400 flex-shrink-0 w-40">
+                      Enter a value, then click Fixed or Percentage above to apply it.
+                    </p>
+                  </div>
+                </div>
+              )}
             </CardHeader>
             <CardContent className="p-0">
               <table className="w-full text-sm">
@@ -327,6 +545,9 @@ export default function OnlineOrderDetailPage({ params }: { params: Promise<{ id
                       </td>
                       <td className="px-4 py-2 text-right font-medium">
                         {formatPrice(line.line_total)}
+                        {line.discount_amount > 0 && (
+                          <p className="text-[11px] text-green-600 font-normal">-{formatPrice(line.discount_amount)} off</p>
+                        )}
                       </td>
                       <td className="px-2 py-2">
                         {order.status !== 'cancelled' && !order.transaction_id && editingLineId !== line.id && (
@@ -379,6 +600,17 @@ export default function OnlineOrderDetailPage({ params }: { params: Promise<{ id
                     <td className="px-4 py-2 text-right font-semibold">{formatPrice(order.subtotal)}</td>
                     <td />
                   </tr>
+                  {(order.discount_amount > 0 || order.discount_percentage > 0) && (
+                    <tr>
+                      <td colSpan={3} className="px-4 py-1.5 text-right text-sm text-slate-500">
+                        Discount{order.discount_percentage > 0 ? ` (${order.discount_percentage}%)` : ''}
+                      </td>
+                      <td className="px-4 py-1.5 text-right font-semibold text-green-600">
+                        -{formatPrice(order.discount_amount > 0 ? order.discount_amount : (order.subtotal * order.discount_percentage) / 100)}
+                      </td>
+                      <td />
+                    </tr>
+                  )}
                   {order.delivery_fee > 0 && (
                     <tr>
                       <td colSpan={3} className="px-4 py-1.5 text-right text-sm text-slate-500">
@@ -572,7 +804,7 @@ export default function OnlineOrderDetailPage({ params }: { params: Promise<{ id
               <p className="text-xs text-green-700 mb-3">
                 {hasShortages
                   ? 'Adjust the line items above to match available stock, then convert.'
-                  : 'Click "Convert to Sale" to open the POS with this order\'s items and customer pre-filled.'}
+                  : 'Click "Convert to Sale" to open the sale screen with this order\'s items and customer pre-filled.'}
               </p>
               <Button
                 onClick={handleConvertToSale}

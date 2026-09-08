@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "SYD POS",
+    "name": "SYD Construction Supplies",
     "slug": "syd-pos-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -17,7 +17,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.sydconstruct.pos",
       "infoPlist": {
-        "NSBluetoothAlwaysUsageDescription": "SYD POS needs Bluetooth to connect to the thermal receipt printer.",
+        "NSBluetoothAlwaysUsageDescription": "SYD Construction Supplies needs Bluetooth to connect to the thermal receipt printer.",
         "UISupportedExternalAccessoryProtocols": []
       }
     },

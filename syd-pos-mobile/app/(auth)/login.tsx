@@ -65,8 +65,8 @@ export default function LoginScreen() {
               style={styles.logo}
               contentFit="contain"
             />
-            <Text style={styles.brandTitle}>SYD POS</Text>
-            <Text style={styles.brandSubtitle}>Point of Sale System</Text>
+            <Text style={styles.brandTitle}>SYD Construction Supplies</Text>
+            <Text style={styles.brandSubtitle}>Inventory & Order Management</Text>
           </View>
 
           {/* Login Card */}
@@ -162,7 +162,7 @@ export default function LoginScreen() {
           </View>
 
           {/* Footer */}
-          <Text style={styles.footer}>© 2026 SYD POS. All rights reserved.</Text>
+          <Text style={styles.footer}>© 2026 SYD Construction Supplies. All rights reserved.</Text>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -194,15 +194,17 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   brandTitle: {
-    fontSize: 32,
+    fontSize: 22,
     fontWeight: '700',
     color: '#1f2937',
     marginBottom: 4,
+    textAlign: 'center',
   },
   brandSubtitle: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '400',
     color: '#6b7280',
+    textAlign: 'center',
   },
   card: {
     backgroundColor: '#fff',

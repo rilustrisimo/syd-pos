@@ -338,7 +338,7 @@ export function SettingsModal({ visible, onClose }: Props) {
           </View>
 
           <View style={styles.footer}>
-            <Text style={styles.footerText}>SYD POS Mobile v1.0</Text>
+            <Text style={styles.footerText}>SYD Construction Supplies Mobile v1.0</Text>
           </View>
         </ScrollView>
       </SafeAreaView>

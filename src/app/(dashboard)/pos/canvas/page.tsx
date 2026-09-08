@@ -618,7 +618,7 @@ export default function CanvasPage() {
         }
       }
 
-      toast.success('Canvas loaded into POS — complete the sale!')
+      toast.success('Canvas loaded — complete the sale!')
       router.push('/pos')
     },
     [posStore, branchId, router]
@@ -1439,10 +1439,10 @@ export default function CanvasPage() {
               <div className="space-y-1">
                 <p>
                   Please review the quantities and units below before proceeding.
-                  Converting will load these items into the POS — verify that everything is correct.
+                  Converting will load these items into the sale screen — verify that everything is correct.
                 </p>
                 <p className="font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2 text-xs">
-                  Caution: Once converted, this will overwrite any items currently in the POS cart.
+                  Caution: Once converted, this will overwrite any items currently in the sale cart.
                 </p>
               </div>
             </DialogDescription>

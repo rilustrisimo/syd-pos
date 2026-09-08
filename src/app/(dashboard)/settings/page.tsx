@@ -215,7 +215,7 @@ function DiscountRulesCard() {
                 <CardTitle>Standard Discount Rules</CardTitle>
                 <CardDescription className="mt-1">
                   Define automatic discounts applied per item based on product markup range.
-                  Used when cashier selects "Standard" discount in POS checkout.
+                  Used when staff selects "Standard" discount at checkout.
                 </CardDescription>
               </div>
             </div>
@@ -335,7 +335,7 @@ function DiscountRulesCard() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete discount rule?</AlertDialogTitle>
             <AlertDialogDescription>
-              This rule will no longer be applied to standard discounts in POS.
+              This rule will no longer be applied to standard discounts at checkout.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

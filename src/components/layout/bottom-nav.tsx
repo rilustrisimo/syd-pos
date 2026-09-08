@@ -14,7 +14,7 @@ import { useSidebarStore } from '@/lib/stores/sidebar'
 
 const bottomTabs = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
-  { name: 'POS', href: '/pos', icon: ShoppingCart },
+  { name: 'Sale', href: '/pos', icon: ShoppingCart },
   { name: 'Products', href: '/products', icon: Package },
   { name: 'Inventory', href: '/inventory', icon: Boxes },
   { name: 'More', href: null, icon: MoreHorizontal },

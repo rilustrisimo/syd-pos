@@ -281,7 +281,6 @@ export function buildReceiptBytes(data: ReceiptData, width = 48): Uint8Array {
   cmd(CMD.CENTER, CMD.BOLD_ON)
   line('Thank you for your purchase!')
   cmd(CMD.BOLD_OFF)
-  line('Please keep this receipt.')
   bytes.push(LF)
   // Returns policy
   line('Returns due to change of mind')
@@ -289,9 +288,12 @@ export function buildReceiptBytes(data: ReceiptData, width = 48): Uint8Array {
   line('Items may be exchanged only')
   line('if in good condition.')
   bytes.push(LF)
-  line('This serves as your official receipt.')
+  cmd(CMD.BOLD_ON)
+  line('NOT AN OFFICIAL RECEIPT')
+  cmd(CMD.BOLD_OFF)
+  line('Your Invoice/OR is provided separately.')
   bytes.push(LF)
-  line('--- END OF RECEIPT ---')
+  line('--- END OF RECORD ---')
 
   // Feed + cut
   cmd(CMD.FEED(4))

@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation'
 
 const TITLES: Record<string, string> = {
   '/': 'Dashboard',
-  '/pos': 'Point of Sale',
+  '/pos': 'Sale Entry',
   '/pos/history': 'Transaction History',
   '/pos/canvas': 'Canvas Orders',
   '/pos/returns': 'Returns',
@@ -55,7 +55,7 @@ export function NavTitleSync() {
   useEffect(() => {
     const exact = TITLES[pathname]
     if (exact) {
-      document.title = `${exact} · SYD POS`
+      document.title = `${exact} · SYD Construction Supplies`
       return
     }
 
@@ -65,12 +65,12 @@ export function NavTitleSync() {
     for (let len = parts.length - 1; len > 0; len--) {
       const parentPath = '/' + parts.slice(0, len).join('/')
       if (TITLES[parentPath]) {
-        document.title = `${TITLES[parentPath]} · SYD POS`
+        document.title = `${TITLES[parentPath]} · SYD Construction Supplies`
         return
       }
     }
 
-    document.title = 'SYD POS'
+    document.title = 'SYD Construction Supplies'
   }, [pathname])
 
   return null

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from 'react'
 import { toast } from 'sonner'
+import { useQueryClient } from '@tanstack/react-query'
 import { getClient } from '@/lib/supabase/client'
 import { useOnlineOrderNotifications } from '@/lib/stores/onlineOrderNotifications'
 
@@ -38,8 +39,18 @@ function formatPrice(amount: number) {
   return '₱' + Number(amount).toLocaleString('en-PH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
 }
 
+// Opens in a new tab/window rather than navigating in-place — in the
+// Electron desktop app, main.ts's setWindowOpenHandler intercepts this
+// and routes it to the system's default browser instead of the app
+// window, per product requirement. In a normal browser it just opens a
+// new tab, which also avoids losing whatever page staff were on.
+function openOrder(url: string) {
+  window.open(url, '_blank', 'noopener,noreferrer')
+}
+
 export function OrderNotificationListener() {
   const { increment } = useOnlineOrderNotifications()
+  const queryClient = useQueryClient()
   const channelRef = useRef<ReturnType<ReturnType<typeof getClient>['channel']> | null>(null)
 
   useEffect(() => {
@@ -56,6 +67,7 @@ export function OrderNotificationListener() {
           const order = payload.new as any
           increment()
           playBell()
+          queryClient.invalidateQueries({ queryKey: ['online_orders', 'pending-banner'] })
 
           toast.info(
             `New Online Order — ${order.order_number}`,
@@ -64,12 +76,20 @@ export function OrderNotificationListener() {
               duration: 0, // persist until dismissed
               action: {
                 label: 'View',
-                onClick: () => {
-                  window.location.href = `/orders/online/${order.id}`
-                },
+                onClick: () => openOrder(`/orders/online/${order.id}`),
               },
             }
           )
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'online_orders' },
+        () => {
+          // Keeps the pending-orders banner live when staff change an
+          // order's status away from (or into) "pending" — no toast/chime
+          // needed for updates, just refresh the banner's data.
+          queryClient.invalidateQueries({ queryKey: ['online_orders', 'pending-banner'] })
         }
       )
       .subscribe()
@@ -80,7 +100,7 @@ export function OrderNotificationListener() {
       channel.unsubscribe()
       channelRef.current = null
     }
-  }, [increment])
+  }, [increment, queryClient])
 
   return null
 }

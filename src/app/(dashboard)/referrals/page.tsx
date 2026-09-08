@@ -600,7 +600,7 @@ export default function ReferralsPage() {
             <AlertDialogTitle>Deactivate Referrer</AlertDialogTitle>
             <AlertDialogDescription>
               Are you sure you want to deactivate "{deletingReferrer?.name}"? They will no
-              longer appear in the POS referrer dropdown. Existing commissions and payouts
+              longer appear in the sale screen's referrer dropdown. Existing commissions and payouts
               are preserved.
             </AlertDialogDescription>
           </AlertDialogHeader>

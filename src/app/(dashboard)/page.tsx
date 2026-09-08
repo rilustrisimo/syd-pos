@@ -208,7 +208,7 @@ export default function DashboardPage() {
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Dashboard</h1>
           <p className="text-muted-foreground">
-            Welcome to SYD Construction Supplies POS System
+            Welcome to SYD Construction Supplies
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -556,7 +556,7 @@ export default function DashboardPage() {
               <ShoppingCart className="h-6 w-6 text-primary" />
               <div>
                 <p className="font-medium">New Sale</p>
-                <p className="text-sm text-muted-foreground">Start a POS transaction</p>
+                <p className="text-sm text-muted-foreground">Start a new sale entry</p>
               </div>
             </Link>
             <Link

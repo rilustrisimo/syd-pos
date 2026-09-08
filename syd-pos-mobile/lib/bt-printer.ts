@@ -1,5 +1,5 @@
 /**
- * Classic Bluetooth printer service for SYD POS Mobile.
+ * Classic Bluetooth printer service for SYD Construction Supplies Mobile.
  *
  * Uses react-native-bluetooth-classic (SPP profile) so the app connects
  * to the thermal printer the same way Android System Bluetooth does —

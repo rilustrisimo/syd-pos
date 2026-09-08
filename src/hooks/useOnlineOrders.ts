@@ -18,6 +18,7 @@ export interface OnlineOrderLine {
   unit_price: number
   quantity: number
   line_total: number
+  discount_amount: number
 }
 
 export interface OnlineOrder {
@@ -41,6 +42,8 @@ export interface OnlineOrder {
   payment_qr_label: string | null
   subtotal: number
   delivery_fee: number
+  discount_amount: number
+  discount_percentage: number
   total_amount: number
   notes: string | null
   staff_log: string | null
@@ -57,6 +60,15 @@ const keys = {
   all: ['online_orders'] as const,
   list: (status?: string) => [...keys.all, 'list', status ?? 'all'] as const,
   detail: (id: string) => [...keys.all, 'detail', id] as const,
+  pendingBanner: () => [...keys.all, 'pending-banner'] as const,
+}
+
+export interface PendingOnlineOrderSummary {
+  id: string
+  order_number: string
+  customer_name: string
+  total_amount: number
+  fulfillment: OnlineOrderFulfillment
 }
 
 export function useOnlineOrders(statusFilter?: OnlineOrderStatus) {
@@ -78,6 +90,27 @@ export function useOnlineOrders(statusFilter?: OnlineOrderStatus) {
     },
     staleTime: 1000 * 30,
     refetchInterval: 1000 * 60,
+  })
+}
+
+// Powers the persistent "pending orders" banner (src/components/notifications/
+// pending-orders-banner.tsx) — kept fresh by the same realtime subscription
+// that already drives the toast/chime (order-notification-listener.tsx),
+// not by polling.
+export function usePendingOnlineOrdersBanner() {
+  return useQuery({
+    queryKey: keys.pendingBanner(),
+    queryFn: async () => {
+      const supabase = getClient()
+      const { data, error } = await supabase
+        .from('online_orders')
+        .select('id, order_number, customer_name, total_amount, fulfillment')
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false })
+      if (error) throw new Error(error.message)
+      return (data ?? []) as PendingOnlineOrderSummary[]
+    },
+    staleTime: 1000 * 60,
   })
 }
 
@@ -196,23 +229,30 @@ async function recalcOrderTotals(
 ) {
   const { data: lines } = await supabase
     .from('online_order_lines')
-    .select('line_total')
+    .select('line_total, discount_amount')
     .eq('order_id', orderId)
 
-  const subtotal = (lines ?? []).reduce((s: number, l: any) => s + Number(l.line_total), 0)
+  const grossTotal = (lines ?? []).reduce((s: number, l: any) => s + Number(l.line_total), 0)
+  const lineDiscounts = (lines ?? []).reduce((s: number, l: any) => s + Number(l.discount_amount ?? 0), 0)
+  const subtotal = grossTotal - lineDiscounts
 
   const { data: order } = await supabase
     .from('online_orders')
-    .select('delivery_fee, staff_log')
+    .select('delivery_fee, staff_log, discount_amount, discount_percentage')
     .eq('id', orderId)
     .single()
 
   const delivery_fee = Number(order?.delivery_fee ?? 0)
+  const orderDiscountAmount = Number(order?.discount_amount ?? 0)
+  const orderDiscountPercentage = Number(order?.discount_percentage ?? 0)
+  const orderDiscount = orderDiscountAmount > 0
+    ? orderDiscountAmount
+    : (subtotal * orderDiscountPercentage) / 100
   const staff_log = appendLog(order?.staff_log ?? null, logEntry)
 
   await supabase
     .from('online_orders')
-    .update({ subtotal, total_amount: subtotal + delivery_fee, staff_log })
+    .update({ subtotal, total_amount: subtotal - orderDiscount + delivery_fee, staff_log })
     .eq('id', orderId)
 }
 
@@ -269,6 +309,102 @@ export function useDeleteOnlineOrderLine() {
       await recalcOrderTotals(supabase, line.order_id, logEntry)
 
       return line.order_id
+    },
+    onSuccess: (orderId) => {
+      qc.invalidateQueries({ queryKey: keys.detail(orderId) })
+      qc.invalidateQueries({ queryKey: keys.list() })
+    },
+  })
+}
+
+export interface NewOnlineOrderLineInput {
+  order_id: string
+  product_id: string
+  product_code: string
+  product_name: string
+  unit_label: string
+  unit_price: number
+  quantity: number
+}
+
+export function useAddOnlineOrderLine() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: NewOnlineOrderLineInput) => {
+      const supabase = getClient()
+      const line_total = input.unit_price * input.quantity
+      const { error } = await supabase
+        .from('online_order_lines')
+        .insert({ ...input, line_total })
+      if (error) throw new Error(error.message)
+
+      const logEntry = `Staff added: ${input.product_name} × ${input.quantity} ${input.unit_label}`
+      await recalcOrderTotals(supabase, input.order_id, logEntry)
+
+      return input.order_id
+    },
+    onSuccess: (orderId) => {
+      qc.invalidateQueries({ queryKey: keys.detail(orderId) })
+      qc.invalidateQueries({ queryKey: keys.list() })
+    },
+  })
+}
+
+export function useUpdateOnlineOrderLineDiscount() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, discount_amount }: { id: string; discount_amount: number }) => {
+      const supabase = getClient()
+      const { data: line, error: fetchErr } = await supabase
+        .from('online_order_lines')
+        .select('order_id, product_name')
+        .eq('id', id)
+        .single()
+      if (fetchErr) throw new Error(fetchErr.message)
+
+      const { error } = await supabase
+        .from('online_order_lines')
+        .update({ discount_amount })
+        .eq('id', id)
+      if (error) throw new Error(error.message)
+
+      const logEntry = `Staff applied discount of ${discount_amount.toFixed(2)} to ${line.product_name}`
+      await recalcOrderTotals(supabase, line.order_id, logEntry)
+
+      return line.order_id
+    },
+    onSuccess: (orderId) => {
+      qc.invalidateQueries({ queryKey: keys.detail(orderId) })
+      qc.invalidateQueries({ queryKey: keys.list() })
+    },
+  })
+}
+
+export function useUpdateOnlineOrderDiscount() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({
+      order_id,
+      discount_amount,
+      discount_percentage,
+    }: {
+      order_id: string
+      discount_amount: number
+      discount_percentage: number
+    }) => {
+      const supabase = getClient()
+      const { error } = await supabase
+        .from('online_orders')
+        .update({ discount_amount, discount_percentage })
+        .eq('id', order_id)
+      if (error) throw new Error(error.message)
+
+      const logEntry = discount_percentage > 0
+        ? `Staff applied an order-level discount of ${discount_percentage}%`
+        : `Staff applied an order-level discount of ${discount_amount.toFixed(2)}`
+      await recalcOrderTotals(supabase, order_id, logEntry)
+
+      return order_id
     },
     onSuccess: (orderId) => {
       qc.invalidateQueries({ queryKey: keys.detail(orderId) })

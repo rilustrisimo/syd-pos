@@ -582,7 +582,7 @@ function TagTransactionDialog({ referrerId, defaultRate, open, onClose }: {
         <DialogHeader>
           <DialogTitle>Tag Historical Transaction</DialogTitle>
           <DialogDescription>
-            Search POS history and link a sale to this referrer. A commission row will be created automatically.
+            Search sale history and link a sale to this referrer. A commission row will be created automatically.
           </DialogDescription>
         </DialogHeader>
 

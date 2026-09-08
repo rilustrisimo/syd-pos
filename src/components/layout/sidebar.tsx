@@ -50,12 +50,12 @@ import { useOnlineOrderNotifications } from '@/lib/stores/onlineOrderNotificatio
 const navigation = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
   {
-    name: 'Point of Sale',
+    name: 'Sale Entry',
     href: '/pos',
     icon: ShoppingCart,
     children: [
       { name: 'New Sale', href: '/pos', icon: ShoppingCart },
-      { name: 'Frontline POS', href: '/frontline', icon: Monitor },
+      { name: 'Frontline', href: '/frontline', icon: Monitor },
       { name: 'Canvas', href: '/pos/canvas', icon: ClipboardList },
       { name: 'History', href: '/pos/history', icon: History },
       { name: 'Returns', href: '/pos/returns', icon: RotateCcw },

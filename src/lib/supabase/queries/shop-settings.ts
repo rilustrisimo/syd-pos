@@ -33,6 +33,18 @@ export async function getStoreContactInfo(): Promise<StoreContactInfo> {
   }
 }
 
+// Used by the online order detail page to search products for the same
+// branch the shop draws stock from, when staff add a product to an order.
+export async function getShopBranchId(): Promise<string | null> {
+  const supabase = getClient()
+  const { data } = await supabase
+    .from('shop_settings')
+    .select('branch_id')
+    .limit(1)
+    .single()
+  return data?.branch_id ?? null
+}
+
 export async function updateStoreContactInfo(
   id: string,
   updates: { store_address: string; store_phone: string }

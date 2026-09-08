@@ -3,7 +3,7 @@
 import { useEffect } from 'react'
 
 interface PageTitleProps {
-  /** Full title shown before " · SYD POS", e.g. "Portland Cement · Products" */
+  /** Full title shown before " · SYD Construction Supplies", e.g. "Portland Cement · Products" */
   title: string
 }
 
@@ -11,7 +11,7 @@ interface PageTitleProps {
  *  Because child useEffects run after parent effects, this wins over NavTitleSync. */
 export function PageTitle({ title }: PageTitleProps) {
   useEffect(() => {
-    if (title) document.title = `${title} · SYD POS`
+    if (title) document.title = `${title} · SYD Construction Supplies`
   }, [title])
   return null
 }

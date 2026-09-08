@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   getStoreContactInfo,
   updateStoreContactInfo,
+  getShopBranchId,
   type StoreContactInfo,
 } from '@/lib/supabase/queries/shop-settings'
 
@@ -13,6 +14,14 @@ export function useStoreContactInfo() {
   return useQuery({
     queryKey: QUERY_KEY,
     queryFn: getStoreContactInfo,
+    staleTime: 1000 * 60 * 5,
+  })
+}
+
+export function useShopBranchId() {
+  return useQuery({
+    queryKey: ['shop-branch-id'],
+    queryFn: getShopBranchId,
     staleTime: 1000 * 60 * 5,
   })
 }

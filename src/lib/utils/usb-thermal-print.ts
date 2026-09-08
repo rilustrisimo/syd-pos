@@ -741,7 +741,7 @@ export async function printTestPage(printerQueue: string, width = 48): Promise<v
   cmd([GS, 0x21, 0x00], [ESC, 0x45, 0x00]) // normal
   cmd([ESC, 0x61, 0x00])                  // LEFT
   line(divider)
-  line(`SYD POS Desktop`)
+  line(`SYD Construction Supplies Desktop`)
   line(`Queue: ${printerQueue}`)
   line(`Width: ${width} chars`)
   line(new Date().toLocaleString('en-PH', { timeZone: 'Asia/Manila' }))

@@ -288,7 +288,7 @@ export default function ProductDetailPage({ params }: ProductDetailPageProps) {
         <Alert className="border-orange-300 bg-orange-50 text-orange-900">
           <XCircle className="h-4 w-4 text-orange-600" />
           <AlertDescription>
-            This product is <strong>inactive</strong> — it will not appear in the POS or be available for new sales.
+            This product is <strong>inactive</strong> — it will not appear on the sale screen or be available for new sales.
             Click <strong>Activate</strong> above to make it available again.
           </AlertDescription>
         </Alert>
@@ -1109,7 +1109,7 @@ export default function ProductDetailPage({ params }: ProductDetailPageProps) {
                         damaged_return: 'bg-orange-100 text-orange-800 border-orange-200',
                       }
                       const referenceLabels: Record<string, string> = {
-                        transaction: 'POS',
+                        transaction: 'Sale',
                         transaction_reversal: 'Deleted Txn',
                         inventory_correction: 'Bulk Correction',
                         manual_adjustment: 'Manual Count',

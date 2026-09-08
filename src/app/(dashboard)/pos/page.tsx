@@ -403,9 +403,35 @@ export default function POSPage() {
           unit_price: Number(line.unit_price),
           cogs_per_unit: Number(product?.latest_cogs ?? 0),
           markup_percentage: Number(product?.markup_percentage ?? 0),
-          discount_amount: 0,
+          discount_amount: Number(line.discount_amount ?? 0),
           available_stock: 9999,
         })
+      }
+
+      // Carry over any discount staff already applied on the online order —
+      // otherwise it would silently disappear here and the customer would
+      // be charged full price on the resulting sale. Per-line discounts
+      // (Standard/At Cost on the online order) are already set per-item
+      // above via discount_amount; deliberately leave discountType as
+      // 'none' for those rather than 'standard'/'cost', since either of
+      // those triggers a sync effect below that recomputes every item's
+      // discount from the *current* rules/COGS and would overwrite the
+      // carried-over amount (which may have been "At Cost", not
+      // "Standard" — there's no record of which, only the final amount).
+      // Order-level Fixed/Percentage carry over exactly since those are
+      // unambiguous stored values.
+      if (Number(order.discount_amount) > 0) {
+        setDiscountType('fixed')
+        setDiscountAmount(Number(order.discount_amount))
+        setDiscountPercentage(0)
+      } else if (Number(order.discount_percentage) > 0) {
+        setDiscountType('percentage')
+        setDiscountPercentage(Number(order.discount_percentage))
+        setDiscountAmount(0)
+      } else {
+        setDiscountType('none')
+        setDiscountAmount(0)
+        setDiscountPercentage(0)
       }
 
       setPendingOnlineOrderId(fromOrderId)
