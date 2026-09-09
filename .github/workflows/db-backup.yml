@@ -34,7 +34,12 @@ jobs:
           fi
           TIMESTAMP=$(date -u +%Y%m%d-%H%M%S)
           echo "BACKUP_FILE=backup-${TIMESTAMP}.dump" >> "$GITHUB_ENV"
-          pg_dump "$DATABASE_URL" -Fc -f "backup-${TIMESTAMP}.dump"
+          # Call the versioned binary directly rather than relying on
+          # `pg_dump` resolving via PATH — the runner already has an
+          # older postgresql-client on PATH ahead of the one just
+          # installed from PGDG, so an unqualified `pg_dump` silently
+          # picks up the wrong (older) version and fails the same way.
+          /usr/lib/postgresql/17/bin/pg_dump "$DATABASE_URL" -Fc -f "backup-${TIMESTAMP}.dump"
 
       # Artifacts are GitHub's own storage, separate from git history —
       # unlike committing the dump to the repo, deleting it here doesn't
