@@ -1,0 +1,53 @@
+name: Daily Database Backup
+
+on:
+  schedule:
+    # 18:00 UTC = 2:00 AM Philippine time (UTC+8) — low-traffic hours
+    - cron: '0 18 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Dump database
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::SUPABASE_DB_URL secret is not set. See .github/workflows/db-backup.yml for setup instructions."
+            exit 1
+          fi
+          TIMESTAMP=$(date -u +%Y%m%d-%H%M%S)
+          echo "BACKUP_FILE=backup-${TIMESTAMP}.dump" >> "$GITHUB_ENV"
+          pg_dump "$DATABASE_URL" -Fc -f "backup-${TIMESTAMP}.dump"
+
+      # Artifacts are GitHub's own storage, separate from git history —
+      # unlike committing the dump to the repo, deleting it here doesn't
+      # require a cleanup step or bloat the repo: GitHub deletes it
+      # automatically once retention-days elapses.
+      - name: Upload backup artifact (auto-deleted after 7 days)
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-backup-${{ github.run_id }}
+          path: ${{ env.BACKUP_FILE }}
+          retention-days: 7
+
+# ─────────────────────────────────────────────────────────────────────────────
+# One-time setup (not something Claude can do — requires the DB password):
+#
+# 1. In the Supabase dashboard: Project Settings → Database → Connection
+#    string → copy the "Session pooler" URI (port 5432, not the 6543
+#    transaction pooler — pg_dump needs the session-mode connection).
+#    Replace [YOUR-PASSWORD] in it with your actual database password.
+#
+# 2. In GitHub: this repo → Settings → Secrets and variables → Actions →
+#    New repository secret → name it SUPABASE_DB_URL → paste that
+#    connection string as the value.
+#
+# 3. To restore from a downloaded backup-*.dump file:
+#    pg_restore --clean --if-exists -d "<connection string>" backup-*.dump
+# ─────────────────────────────────────────────────────────────────────────────
