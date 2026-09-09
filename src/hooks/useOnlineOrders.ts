@@ -96,9 +96,15 @@ export function useOnlineOrders(statusFilter?: OnlineOrderStatus) {
 }
 
 // Powers the persistent "pending orders" banner (src/components/notifications/
-// pending-orders-banner.tsx) — kept fresh by the same realtime subscription
-// that already drives the toast/chime (order-notification-listener.tsx),
-// not by polling.
+// pending-orders-banner.tsx) and the nav badge — kept fresh primarily by the
+// realtime subscription in order-notification-listener.tsx, but also polled
+// every 30s as a safety net. The desktop (Electron) app's WebSocket has been
+// observed to connect at launch but not reliably survive/reconnect over a
+// long-running session, silently going stale with no client-side error —
+// the poll means a dead connection self-heals within ~30s instead of
+// requiring a full app restart. refetchIntervalInBackground is needed
+// because a kiosk-style Electron window may never fire the "visible again"
+// event React Query normally relies on to resume polling.
 export function usePendingOnlineOrdersBanner() {
   return useQuery({
     queryKey: keys.pendingBanner(),
@@ -113,6 +119,8 @@ export function usePendingOnlineOrdersBanner() {
       if (error) throw new Error(error.message)
       return (data ?? []) as PendingOnlineOrderSummary[]
     },
+    refetchInterval: 1000 * 30,
+    refetchIntervalInBackground: true,
     staleTime: 1000 * 60,
   })
 }

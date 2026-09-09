@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react'
 import { toast } from 'sonner'
 import { useQueryClient } from '@tanstack/react-query'
 import { getClient } from '@/lib/supabase/client'
+import { usePendingOnlineOrdersBanner, type PendingOnlineOrderSummary } from '@/hooks/useOnlineOrders'
 
 function playBell() {
   try {
@@ -57,54 +58,120 @@ function openOrder(url: string) {
 export function OrderNotificationListener() {
   const queryClient = useQueryClient()
   const channelRef = useRef<ReturnType<ReturnType<typeof getClient>['channel']> | null>(null)
+  // Tracks pending order IDs already alerted on, from either path below.
+  // null means "haven't seen an initial poll yet" — used to avoid mass-
+  // firing toasts for every already-pending order the moment the app
+  // starts up.
+  const seenOrderIds = useRef<Set<string> | null>(null)
+
+  function notifyNewOrder(order: { id: string; order_number: string; customer_name: string; total_amount: number; fulfillment: string }) {
+    playBell()
+    toast.info(
+      `New Online Order — ${order.order_number}`,
+      {
+        description: `${order.customer_name} · ${formatPrice(order.total_amount)} · ${order.fulfillment}`,
+        duration: 0, // persist until dismissed
+        action: {
+          label: 'View',
+          onClick: () => openOrder(`/orders/online/${order.id}`),
+        },
+      }
+    )
+  }
 
   useEffect(() => {
     const supabase = getClient()
 
-    if (channelRef.current) return
+    function subscribe() {
+      const channel = supabase
+        .channel('online-orders-realtime')
+        .on(
+          'postgres_changes',
+          { event: 'INSERT', schema: 'public', table: 'online_orders' },
+          (payload) => {
+            const order = payload.new as any
+            seenOrderIds.current?.add(order.id)
+            notifyNewOrder(order)
+            queryClient.invalidateQueries({ queryKey: ['online_orders', 'pending-banner'] })
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: 'UPDATE', schema: 'public', table: 'online_orders' },
+          () => {
+            // Keeps the pending-orders banner live when staff change an
+            // order's status away from (or into) "pending" — no toast/chime
+            // needed for updates, just refresh the banner's data.
+            queryClient.invalidateQueries({ queryKey: ['online_orders', 'pending-banner'] })
+          }
+        )
+        .subscribe()
 
-    const channel = supabase
-      .channel('online-orders-realtime')
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'online_orders' },
-        (payload) => {
-          const order = payload.new as any
-          playBell()
-          queryClient.invalidateQueries({ queryKey: ['online_orders', 'pending-banner'] })
+      channelRef.current = channel
+    }
 
-          toast.info(
-            `New Online Order — ${order.order_number}`,
-            {
-              description: `${order.customer_name} · ${formatPrice(order.total_amount)} · ${order.fulfillment}`,
-              duration: 0, // persist until dismissed
-              action: {
-                label: 'View',
-                onClick: () => openOrder(`/orders/online/${order.id}`),
-              },
-            }
-          )
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'online_orders' },
-        () => {
-          // Keeps the pending-orders banner live when staff change an
-          // order's status away from (or into) "pending" — no toast/chime
-          // needed for updates, just refresh the banner's data.
-          queryClient.invalidateQueries({ queryKey: ['online_orders', 'pending-banner'] })
-        }
-      )
-      .subscribe()
+    if (!channelRef.current) subscribe()
 
-    channelRef.current = channel
+    // Browsers throttle timers (and, with them, a WebSocket's keep-alive
+    // heartbeat) on backgrounded tabs to save power — a connection can go
+    // quietly stale while the tab isn't in focus, with no client-side
+    // error to react to. Rather than trust a connection that may have
+    // been sitting untested for a while, force a fresh one the moment the
+    // tab becomes visible again, and immediately resync in case anything
+    // was missed while it was away.
+    function handleVisibilityChange() {
+      if (document.visibilityState !== 'visible') return
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current)
+        channelRef.current = null
+      }
+      subscribe()
+      queryClient.invalidateQueries({ queryKey: ['online_orders', 'pending-banner'] })
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
 
     return () => {
-      channel.unsubscribe()
-      channelRef.current = null
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current)
+        channelRef.current = null
+      }
     }
   }, [queryClient])
+
+  // Polling-based fallback — the desktop app's WebSocket has been observed
+  // to connect at launch but not reliably survive/reconnect over a long
+  // session, silently going stale with no client-side error. This hook
+  // polls every 30s (see usePendingOnlineOrdersBanner) regardless of
+  // whether realtime is actually delivering events, so a genuinely new
+  // pending order still gets a toast/chime even if the WebSocket is dead —
+  // diffed against seenOrderIds so it never double-fires for something
+  // realtime already alerted on.
+  const { data: pendingOrders } = usePendingOnlineOrdersBanner()
+
+  useEffect(() => {
+    if (!pendingOrders) return
+
+    if (seenOrderIds.current === null) {
+      // First load: just record what's already pending. These aren't new
+      // arrivals, so don't alert on them.
+      seenOrderIds.current = new Set(pendingOrders.map(o => o.id))
+      return
+    }
+
+    for (const order of pendingOrders as PendingOnlineOrderSummary[]) {
+      if (!seenOrderIds.current.has(order.id)) {
+        seenOrderIds.current.add(order.id)
+        notifyNewOrder(order)
+      }
+    }
+
+    // Reset to exactly the current pending set — bounded by how many
+    // orders are pending right now rather than growing for the life of
+    // the session.
+    seenOrderIds.current = new Set(pendingOrders.map(o => o.id))
+  }, [pendingOrders])
 
   return null
 }
