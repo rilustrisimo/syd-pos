@@ -51,6 +51,7 @@ export interface OnlineOrder {
   transaction_id: string | null
   created_at: string
   updated_at: string
+  deleted_at: string | null
   lines?: OnlineOrderLine[]
   // joined
   customer?: { id: string; name: string; created_at: string } | null
@@ -79,6 +80,7 @@ export function useOnlineOrders(statusFilter?: OnlineOrderStatus) {
       let q = supabase
         .from('online_orders')
         .select('*, customer:customers(id, name, created_at)')
+        .is('deleted_at', null)
         .order('created_at', { ascending: false })
         .limit(100)
 
@@ -106,6 +108,7 @@ export function usePendingOnlineOrdersBanner() {
         .from('online_orders')
         .select('id, order_number, customer_name, total_amount, fulfillment')
         .eq('status', 'pending')
+        .is('deleted_at', null)
         .order('created_at', { ascending: false })
       if (error) throw new Error(error.message)
       return (data ?? []) as PendingOnlineOrderSummary[]
@@ -180,6 +183,51 @@ export function useSignedPaymentProofUrl(path: string | null) {
     },
     enabled: !!path,
     staleTime: 1000 * 60 * 4,
+  })
+}
+
+// Soft delete — sets deleted_at instead of removing the row, so the order
+// (and its lines, staff log, payment references) stay in the database and
+// can be restored. The list, pending banner, and nav badge all filter on
+// deleted_at IS NULL, so a soft-deleted order just disappears from normal
+// view.
+export function useSoftDeleteOnlineOrder() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (orderId: string) => {
+      const supabase = getClient()
+      const { error } = await supabase
+        .from('online_orders')
+        .update({ deleted_at: new Date().toISOString() })
+        .eq('id', orderId)
+      if (error) throw new Error(error.message)
+      return orderId
+    },
+    onSuccess: (orderId) => {
+      qc.invalidateQueries({ queryKey: keys.detail(orderId) })
+      qc.invalidateQueries({ queryKey: keys.list() })
+      qc.invalidateQueries({ queryKey: keys.pendingBanner() })
+    },
+  })
+}
+
+export function useRestoreOnlineOrder() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (orderId: string) => {
+      const supabase = getClient()
+      const { error } = await supabase
+        .from('online_orders')
+        .update({ deleted_at: null })
+        .eq('id', orderId)
+      if (error) throw new Error(error.message)
+      return orderId
+    },
+    onSuccess: (orderId) => {
+      qc.invalidateQueries({ queryKey: keys.detail(orderId) })
+      qc.invalidateQueries({ queryKey: keys.list() })
+      qc.invalidateQueries({ queryKey: keys.pendingBanner() })
+    },
   })
 }
 

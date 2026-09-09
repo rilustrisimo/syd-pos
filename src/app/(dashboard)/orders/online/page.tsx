@@ -2,8 +2,8 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { ShoppingBag, RefreshCw, Search } from 'lucide-react'
-import { useOnlineOrders, type OnlineOrderStatus } from '@/hooks/useOnlineOrders'
+import { ShoppingBag, RefreshCw, Search, Trash2 } from 'lucide-react'
+import { useOnlineOrders, useSoftDeleteOnlineOrder, type OnlineOrderStatus } from '@/hooks/useOnlineOrders'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -23,6 +23,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { toast } from 'sonner'
 
 const STATUS_LABELS: Record<OnlineOrderStatus, string> = {
   pending: 'Pending',
@@ -68,6 +79,17 @@ export default function OnlineOrdersPage() {
   const { data: orders = [], isLoading, refetch, isRefetching } = useOnlineOrders(
     statusFilter !== 'all' ? statusFilter : undefined
   )
+  const softDelete = useSoftDeleteOnlineOrder()
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+
+  function handleDelete() {
+    if (!deletingId) return
+    softDelete.mutate(deletingId, {
+      onSuccess: () => toast.success('Order deleted'),
+      onError: (e) => toast.error(e.message),
+      onSettled: () => setDeletingId(null),
+    })
+  }
 
   const filtered = orders.filter(o =>
     !search ||
@@ -148,6 +170,7 @@ export default function OnlineOrdersPage() {
                   <TableHead className="text-right">Total</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Date</TableHead>
+                  <TableHead className="w-10" />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -204,6 +227,16 @@ export default function OnlineOrdersPage() {
                     <TableCell className="text-xs text-slate-400">
                       {formatDate(order.created_at)}
                     </TableCell>
+                    <TableCell>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 w-7 p-0 text-slate-400 hover:text-red-600"
+                        onClick={() => setDeletingId(order.id)}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -211,6 +244,23 @@ export default function OnlineOrdersPage() {
           )}
         </CardContent>
       </Card>
+
+      <AlertDialog open={!!deletingId} onOpenChange={(open) => !open && setDeletingId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this order?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This removes it from the list, but the order stays in the database and can be restored from its detail page.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} className="bg-red-600 hover:bg-red-700">
+              {softDelete.isPending ? 'Deleting...' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
