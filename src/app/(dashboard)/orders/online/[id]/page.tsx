@@ -3,6 +3,7 @@
 import { useState, use } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import dynamic from 'next/dynamic'
 import {
   ArrowLeft, MapPin, Package, CreditCard, Truck,
   Check, X, Edit2, Trash2, ExternalLink, ShoppingCart,
@@ -20,6 +21,7 @@ import {
   useAddOnlineOrderLine,
   useUpdateOnlineOrderLineDiscount,
   useUpdateOnlineOrderDiscount,
+  useUpdateOnlineOrderDeliveryLocation,
   useSoftDeleteOnlineOrder,
   useRestoreOnlineOrder,
   type OnlineOrderStatus,
@@ -30,6 +32,12 @@ import { useShopBranchId } from '@/hooks/useShopSettings'
 import { useDiscountRules } from '@/hooks/useDiscountRules'
 import { getStandardDiscountForMarkup } from '@/lib/supabase/queries/discount-rules'
 import { getClient } from '@/lib/supabase/client'
+import type { MapSuggestResult } from '@/components/pos/delivery-map-picker'
+
+const DeliveryMapPicker = dynamic(
+  () => import('@/components/pos/delivery-map-picker').then(m => ({ default: m.DeliveryMapPicker })),
+  { ssr: false, loading: () => <div className="w-full h-52 rounded-xl bg-slate-100 animate-pulse border border-slate-200" /> }
+)
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -115,6 +123,9 @@ export default function OnlineOrderDetailPage({ params }: { params: Promise<{ id
   const softDelete = useSoftDeleteOnlineOrder()
   const restoreOrder = useRestoreOnlineOrder()
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const updateDeliveryLocation = useUpdateOnlineOrderDeliveryLocation()
+  const [editingLocation, setEditingLocation] = useState(false)
+  const [newLocation, setNewLocation] = useState<MapSuggestResult | null>(null)
   const { data: branchId } = useShopBranchId()
   const { data: discountRules = [] } = useDiscountRules()
 
@@ -224,6 +235,27 @@ export default function OnlineOrderDetailPage({ params }: { params: Promise<{ id
       onSuccess: () => toast.success('Order restored'),
       onError: (e) => toast.error(e.message),
     })
+  }
+
+  function handleSaveLocation() {
+    if (!newLocation) return
+    updateDeliveryLocation.mutate(
+      {
+        id,
+        latitude: newLocation.lat,
+        longitude: newLocation.lng,
+        distance_km: newLocation.distanceKm,
+        delivery_fee: newLocation.fee,
+      },
+      {
+        onSuccess: () => {
+          toast.success('Delivery location updated')
+          setEditingLocation(false)
+          setNewLocation(null)
+        },
+        onError: (e) => toast.error(e.message),
+      }
+    )
   }
 
   function handleAddProduct(product: { id: string; code: string; name: string; unit_price: number; selling_uom_abbreviation: string }) {
@@ -724,26 +756,92 @@ export default function OnlineOrderDetailPage({ params }: { params: Promise<{ id
           {order.fulfillment === 'delivery' && (
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                  <MapPin className="w-4 h-4" /> Delivery Location
-                </CardTitle>
+                <div className="flex items-center justify-between gap-2">
+                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                    <MapPin className="w-4 h-4" /> Delivery Location
+                  </CardTitle>
+                  {!editingLocation && order.status !== 'cancelled' && !order.transaction_id && !order.deleted_at && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs gap-1"
+                      onClick={() => { setEditingLocation(true); setNewLocation(null) }}
+                    >
+                      <Edit2 className="w-3.5 h-3.5" /> Edit Location
+                    </Button>
+                  )}
+                </div>
               </CardHeader>
               <CardContent className="space-y-2 text-sm">
                 {order.address && <p className="text-slate-700">{order.address}</p>}
-                {order.latitude && order.longitude && (
-                  <a
-                    href={`https://www.openstreetmap.org/?mlat=${order.latitude}&mlon=${order.longitude}#map=17/${order.latitude}/${order.longitude}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 text-blue-600 text-xs hover:underline"
-                  >
-                    <MapPin className="w-3.5 h-3.5" />
-                    View on map ({order.latitude.toFixed(5)}, {order.longitude.toFixed(5)})
-                    <ExternalLink className="w-3 h-3" />
-                  </a>
-                )}
-                {order.distance_km && (
-                  <p className="text-slate-500 text-xs">{order.distance_km} km from store · Delivery fee: {formatPrice(order.delivery_fee)}</p>
+
+                {editingLocation ? (
+                  <div className="space-y-3">
+                    <p className="text-xs text-slate-500">Drag the pin or search for the correct address, then confirm below.</p>
+                    <DeliveryMapPicker
+                      initialCoords={order.latitude && order.longitude ? { lat: order.latitude, lng: order.longitude } : null}
+                      initialExpanded
+                      onSuggest={(result: MapSuggestResult | null) => setNewLocation(result)}
+                    />
+
+                    {newLocation && (() => {
+                      const diff = newLocation.fee - order.delivery_fee
+                      return (
+                        <div className="border rounded-lg p-3 bg-muted/30 space-y-1 text-xs">
+                          <div className="flex justify-between">
+                            <span className="text-slate-500">Current</span>
+                            <span>{order.distance_km ?? 0} km · {formatPrice(order.delivery_fee)}</span>
+                          </div>
+                          <div className="flex justify-between font-medium">
+                            <span className="text-slate-500">New</span>
+                            <span>{newLocation.distanceKm.toFixed(1)} km · {formatPrice(newLocation.fee)}</span>
+                          </div>
+                          {Math.abs(diff) > 0.5 && (
+                            <p className={`pt-1 font-semibold ${diff > 0 ? 'text-amber-700' : 'text-green-700'}`}>
+                              {diff > 0
+                                ? `Ask the customer for ${formatPrice(diff)} more before proceeding.`
+                                : `Customer is owed a refund of ${formatPrice(Math.abs(diff))}.`}
+                            </p>
+                          )}
+                        </div>
+                      )
+                    })()}
+
+                    <div className="flex gap-2 justify-end">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => { setEditingLocation(false); setNewLocation(null) }}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={handleSaveLocation}
+                        disabled={!newLocation || updateDeliveryLocation.isPending}
+                      >
+                        {updateDeliveryLocation.isPending ? 'Saving...' : 'Confirm New Location'}
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    {order.latitude && order.longitude && (
+                      <a
+                        href={`https://www.openstreetmap.org/?mlat=${order.latitude}&mlon=${order.longitude}#map=17/${order.latitude}/${order.longitude}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 text-blue-600 text-xs hover:underline"
+                      >
+                        <MapPin className="w-3.5 h-3.5" />
+                        View on map ({order.latitude.toFixed(5)}, {order.longitude.toFixed(5)})
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    )}
+                    {order.distance_km && (
+                      <p className="text-slate-500 text-xs">{order.distance_km} km from store · Delivery fee: {formatPrice(order.delivery_fee)}</p>
+                    )}
+                  </>
                 )}
               </CardContent>
             </Card>

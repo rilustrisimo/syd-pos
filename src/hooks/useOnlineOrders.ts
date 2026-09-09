@@ -460,3 +460,41 @@ export function useUpdateOnlineOrderDiscount() {
     },
   })
 }
+
+export function useUpdateOnlineOrderDeliveryLocation() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({
+      id,
+      latitude,
+      longitude,
+      distance_km,
+      delivery_fee,
+    }: {
+      id: string
+      latitude: number
+      longitude: number
+      distance_km: number
+      delivery_fee: number
+    }) => {
+      const supabase = getClient()
+      const { error } = await supabase
+        .from('online_orders')
+        .update({ latitude, longitude, distance_km, delivery_fee })
+        .eq('id', id)
+      if (error) throw new Error(error.message)
+
+      // recalcOrderTotals re-reads delivery_fee fresh from the row, so
+      // writing it above first means the total_amount it computes here
+      // already reflects the corrected fee.
+      const logEntry = `Staff repinned delivery location: ${distance_km} km, delivery fee updated to ${delivery_fee.toFixed(2)}`
+      await recalcOrderTotals(supabase, id, logEntry)
+
+      return id
+    },
+    onSuccess: (orderId) => {
+      qc.invalidateQueries({ queryKey: keys.detail(orderId) })
+      qc.invalidateQueries({ queryKey: keys.list() })
+    },
+  })
+}
