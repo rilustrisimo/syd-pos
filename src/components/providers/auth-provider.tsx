@@ -119,6 +119,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         if (session?.user) {
           const expiresAt = session.expires_at
+          supabase.realtime.setAuth(session.access_token)
           await loadUser(session.user.id, session.user.email || '', expiresAt)
         } else {
           clear()
@@ -190,6 +191,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           isHandlingAuthChange.current = false
         } else if (event === 'TOKEN_REFRESHED') {
           console.log('Token refreshed')
+          // The auto-refreshed access token updates REST/query calls
+          // automatically, but the realtime connection keeps using
+          // whatever token it started with until told otherwise — without
+          // this, live updates (order notifications, the pending-orders
+          // banner) silently stop once the original token expires,
+          // recoverable only by a full page reload that reconnects fresh.
+          if (session?.access_token) {
+            supabase.realtime.setAuth(session.access_token)
+          }
           if (session?.expires_at) {
             setSessionExpiry(session.expires_at)
           }

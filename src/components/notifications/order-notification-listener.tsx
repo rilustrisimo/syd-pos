@@ -29,6 +29,13 @@ function playBell() {
       osc.start(ctx.currentTime + start)
       osc.stop(ctx.currentTime + start + duration)
     })
+
+    // Explicitly release the context once the chime finishes, rather than
+    // leaving it to be garbage-collected — a new AudioContext is created
+    // per notification, and some browsers cap how many can exist at once,
+    // so this keeps a busy order day from accumulating live contexts.
+    const longestNote = Math.max(...notes.map(n => n.start + n.duration))
+    setTimeout(() => ctx.close().catch(() => {}), (longestNote + 0.2) * 1000)
   } catch {
     // Browser may block AudioContext without user interaction — fail silently
   }
