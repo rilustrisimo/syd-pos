@@ -22,6 +22,7 @@ import {
   useUpdateOnlineOrderLineDiscount,
   useUpdateOnlineOrderDiscount,
   useUpdateOnlineOrderDeliveryLocation,
+  useUpdateOnlineOrderFulfillment,
   useSoftDeleteOnlineOrder,
   useRestoreOnlineOrder,
   type OnlineOrderStatus,
@@ -124,8 +125,10 @@ export default function OnlineOrderDetailPage({ params }: { params: Promise<{ id
   const restoreOrder = useRestoreOnlineOrder()
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const updateDeliveryLocation = useUpdateOnlineOrderDeliveryLocation()
+  const updateFulfillment = useUpdateOnlineOrderFulfillment()
   const [editingLocation, setEditingLocation] = useState(false)
   const [newLocation, setNewLocation] = useState<MapSuggestResult | null>(null)
+  const [showSwitchToPickupConfirm, setShowSwitchToPickupConfirm] = useState(false)
   const { data: branchId } = useShopBranchId()
   const { data: discountRules = [] } = useDiscountRules()
 
@@ -238,7 +241,33 @@ export default function OnlineOrderDetailPage({ params }: { params: Promise<{ id
   }
 
   function handleSaveLocation() {
-    if (!newLocation) return
+    if (!newLocation || !order) return
+
+    // Converting from pickup (no location on file yet) also flips the
+    // fulfillment type; correcting an already-delivery order's pin just
+    // updates the location, same as before.
+    if (order.fulfillment === 'pickup') {
+      updateFulfillment.mutate(
+        {
+          id,
+          fulfillment: 'delivery',
+          latitude: newLocation.lat,
+          longitude: newLocation.lng,
+          distance_km: newLocation.distanceKm,
+          delivery_fee: newLocation.fee,
+        },
+        {
+          onSuccess: () => {
+            toast.success('Order converted to delivery')
+            setEditingLocation(false)
+            setNewLocation(null)
+          },
+          onError: (e) => toast.error(e.message),
+        }
+      )
+      return
+    }
+
     updateDeliveryLocation.mutate(
       {
         id,
@@ -252,6 +281,19 @@ export default function OnlineOrderDetailPage({ params }: { params: Promise<{ id
           toast.success('Delivery location updated')
           setEditingLocation(false)
           setNewLocation(null)
+        },
+        onError: (e) => toast.error(e.message),
+      }
+    )
+  }
+
+  function handleSwitchToPickup() {
+    updateFulfillment.mutate(
+      { id, fulfillment: 'pickup', delivery_fee: 0 },
+      {
+        onSuccess: () => {
+          toast.success('Order converted to pickup')
+          setShowSwitchToPickupConfirm(false)
         },
         onError: (e) => toast.error(e.message),
       }
@@ -753,99 +795,106 @@ export default function OnlineOrderDetailPage({ params }: { params: Promise<{ id
           )}
 
           {/* Delivery info / map */}
-          {order.fulfillment === 'delivery' && (
-            <Card>
-              <CardHeader className="pb-2">
-                <div className="flex items-center justify-between gap-2">
-                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                    <MapPin className="w-4 h-4" /> Delivery Location
-                  </CardTitle>
-                  {!editingLocation && order.status !== 'cancelled' && !order.transaction_id && !order.deleted_at && (
+          <Card>
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between gap-2">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                  <MapPin className="w-4 h-4" /> Delivery Location
+                </CardTitle>
+                {!editingLocation && order.status !== 'cancelled' && !order.transaction_id && !order.deleted_at && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs gap-1"
+                    onClick={() => { setEditingLocation(true); setNewLocation(null) }}
+                  >
+                    <Edit2 className="w-3.5 h-3.5" />
+                    {order.fulfillment === 'delivery' ? 'Edit Location' : 'Convert to Delivery'}
+                  </Button>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm">
+              {order.address && <p className="text-slate-700">{order.address}</p>}
+
+              {editingLocation ? (
+                <div className="space-y-3">
+                  <p className="text-xs text-slate-500">
+                    {order.fulfillment === 'pickup'
+                      ? 'Pin the customer\'s delivery address to convert this order to delivery, then confirm below.'
+                      : 'Drag the pin or search for the correct address, then confirm below.'}
+                  </p>
+                  <DeliveryMapPicker
+                    initialCoords={order.latitude && order.longitude ? { lat: order.latitude, lng: order.longitude } : null}
+                    initialExpanded
+                    onSuggest={(result: MapSuggestResult | null) => setNewLocation(result)}
+                  />
+
+                  {newLocation && (() => {
+                    const diff = newLocation.fee - order.delivery_fee
+                    return (
+                      <div className="border rounded-lg p-3 bg-muted/30 space-y-1 text-xs">
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">Current</span>
+                          <span>{order.fulfillment === 'pickup' ? 'Pickup (no fee)' : `${order.distance_km ?? 0} km · ${formatPrice(order.delivery_fee)}`}</span>
+                        </div>
+                        <div className="flex justify-between font-medium">
+                          <span className="text-slate-500">New</span>
+                          <span>{newLocation.distanceKm.toFixed(1)} km · {formatPrice(newLocation.fee)}</span>
+                        </div>
+                        {Math.abs(diff) > 0.5 && (
+                          <p className={`pt-1 font-semibold ${diff > 0 ? 'text-amber-700' : 'text-green-700'}`}>
+                            {diff > 0
+                              ? `Ask the customer for ${formatPrice(diff)} more before proceeding.`
+                              : `Customer is owed a refund of ${formatPrice(Math.abs(diff))}.`}
+                          </p>
+                        )}
+                      </div>
+                    )
+                  })()}
+
+                  <div className="flex gap-2 justify-end">
                     <Button
                       size="sm"
                       variant="outline"
-                      className="h-7 text-xs gap-1"
-                      onClick={() => { setEditingLocation(true); setNewLocation(null) }}
+                      onClick={() => { setEditingLocation(false); setNewLocation(null) }}
                     >
-                      <Edit2 className="w-3.5 h-3.5" /> Edit Location
+                      Cancel
                     </Button>
-                  )}
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-2 text-sm">
-                {order.address && <p className="text-slate-700">{order.address}</p>}
-
-                {editingLocation ? (
-                  <div className="space-y-3">
-                    <p className="text-xs text-slate-500">Drag the pin or search for the correct address, then confirm below.</p>
-                    <DeliveryMapPicker
-                      initialCoords={order.latitude && order.longitude ? { lat: order.latitude, lng: order.longitude } : null}
-                      initialExpanded
-                      onSuggest={(result: MapSuggestResult | null) => setNewLocation(result)}
-                    />
-
-                    {newLocation && (() => {
-                      const diff = newLocation.fee - order.delivery_fee
-                      return (
-                        <div className="border rounded-lg p-3 bg-muted/30 space-y-1 text-xs">
-                          <div className="flex justify-between">
-                            <span className="text-slate-500">Current</span>
-                            <span>{order.distance_km ?? 0} km · {formatPrice(order.delivery_fee)}</span>
-                          </div>
-                          <div className="flex justify-between font-medium">
-                            <span className="text-slate-500">New</span>
-                            <span>{newLocation.distanceKm.toFixed(1)} km · {formatPrice(newLocation.fee)}</span>
-                          </div>
-                          {Math.abs(diff) > 0.5 && (
-                            <p className={`pt-1 font-semibold ${diff > 0 ? 'text-amber-700' : 'text-green-700'}`}>
-                              {diff > 0
-                                ? `Ask the customer for ${formatPrice(diff)} more before proceeding.`
-                                : `Customer is owed a refund of ${formatPrice(Math.abs(diff))}.`}
-                            </p>
-                          )}
-                        </div>
-                      )
-                    })()}
-
-                    <div className="flex gap-2 justify-end">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => { setEditingLocation(false); setNewLocation(null) }}
-                      >
-                        Cancel
-                      </Button>
-                      <Button
-                        size="sm"
-                        onClick={handleSaveLocation}
-                        disabled={!newLocation || updateDeliveryLocation.isPending}
-                      >
-                        {updateDeliveryLocation.isPending ? 'Saving...' : 'Confirm New Location'}
-                      </Button>
-                    </div>
+                    <Button
+                      size="sm"
+                      onClick={handleSaveLocation}
+                      disabled={!newLocation || updateDeliveryLocation.isPending || updateFulfillment.isPending}
+                    >
+                      {updateDeliveryLocation.isPending || updateFulfillment.isPending
+                        ? 'Saving...'
+                        : order.fulfillment === 'pickup' ? 'Confirm & Convert to Delivery' : 'Confirm New Location'}
+                    </Button>
                   </div>
-                ) : (
-                  <>
-                    {order.latitude && order.longitude && (
-                      <a
-                        href={`https://www.openstreetmap.org/?mlat=${order.latitude}&mlon=${order.longitude}#map=17/${order.latitude}/${order.longitude}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 text-blue-600 text-xs hover:underline"
-                      >
-                        <MapPin className="w-3.5 h-3.5" />
-                        View on map ({order.latitude.toFixed(5)}, {order.longitude.toFixed(5)})
-                        <ExternalLink className="w-3 h-3" />
-                      </a>
-                    )}
-                    {order.distance_km && (
-                      <p className="text-slate-500 text-xs">{order.distance_km} km from store · Delivery fee: {formatPrice(order.delivery_fee)}</p>
-                    )}
-                  </>
-                )}
-              </CardContent>
-            </Card>
-          )}
+                </div>
+              ) : order.fulfillment === 'pickup' ? (
+                <p className="text-slate-400 text-xs">This is a pickup order — no delivery location set.</p>
+              ) : (
+                <>
+                  {order.latitude && order.longitude && (
+                    <a
+                      href={`https://www.openstreetmap.org/?mlat=${order.latitude}&mlon=${order.longitude}#map=17/${order.latitude}/${order.longitude}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-blue-600 text-xs hover:underline"
+                    >
+                      <MapPin className="w-3.5 h-3.5" />
+                      View on map ({order.latitude.toFixed(5)}, {order.longitude.toFixed(5)})
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  )}
+                  {order.distance_km && (
+                    <p className="text-slate-500 text-xs">{order.distance_km} km from store · Delivery fee: {formatPrice(order.delivery_fee)}</p>
+                  )}
+                </>
+              )}
+            </CardContent>
+          </Card>
         </div>
 
         {/* Right col */}
@@ -940,13 +989,47 @@ export default function OnlineOrderDetailPage({ params }: { params: Promise<{ id
                 <Truck className="w-4 h-4" /> Fulfillment
               </CardTitle>
             </CardHeader>
-            <CardContent className="text-sm text-slate-700">
-              <span className="capitalize font-medium">{order.fulfillment}</span>
-              {order.fulfillment === 'pickup' && (
-                <p className="text-xs text-slate-400 mt-1">Customer will pick up at the store</p>
+            <CardContent className="text-sm text-slate-700 space-y-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="capitalize font-medium">{order.fulfillment}</span>
+                  {order.fulfillment === 'pickup' && (
+                    <p className="text-xs text-slate-400 mt-1">Customer will pick up at the store</p>
+                  )}
+                </div>
+                {order.fulfillment === 'delivery' && order.status !== 'cancelled' && !order.transaction_id && !order.deleted_at && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs"
+                    onClick={() => setShowSwitchToPickupConfirm(true)}
+                  >
+                    Switch to Pickup
+                  </Button>
+                )}
+              </div>
+              {order.fulfillment === 'pickup' && order.status !== 'cancelled' && !order.transaction_id && !order.deleted_at && (
+                <p className="text-xs text-slate-400">Use &quot;Convert to Delivery&quot; on the Delivery Location card to switch.</p>
               )}
             </CardContent>
           </Card>
+
+          <AlertDialog open={showSwitchToPickupConfirm} onOpenChange={setShowSwitchToPickupConfirm}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Switch to pickup?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This removes the {formatPrice(order.delivery_fee)} delivery fee and recalculates the total. The customer will need to be told about the change.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={handleSwitchToPickup} disabled={updateFulfillment.isPending}>
+                  {updateFulfillment.isPending ? 'Saving...' : 'Switch to Pickup'}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
 
           {/* Stock shortage warning */}
           {!order.transaction_id && order.status !== 'cancelled' && !order.deleted_at && hasShortages && (

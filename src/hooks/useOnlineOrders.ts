@@ -506,3 +506,55 @@ export function useUpdateOnlineOrderDeliveryLocation() {
     },
   })
 }
+
+// Converts an order between pickup and delivery. Switching to delivery
+// carries a picked location + fee (from the same DeliveryMapPicker flow
+// used to edit an already-delivery order's pin); switching to pickup just
+// zeroes the delivery fee. Either way, recalcOrderTotals picks up the new
+// delivery_fee and recomputes total_amount, same as every other in-place
+// edit on this page.
+export function useUpdateOnlineOrderFulfillment() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({
+      id,
+      fulfillment,
+      latitude,
+      longitude,
+      distance_km,
+      delivery_fee,
+    }: {
+      id: string
+      fulfillment: 'pickup' | 'delivery'
+      latitude?: number | null
+      longitude?: number | null
+      distance_km?: number | null
+      delivery_fee: number
+    }) => {
+      const supabase = getClient()
+      const updates: Record<string, unknown> = { fulfillment, delivery_fee }
+      if (fulfillment === 'delivery') {
+        updates.latitude = latitude
+        updates.longitude = longitude
+        updates.distance_km = distance_km
+      }
+
+      const { error } = await supabase
+        .from('online_orders')
+        .update(updates)
+        .eq('id', id)
+      if (error) throw new Error(error.message)
+
+      const logEntry = fulfillment === 'delivery'
+        ? `Staff converted order to Delivery: ${distance_km} km, delivery fee ${delivery_fee.toFixed(2)}`
+        : `Staff converted order to Pickup (delivery fee removed)`
+      await recalcOrderTotals(supabase, id, logEntry)
+
+      return id
+    },
+    onSuccess: (orderId) => {
+      qc.invalidateQueries({ queryKey: keys.detail(orderId) })
+      qc.invalidateQueries({ queryKey: keys.list() })
+    },
+  })
+}
