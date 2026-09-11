@@ -434,6 +434,11 @@ export default function POSPage() {
         setDiscountPercentage(0)
       }
 
+      // Carry over the customer's own order notes so they still reach the
+      // printed delivery/pickup slip after conversion — otherwise they'd
+      // silently disappear the moment an online order becomes a POS sale.
+      if (order.notes) setNotes(order.notes)
+
       setPendingOnlineOrderId(fromOrderId)
       setPendingOnlineOrderFulfillment(order.fulfillment)
       toast.success(`Loaded order ${order.order_number} — review and complete the transaction`)

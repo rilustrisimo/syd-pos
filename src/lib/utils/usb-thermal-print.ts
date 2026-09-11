@@ -109,6 +109,26 @@ function pushRecountBanner(
   cmd(CMD.LEFT)
 }
 
+// Prints the customer's order notes, if any — skipped entirely (no label,
+// no blank section) when there's nothing to say, so an order with no notes
+// doesn't waste paper on an empty "NOTES:" line.
+function pushOrderNotes(
+  cmd: (...cmds: number[][]) => void,
+  line: (str: string) => void,
+  notes: string | null | undefined,
+  width: number,
+): void {
+  const trimmed = notes?.trim()
+  if (!trimmed) return
+
+  cmd(CMD.BOLD_ON)
+  line('NOTES:')
+  cmd(CMD.BOLD_OFF)
+  for (let i = 0; i < trimmed.length; i += width - 2) {
+    line('  ' + trimmed.substring(i, i + width - 2))
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Unicode sanitizer (matches escpos-mobile.ts exactly)
 // ---------------------------------------------------------------------------
@@ -385,6 +405,7 @@ export function buildDeliverySlipBytes(
     line(lr('Distance:', data.delivery_distance_km + ' km', width))
     line('  Route: ' + routeType)
   }
+  pushOrderNotes(cmd, line, data.notes, width)
   line(thinDivider)
 
   // ── Items — checkbox to pen-mark as loaded, plus its own bold, double-size
@@ -522,6 +543,7 @@ export function buildPickupSlipBytes(
   if (data.customer.phone) {
     line(lr('Tel:', data.customer.phone, width))
   }
+  pushOrderNotes(cmd, line, data.notes, width)
   line(thinDivider)
 
   // ── Items — full pricing detail + checkbox, this is the staff's copy
