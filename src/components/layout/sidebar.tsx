@@ -38,6 +38,8 @@ import {
   FileText,
   ScanLine,
   ShoppingBag,
+  Megaphone,
+  Images,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
@@ -75,6 +77,14 @@ const navigation = [
     ],
   },
   { name: 'Online Orders', href: '/orders/online', icon: ShoppingBag },
+  {
+    name: 'Marketing',
+    href: '/marketing',
+    icon: Megaphone,
+    children: [
+      { name: 'Library', href: '/marketing/library', icon: Images },
+    ],
+  },
   { name: 'Purchases', href: '/purchases', icon: ClipboardList },
   { name: 'Customers', href: '/customers', icon: Users },
   {
