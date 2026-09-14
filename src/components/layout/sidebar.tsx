@@ -82,6 +82,7 @@ const navigation = [
     href: '/marketing',
     icon: Megaphone,
     children: [
+      { name: 'Feed', href: '/marketing', icon: Megaphone },
       { name: 'Library', href: '/marketing/library', icon: Images },
     ],
   },
