@@ -16,6 +16,7 @@ export interface ContentMedia {
   duration_seconds: number | null
   transcript: string | null
   transcript_status: TranscriptStatus
+  attribution: string | null
   uploaded_by: string | null
   created_at: string
 }

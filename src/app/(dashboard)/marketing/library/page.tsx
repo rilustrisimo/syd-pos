@@ -1,9 +1,11 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import { Images, Upload, Trash2, Film, FileImage } from 'lucide-react'
+import { Images, Upload, Trash2, Film, FileImage, Search, Download } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -22,7 +24,97 @@ import {
   getContentMediaUrl,
   type ContentMedia,
 } from '@/hooks/useContentMedia'
+import { useSearchStockMedia, useImportStockMedia, type StockSearchResult } from '@/hooks/useStockMedia'
 import { MediaLightbox } from '@/components/marketing/media-lightbox'
+
+const SOURCE_LABELS: Record<StockSearchResult['source'], string> = {
+  pexels: 'Pexels',
+  pixabay: 'Pixabay',
+  unsplash: 'Unsplash',
+}
+
+function StockSearchTab() {
+  const [query, setQuery] = useState('')
+  const search = useSearchStockMedia()
+  const importMedia = useImportStockMedia()
+  const [importingKey, setImportingKey] = useState<string | null>(null)
+  const results = search.data ?? []
+
+  function handleSearch() {
+    if (!query.trim()) return
+    search.mutate(query.trim())
+  }
+
+  async function handleImport(result: StockSearchResult) {
+    const key = `${result.source}-${result.id}`
+    setImportingKey(key)
+    try {
+      await importMedia.mutateAsync(result)
+      toast.success('Added to library')
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to import')
+    } finally {
+      setImportingKey(null)
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-2">
+        <div className="relative flex-1">
+          <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+          <Input
+            placeholder="Search Pexels, Pixabay, and Unsplash..."
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+            className="pl-8 text-sm"
+          />
+        </div>
+        <Button onClick={handleSearch} disabled={search.isPending || !query.trim()}>
+          {search.isPending ? 'Searching...' : 'Search'}
+        </Button>
+      </div>
+
+      {search.isPending ? (
+        <div className="flex items-center justify-center py-16 text-slate-400 text-sm">Searching...</div>
+      ) : results.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 text-slate-400 gap-2">
+          <Search className="w-10 h-10 opacity-30" />
+          <p className="text-sm">{query ? 'No results — try a different search' : 'Search for free stock photos and video'}</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+          {results.map((result) => {
+            const key = `${result.source}-${result.id}`
+            return (
+              <div key={key} className="border rounded-lg overflow-hidden">
+                <div className="aspect-square bg-slate-100">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={result.thumbnailUrl} alt={result.attribution} className="w-full h-full object-cover" />
+                </div>
+                <div className="p-2 space-y-1">
+                  <Badge variant="outline" className="text-[10px]">{SOURCE_LABELS[result.source]}</Badge>
+                  <p className="text-[11px] text-slate-400 truncate" title={result.attribution}>{result.attribution}</p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="w-full h-7 text-xs gap-1"
+                    onClick={() => handleImport(result)}
+                    disabled={importingKey === key}
+                  >
+                    <Download className="w-3 h-3" />
+                    {importingKey === key ? 'Adding...' : 'Add to Library'}
+                  </Button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
 
 function formatSize(bytes: number) {
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
@@ -55,6 +147,7 @@ export default function ContentLibraryPage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [tab, setTab] = useState<'uploads' | 'stock'>('uploads')
 
   async function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -117,19 +210,35 @@ export default function ContentLibraryPage() {
           </h1>
           <p className="text-sm text-slate-500 mt-0.5">Photos and videos for social media posts</p>
         </div>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/jpeg,image/jpg,image/png,image/webp,video/mp4,video/quicktime,video/webm"
-          className="hidden"
-          onChange={handleFileSelected}
-        />
-        <Button onClick={() => fileInputRef.current?.click()} disabled={uploading}>
-          <Upload className="w-4 h-4 mr-2" />
-          {uploading ? 'Uploading...' : 'Upload Media'}
+        {tab === 'uploads' && (
+          <>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/jpg,image/png,image/webp,video/mp4,video/quicktime,video/webm"
+              className="hidden"
+              onChange={handleFileSelected}
+            />
+            <Button onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+              <Upload className="w-4 h-4 mr-2" />
+              {uploading ? 'Uploading...' : 'Upload Media'}
+            </Button>
+          </>
+        )}
+      </div>
+
+      <div className="flex gap-2">
+        <Button size="sm" variant={tab === 'uploads' ? 'default' : 'outline'} onClick={() => setTab('uploads')}>
+          My Uploads
+        </Button>
+        <Button size="sm" variant={tab === 'stock' ? 'default' : 'outline'} onClick={() => setTab('stock')}>
+          Search Stock
         </Button>
       </div>
 
+      {tab === 'stock' ? (
+        <StockSearchTab />
+      ) : (
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-semibold">All Media</CardTitle>
@@ -193,6 +302,7 @@ export default function ContentLibraryPage() {
           )}
         </CardContent>
       </Card>
+      )}
 
       <AlertDialog open={!!deletingId} onOpenChange={(open) => !open && setDeletingId(null)}>
         <AlertDialogContent>
