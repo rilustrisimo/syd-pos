@@ -39,6 +39,7 @@ import {
   type CreativeTemplate,
 } from '@/hooks/useContentSuggestions'
 import { useContentMedia, getContentMediaUrl } from '@/hooks/useContentMedia'
+import { MediaLightbox } from '@/components/marketing/media-lightbox'
 import { usePOSProductSearch } from '@/hooks/useTransactions'
 import { useShopBranchId } from '@/hooks/useShopSettings'
 
@@ -240,18 +241,32 @@ function SuggestionCard({ suggestion }: { suggestion: ContentSuggestion }) {
           <div className="flex gap-2">
             {sourceUrl && (
               <div className="w-20 h-20 rounded-md overflow-hidden bg-slate-100 flex-shrink-0">
-                {suggestion.source_media?.media_type === 'image' ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={sourceUrl} alt="" className="w-full h-full object-cover" />
-                ) : (
-                  <video src={sourceUrl} className="w-full h-full object-cover" muted />
-                )}
+                <MediaLightbox
+                  url={sourceUrl}
+                  mediaType={suggestion.source_media?.media_type === 'video' ? 'video' : 'image'}
+                  label={suggestion.source_media?.original_filename}
+                  trigger={
+                    suggestion.source_media?.media_type === 'image' ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={sourceUrl} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <video src={sourceUrl} className="w-full h-full object-cover" muted />
+                    )
+                  }
+                />
               </div>
             )}
             {creativeUrl && (
               <div className="w-20 h-20 rounded-md overflow-hidden bg-slate-100 flex-shrink-0 ring-2 ring-blue-400">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={creativeUrl} alt="Creative" className="w-full h-full object-cover" />
+                <MediaLightbox
+                  url={creativeUrl}
+                  mediaType="image"
+                  label="Creative"
+                  trigger={
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={creativeUrl} alt="Creative" className="w-full h-full object-cover" />
+                  }
+                />
               </div>
             )}
           </div>

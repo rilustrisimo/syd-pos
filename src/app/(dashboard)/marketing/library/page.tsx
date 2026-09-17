@@ -22,6 +22,7 @@ import {
   getContentMediaUrl,
   type ContentMedia,
 } from '@/hooks/useContentMedia'
+import { MediaLightbox } from '@/components/marketing/media-lightbox'
 
 function formatSize(bytes: number) {
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
@@ -151,12 +152,19 @@ export default function ContentLibraryPage() {
                   <div key={item.id} className="border rounded-lg overflow-hidden group relative">
                     <div className="aspect-square bg-slate-100 flex items-center justify-center">
                       {url ? (
-                        item.media_type === 'image' ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={url} alt={item.original_filename} className="w-full h-full object-cover" />
-                        ) : (
-                          <video src={url} className="w-full h-full object-cover" muted />
-                        )
+                        <MediaLightbox
+                          url={url}
+                          mediaType={item.media_type}
+                          label={item.original_filename}
+                          trigger={
+                            item.media_type === 'image' ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={url} alt={item.original_filename} className="w-full h-full object-cover" />
+                            ) : (
+                              <video src={url} className="w-full h-full object-cover" muted />
+                            )
+                          }
+                        />
                       ) : (
                         item.media_type === 'image'
                           ? <FileImage className="w-8 h-8 text-slate-300" />
