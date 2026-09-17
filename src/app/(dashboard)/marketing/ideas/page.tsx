@@ -1,8 +1,9 @@
 'use client'
 
-import { useState } from 'react'
-import { Lightbulb, Search, X, Sparkles, Trash2, Check } from 'lucide-react'
+import { useRef, useState } from 'react'
+import { Lightbulb, Search, X, Sparkles, Trash2, Check, Upload, Download } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import { downloadCSV } from '@/lib/utils/export'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -41,6 +42,67 @@ const STATUS_COLORS: Record<ContentIdeaStatus, string> = {
   idea: 'bg-yellow-100 text-yellow-800 border-yellow-200',
   created: 'bg-blue-100 text-blue-800 border-blue-200',
   posted: 'bg-green-100 text-green-800 border-green-200',
+}
+
+const SAMPLE_CSV_ROWS = [
+  { title: 'Rainy season roofing tips', description: 'Quick checks homeowners can do before the rains get heavy', image_concept: 'worker inspecting a roof in light rain' },
+  { title: 'Cement restock announcement', description: 'Portland cement 40kg back in stock, mention bulk pricing for contractors', image_concept: 'stacked cement bags in the warehouse' },
+  { title: 'Bulk discount reminder', description: 'Remind contractors about volume pricing on rebar and hollow blocks', image_concept: '' },
+]
+
+function downloadSampleIdeasCSV() {
+  downloadCSV(SAMPLE_CSV_ROWS, 'content-ideas-sample.csv')
+}
+
+// Same hand-rolled RFC4180-ish parser used by the stocktake CSV import
+// (src/app/(dashboard)/inventory/stocktake/page.tsx) — kept page-local
+// there too, so duplicated here rather than extracted into a shared
+// util for a single second caller.
+function parseCSV(text: string): string[][] {
+  const rows: string[][] = []
+  let row: string[] = []
+  let field = ''
+  let inQuotes = false
+  const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+
+  for (let i = 0; i < normalized.length; i++) {
+    const char = normalized[i]
+
+    if (inQuotes) {
+      if (char === '"') {
+        if (normalized[i + 1] === '"') {
+          field += '"'
+          i++
+        } else {
+          inQuotes = false
+        }
+      } else {
+        field += char
+      }
+      continue
+    }
+
+    if (char === '"') {
+      inQuotes = true
+    } else if (char === ',') {
+      row.push(field)
+      field = ''
+    } else if (char === '\n') {
+      row.push(field)
+      rows.push(row)
+      row = []
+      field = ''
+    } else {
+      field += char
+    }
+  }
+
+  if (field !== '' || row.length > 0) {
+    row.push(field)
+    rows.push(row)
+  }
+
+  return rows.filter((r) => r.some((f) => f.trim() !== ''))
 }
 
 function NewIdeaForm({ onCreated }: { onCreated: () => void }) {
@@ -234,15 +296,89 @@ function IdeaCard({ idea }: { idea: ContentIdea }) {
 export default function ContentIdeasPage() {
   const [statusTab, setStatusTab] = useState<ContentIdeaStatus | 'all'>('idea')
   const { data: ideas = [], isLoading, refetch } = useContentIdeas(statusTab === 'all' ? undefined : statusTab)
+  const createIdea = useCreateContentIdea()
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [importing, setImporting] = useState(false)
+
+  async function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+
+    setImporting(true)
+    try {
+      const text = await file.text()
+      const parsed = parseCSV(text)
+      if (parsed.length < 2) {
+        toast.error('CSV must have a header row and at least one data row')
+        return
+      }
+
+      const headers = parsed[0].map((h) => h.trim().toLowerCase())
+      const titleCol = headers.indexOf('title')
+      const descriptionCol = headers.indexOf('description')
+      const imageConceptCol = headers.indexOf('image_concept')
+
+      if (titleCol === -1) {
+        toast.error('CSV must have a "title" column — see the sample CSV for the expected format')
+        return
+      }
+
+      let imported = 0
+      let skipped = 0
+      for (const row of parsed.slice(1)) {
+        const title = row[titleCol]?.trim()
+        if (!title) { skipped++; continue }
+        try {
+          await createIdea.mutateAsync({
+            title,
+            description: descriptionCol !== -1 ? row[descriptionCol]?.trim() || undefined : undefined,
+            image_concept: imageConceptCol !== -1 ? row[imageConceptCol]?.trim() || undefined : undefined,
+          })
+          imported++
+        } catch {
+          skipped++
+        }
+      }
+
+      if (imported > 0) {
+        toast.success(`Imported ${imported} idea${imported === 1 ? '' : 's'}${skipped > 0 ? ` (${skipped} row${skipped === 1 ? '' : 's'} skipped)` : ''}`)
+      } else {
+        toast.error('No ideas were imported — check the CSV has a title in every row')
+      }
+      refetch()
+    } catch {
+      toast.error('Failed to read CSV file')
+    } finally {
+      setImporting(false)
+    }
+  }
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-          <Lightbulb className="w-6 h-6" />
-          Content Ideas
-        </h1>
-        <p className="text-sm text-slate-500 mt-0.5">A bank of post ideas — the briefs scripts and creatives are generated from</p>
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
+            <Lightbulb className="w-6 h-6" />
+            Content Ideas
+          </h1>
+          <p className="text-sm text-slate-500 mt-0.5">A bank of post ideas — the briefs scripts and creatives are generated from</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="ghost" className="text-xs gap-1.5" onClick={downloadSampleIdeasCSV}>
+            <Download className="w-3.5 h-3.5" /> Sample CSV
+          </Button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".csv,text/csv"
+            className="hidden"
+            onChange={handleImportFile}
+          />
+          <Button size="sm" variant="outline" className="text-xs gap-1.5" onClick={() => fileInputRef.current?.click()} disabled={importing}>
+            <Upload className="w-3.5 h-3.5" /> {importing ? 'Importing...' : 'Import CSV'}
+          </Button>
+        </div>
       </div>
 
       <NewIdeaForm onCreated={() => refetch()} />
