@@ -111,6 +111,30 @@ export function useAttachCreativeMedia() {
   })
 }
 
+export type CreativeTemplate = 'new-arrival' | 'promo' | 'spotlight'
+
+// Goes through the API route since generating a creative renders a PNG
+// server-side (next/og) and uploads it to R2 with server-only credentials.
+export function useGenerateCreative() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, template }: { id: string; template: CreativeTemplate }) => {
+      const res = await fetch('/api/content/generate-creative', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ suggestion_id: id, template }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to generate creative')
+      return data.media
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: keys.all })
+      qc.invalidateQueries({ queryKey: ['content_media'] })
+    },
+  })
+}
+
 export function useReviewContentSuggestion() {
   const qc = useQueryClient()
   return useMutation({

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Megaphone, Sparkles, Search, ExternalLink, Check, X, Trash2, Image as ImageIcon } from 'lucide-react'
+import { Megaphone, Sparkles, Search, ExternalLink, Check, X, Trash2, Image as ImageIcon, Wand2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -30,11 +30,13 @@ import {
   useGenerateContentSuggestion,
   useUpdateContentSuggestionCaption,
   useAttachCreativeMedia,
+  useGenerateCreative,
   useReviewContentSuggestion,
   useDeleteContentSuggestion,
   type ContentSuggestion,
   type SuggestionStatus,
   type SuggestionPlatform,
+  type CreativeTemplate,
 } from '@/hooks/useContentSuggestions'
 import { useContentMedia, getContentMediaUrl } from '@/hooks/useContentMedia'
 import { usePOSProductSearch } from '@/hooks/useTransactions'
@@ -52,6 +54,12 @@ const STATUS_COLORS: Record<SuggestionStatus, string> = {
   approved: 'bg-green-100 text-green-800 border-green-200',
   rejected: 'bg-gray-100 text-gray-500 border-gray-200',
 }
+
+const CREATIVE_TEMPLATES: { value: CreativeTemplate; label: string }[] = [
+  { value: 'new-arrival', label: 'New Arrival' },
+  { value: 'promo', label: 'Promo / Sale' },
+  { value: 'spotlight', label: 'Spotlight' },
+]
 
 function NewSuggestionForm({ onCreated }: { onCreated: () => void }) {
   const generate = useGenerateContentSuggestion()
@@ -189,6 +197,7 @@ function NewSuggestionForm({ onCreated }: { onCreated: () => void }) {
 function SuggestionCard({ suggestion }: { suggestion: ContentSuggestion }) {
   const updateCaption = useUpdateContentSuggestionCaption()
   const attachCreative = useAttachCreativeMedia()
+  const generateCreative = useGenerateCreative()
   const review = useReviewContentSuggestion()
   const deleteSuggestion = useDeleteContentSuggestion()
   const { data: mediaList = [] } = useContentMedia()
@@ -196,7 +205,15 @@ function SuggestionCard({ suggestion }: { suggestion: ContentSuggestion }) {
   const currentCaption = suggestion.caption_final ?? suggestion.caption_draft
   const [caption, setCaption] = useState(currentCaption)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [template, setTemplate] = useState<CreativeTemplate>('new-arrival')
   const dirty = caption !== currentCaption
+
+  function handleGenerateCreative() {
+    generateCreative.mutate(
+      { id: suggestion.id, template },
+      { onSuccess: () => toast.success('Creative generated'), onError: (e) => toast.error(e.message) }
+    )
+  }
 
   const sourceUrl = suggestion.source_media ? getContentMediaUrl(suggestion.source_media.storage_key) : null
   const creativeUrl = suggestion.creative_media ? getContentMediaUrl(suggestion.creative_media.storage_key) : null
@@ -248,13 +265,33 @@ function SuggestionCard({ suggestion }: { suggestion: ContentSuggestion }) {
         />
 
         <div className="flex items-center justify-between gap-2 flex-wrap">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Select value={template} onValueChange={(v) => setTemplate(v as CreativeTemplate)}>
+              <SelectTrigger className="h-8 text-xs w-36">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {CREATIVE_TEMPLATES.map((t) => (
+                  <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 text-xs gap-1"
+              onClick={handleGenerateCreative}
+              disabled={generateCreative.isPending}
+            >
+              <Wand2 className="w-3.5 h-3.5" />
+              {generateCreative.isPending ? 'Generating...' : 'Generate Creative'}
+            </Button>
             <Select
               value={suggestion.creative_media_id ?? ''}
               onValueChange={(v) => attachCreative.mutate({ id: suggestion.id, creative_media_id: v || null })}
             >
               <SelectTrigger className="h-8 text-xs w-44">
-                <SelectValue placeholder="Attach creative..." />
+                <SelectValue placeholder="Attach existing..." />
               </SelectTrigger>
               <SelectContent>
                 {mediaList.filter((m) => m.media_type === 'image').map((m) => (
