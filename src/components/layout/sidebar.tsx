@@ -40,6 +40,7 @@ import {
   ShoppingBag,
   Megaphone,
   Images,
+  Lightbulb,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
@@ -82,6 +83,7 @@ const navigation = [
     href: '/marketing',
     icon: Megaphone,
     children: [
+      { name: 'Ideas', href: '/marketing/ideas', icon: Lightbulb },
       { name: 'Feed', href: '/marketing', icon: Megaphone },
       { name: 'Library', href: '/marketing/library', icon: Images },
       { name: 'Calendar', href: '/marketing/calendar', icon: CalendarClock },

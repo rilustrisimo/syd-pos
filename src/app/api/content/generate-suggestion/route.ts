@@ -2,9 +2,10 @@
  * POST /api/content/generate-suggestion
  *
  * Drafts a social media caption via the Gemini API (free tier — see
- * https://aistudio.google.com/apikey) from a product and/or a media
- * library item, then inserts it as a pending content_suggestion for
- * staff to review/edit/approve on the Marketing > Feed page.
+ * https://aistudio.google.com/apikey) from a product, a media library
+ * item, and/or a content_idea, then inserts it as a pending
+ * content_suggestion for staff to review/edit/approve on the
+ * Marketing > Feed page.
  *
  * Requires GEMINI_API_KEY (server-only, never NEXT_PUBLIC_*). Calls the
  * REST endpoint directly rather than a SDK — it's one simple request and
@@ -47,18 +48,20 @@ export async function POST(request: Request) {
     const {
       source_product_id,
       source_media_id,
+      source_idea_id,
       notes,
       platform = 'facebook',
     } = await request.json() as {
       source_product_id?: string
       source_media_id?: string
+      source_idea_id?: string
       notes?: string
       platform?: 'facebook' | 'instagram' | 'both'
     }
 
-    if (!source_product_id && !source_media_id && !notes?.trim()) {
+    if (!source_product_id && !source_media_id && !source_idea_id && !notes?.trim()) {
       return NextResponse.json(
-        { error: 'Pick a product or media item, or write a brief, before generating.' },
+        { error: 'Pick a product, media item, or idea, or write a brief, before generating.' },
         { status: 400 }
       )
     }
@@ -92,6 +95,22 @@ export async function POST(request: Request) {
         briefParts.push(
           `Attached ${media.media_type}: ${media.original_filename}` +
           (media.transcript ? ` — spoken content: "${media.transcript}"` : '')
+        )
+      }
+    }
+
+    if (source_idea_id) {
+      const { data: idea } = await (supabase as any)
+        .from('content_ideas')
+        .select('title, description, image_concept')
+        .eq('id', source_idea_id)
+        .single() as { data: { title: string; description: string | null; image_concept: string | null } | null }
+
+      if (idea) {
+        briefParts.push(
+          `Post idea: ${idea.title}` +
+          (idea.description ? ` — ${idea.description}` : '') +
+          (idea.image_concept ? ` (suggested visual: ${idea.image_concept})` : '')
         )
       }
     }
@@ -136,6 +155,7 @@ export async function POST(request: Request) {
       .insert({
         source_product_id: source_product_id || null,
         source_media_id: source_media_id || null,
+        source_idea_id: source_idea_id || null,
         platform,
         notes: notes?.trim() || null,
         caption_draft,
@@ -145,6 +165,16 @@ export async function POST(request: Request) {
 
     if (insertError) {
       return NextResponse.json({ error: insertError.message }, { status: 500 })
+    }
+
+    // Generating a script from an idea means it's no longer just an idea —
+    // the one automatic status transition in the idea bank (the rest are
+    // manual staff actions).
+    if (source_idea_id) {
+      await (supabase as any)
+        .from('content_ideas')
+        .update({ status: 'created' })
+        .eq('id', source_idea_id)
     }
 
     return NextResponse.json({ suggestion })

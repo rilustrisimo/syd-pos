@@ -23,6 +23,7 @@ const TITLES: Record<string, string> = {
   '/purchases/reorder': 'Reorder Suggestions',
   '/orders/online': 'Online Orders',
   '/marketing': 'Content Feed',
+  '/marketing/ideas': 'Content Ideas',
   '/marketing/library': 'Content Library',
   '/marketing/calendar': 'Content Calendar',
   '/reports': 'Reports',

@@ -1,7 +1,8 @@
 'use client'
 
-import { useState } from 'react'
-import { Megaphone, Sparkles, Search, ExternalLink, Check, X, Trash2, Image as ImageIcon, Wand2 } from 'lucide-react'
+import { Suspense, useEffect, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
+import { Megaphone, Sparkles, Search, ExternalLink, Check, X, Trash2, Image as ImageIcon, Wand2, Lightbulb } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -39,6 +40,7 @@ import {
   type CreativeTemplate,
 } from '@/hooks/useContentSuggestions'
 import { useContentMedia, getContentMediaUrl } from '@/hooks/useContentMedia'
+import { useContentIdeas } from '@/hooks/useContentIdeas'
 import { MediaLightbox } from '@/components/marketing/media-lightbox'
 import { usePOSProductSearch } from '@/hooks/useTransactions'
 import { useShopBranchId } from '@/hooks/useShopSettings'
@@ -66,6 +68,10 @@ function NewSuggestionForm({ onCreated }: { onCreated: () => void }) {
   const generate = useGenerateContentSuggestion()
   const { data: branchId } = useShopBranchId()
   const { data: mediaList = [] } = useContentMedia()
+  const searchParams = useSearchParams()
+  const ideaId = searchParams.get('idea')
+  const { data: ideas = [] } = useContentIdeas()
+  const linkedIdea = ideaId ? ideas.find((i) => i.id === ideaId) : undefined
 
   const [productQuery, setProductQuery] = useState('')
   const { data: searchResults = [], isLoading: isSearching } = usePOSProductSearch(productQuery, branchId ?? '')
@@ -74,15 +80,23 @@ function NewSuggestionForm({ onCreated }: { onCreated: () => void }) {
   const [notes, setNotes] = useState('')
   const [platform, setPlatform] = useState<SuggestionPlatform>('facebook')
 
+  useEffect(() => {
+    if (linkedIdea?.source_product && !selectedProduct) {
+      setSelectedProduct(linkedIdea.source_product)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linkedIdea?.id])
+
   async function handleGenerate() {
-    if (!selectedProduct && !selectedMediaId && !notes.trim()) {
-      toast.error('Pick a product or media item, or write a brief, before generating.')
+    if (!selectedProduct && !selectedMediaId && !linkedIdea && !notes.trim()) {
+      toast.error('Pick a product, media item, or idea, or write a brief, before generating.')
       return
     }
     try {
       await generate.mutateAsync({
         source_product_id: selectedProduct?.id,
         source_media_id: selectedMediaId || undefined,
+        source_idea_id: linkedIdea?.id,
         notes: notes.trim() || undefined,
         platform,
       })
@@ -105,6 +119,12 @@ function NewSuggestionForm({ onCreated }: { onCreated: () => void }) {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
+        {linkedIdea && (
+          <div className="flex items-center gap-2 text-sm bg-blue-50 border border-blue-200 rounded-md px-3 py-2 text-blue-800">
+            <Lightbulb className="w-3.5 h-3.5 flex-shrink-0" />
+            Generating from idea: <span className="font-medium">{linkedIdea.title}</span>
+          </div>
+        )}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div className="space-y-1">
             <label className="text-xs text-slate-500">Product (optional)</label>
@@ -380,7 +400,7 @@ function SuggestionCard({ suggestion }: { suggestion: ContentSuggestion }) {
   )
 }
 
-export default function MarketingFeedPage() {
+function MarketingFeedPage() {
   const [statusTab, setStatusTab] = useState<SuggestionStatus | 'all'>('suggested')
   const { data: suggestions = [], isLoading, refetch } = useContentSuggestions(statusTab === 'all' ? undefined : statusTab)
 
@@ -422,5 +442,13 @@ export default function MarketingFeedPage() {
         </div>
       )}
     </div>
+  )
+}
+
+export default function MarketingFeedPageWrapper() {
+  return (
+    <Suspense>
+      <MarketingFeedPage />
+    </Suspense>
   )
 }

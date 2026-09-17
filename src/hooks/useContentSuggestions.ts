@@ -10,6 +10,7 @@ export interface ContentSuggestion {
   id: string
   source_product_id: string | null
   source_media_id: string | null
+  source_idea_id: string | null
   creative_media_id: string | null
   platform: SuggestionPlatform
   notes: string | null
@@ -22,6 +23,7 @@ export interface ContentSuggestion {
   // joined
   source_product?: { id: string; name: string } | null
   source_media?: { id: string; media_type: string; storage_key: string; original_filename: string } | null
+  source_idea?: { id: string; title: string } | null
   creative_media?: { id: string; media_type: string; storage_key: string; original_filename: string } | null
 }
 
@@ -41,6 +43,7 @@ export function useContentSuggestions(statusFilter?: SuggestionStatus) {
           *,
           source_product:products(id, name),
           source_media:content_media!content_suggestions_source_media_id_fkey(id, media_type, storage_key, original_filename),
+          source_idea:content_ideas(id, title),
           creative_media:content_media!content_suggestions_creative_media_id_fkey(id, media_type, storage_key, original_filename)
         `)
         .order('created_at', { ascending: false })
@@ -58,6 +61,7 @@ export function useContentSuggestions(statusFilter?: SuggestionStatus) {
 export interface GenerateSuggestionInput {
   source_product_id?: string
   source_media_id?: string
+  source_idea_id?: string
   notes?: string
   platform?: SuggestionPlatform
 }
