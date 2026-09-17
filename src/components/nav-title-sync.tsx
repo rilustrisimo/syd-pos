@@ -24,6 +24,7 @@ const TITLES: Record<string, string> = {
   '/orders/online': 'Online Orders',
   '/marketing': 'Content Feed',
   '/marketing/library': 'Content Library',
+  '/marketing/calendar': 'Content Calendar',
   '/reports': 'Reports',
   '/reports/sales': 'Sales Report',
   '/reports/pl': 'Profit & Loss',

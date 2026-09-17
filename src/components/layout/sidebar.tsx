@@ -84,6 +84,7 @@ const navigation = [
     children: [
       { name: 'Feed', href: '/marketing', icon: Megaphone },
       { name: 'Library', href: '/marketing/library', icon: Images },
+      { name: 'Calendar', href: '/marketing/calendar', icon: CalendarClock },
     ],
   },
   { name: 'Purchases', href: '/purchases', icon: ClipboardList },
