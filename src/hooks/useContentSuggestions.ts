@@ -14,6 +14,7 @@ export interface ContentSuggestion {
   creative_media_id: string | null
   platform: SuggestionPlatform
   notes: string | null
+  script: string | null
   caption_draft: string
   caption_final: string | null
   status: SuggestionStatus
@@ -93,6 +94,21 @@ export function useUpdateContentSuggestionCaption() {
       const { error } = await supabase
         .from('content_suggestions')
         .update({ caption_final })
+        .eq('id', id)
+      if (error) throw new Error(error.message)
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.all }),
+  })
+}
+
+export function useUpdateContentSuggestionScript() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, script }: { id: string; script: string }) => {
+      const supabase = getClient()
+      const { error } = await (supabase as any)
+        .from('content_suggestions')
+        .update({ script })
         .eq('id', id)
       if (error) throw new Error(error.message)
     },

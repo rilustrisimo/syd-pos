@@ -49,9 +49,9 @@ export async function POST(request: Request) {
 
     const { data: suggestion } = await (supabase as any)
       .from('content_suggestions')
-      .select('source_product_id, source_media_id, notes')
+      .select('source_product_id, source_media_id, notes, script')
       .eq('id', suggestion_id)
-      .single() as { data: { source_product_id: string | null; source_media_id: string | null; notes: string | null } | null }
+      .single() as { data: { source_product_id: string | null; source_media_id: string | null; notes: string | null; script: string | null } | null }
 
     if (!suggestion) {
       return NextResponse.json({ error: 'Suggestion not found' }, { status: 404 })
@@ -88,6 +88,7 @@ export async function POST(request: Request) {
       productName,
       price,
       notes: suggestion.notes,
+      script: suggestion.script,
     })
     const imageResponse = new ImageResponse(jsx, CREATIVE_SIZE)
     const pngBuffer = Buffer.from(await imageResponse.arrayBuffer())

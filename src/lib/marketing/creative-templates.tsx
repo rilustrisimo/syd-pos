@@ -17,6 +17,7 @@ export interface CreativeData {
   productName: string | null
   price: number | null
   notes: string | null
+  script: string | null
 }
 
 const BRAND_YELLOW = '#ffc107'
@@ -35,6 +36,11 @@ function getLogoDataUri(): Promise<string> {
 // sign, which renders as a missing-character box instead of failing loudly.
 function formatPrice(price: number): string {
   return `PHP ${price.toLocaleString('en-PH')}`
+}
+
+function scriptExcerpt(script: string, maxLen = 60): string {
+  const trimmed = script.trim()
+  return trimmed.length > maxLen ? trimmed.slice(0, maxLen).trimEnd() + '…' : trimmed
 }
 
 async function newArrivalTemplate({ photoUrl, productName, price }: CreativeData) {
@@ -69,7 +75,7 @@ async function newArrivalTemplate({ photoUrl, productName, price }: CreativeData
   )
 }
 
-async function promoTemplate({ photoUrl, productName, price, notes }: CreativeData) {
+async function promoTemplate({ photoUrl, productName, price, notes, script }: CreativeData) {
   const logo = await getLogoDataUri()
   return (
     <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', backgroundColor: BRAND_DARK, position: 'relative' }}>
@@ -88,7 +94,7 @@ async function promoTemplate({ photoUrl, productName, price, notes }: CreativeDa
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', padding: '36px 44px', gap: 10 }}>
         <div style={{ display: 'flex', color: 'white', fontSize: 44, fontWeight: 700, lineHeight: 1.1 }}>
-          {productName ?? notes ?? 'Special offer at SYD Construction Supplies'}
+          {productName ?? notes ?? (script ? scriptExcerpt(script) : null) ?? 'Special offer at SYD Construction Supplies'}
         </div>
         {price != null && (
           <div style={{ display: 'flex', color: BRAND_YELLOW, fontSize: 46, fontWeight: 700 }}>
@@ -101,7 +107,7 @@ async function promoTemplate({ photoUrl, productName, price, notes }: CreativeDa
   )
 }
 
-async function spotlightTemplate({ photoUrl, productName, notes }: CreativeData) {
+async function spotlightTemplate({ photoUrl, productName, notes, script }: CreativeData) {
   const logo = await getLogoDataUri()
   return (
     <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', backgroundColor: '#ffffff' }}>
@@ -115,10 +121,10 @@ async function spotlightTemplate({ photoUrl, productName, notes }: CreativeData)
           <img src={logo} alt="" width={140} height={60} />
         </div>
       </div>
-      {(productName || notes) && (
+      {(productName || notes || script) && (
         <div style={{ display: 'flex', flexDirection: 'column', padding: '28px 44px', backgroundColor: '#ffffff', gap: 4 }}>
           <div style={{ display: 'flex', color: BRAND_DARK, fontSize: 32, fontWeight: 700 }}>
-            {productName ?? notes}
+            {productName ?? notes ?? (script ? scriptExcerpt(script) : null)}
           </div>
         </div>
       )}

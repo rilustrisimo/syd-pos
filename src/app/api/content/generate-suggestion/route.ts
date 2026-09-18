@@ -1,11 +1,13 @@
 /**
  * POST /api/content/generate-suggestion
  *
- * Drafts a social media caption via the Gemini API (free tier — see
+ * Drafts a script and caption via the Gemini API (free tier — see
  * https://aistudio.google.com/apikey) from a product, a media library
  * item, and/or a content_idea, then inserts it as a pending
  * content_suggestion for staff to review/edit/approve on the
- * Marketing > Feed page.
+ * Marketing > Feed page. Uses structured JSON output so the script
+ * (master content, feeds creatives/voiceover) and the caption (the
+ * actual post text) come back as two distinct fields in one call.
  *
  * Requires GEMINI_API_KEY (server-only, never NEXT_PUBLIC_*). Calls the
  * REST endpoint directly rather than a SDK — it's one simple request and
@@ -17,15 +19,23 @@ import { createClient } from '@/lib/supabase/server'
 
 const GEMINI_MODEL = 'gemini-3.6-flash'
 
-const BRAND_BRIEF = `You write short, warm social media captions for SYD Construction Supplies
-Trading, a hardware/construction supplies store in Talakag, Bukidnon,
-Philippines. The audience is a mix of DIY homeowners and contractors/bulk
-buyers. Tone: friendly, straightforward, locally-grounded — a natural mix of
-English and Filipino is fine (taglish), never overly formal or corporate.
-Keep it short enough for a Facebook/Instagram caption (2-4 short sentences),
-end with a light call-to-action (visit the store, message to order, or check
-the online shop at sydconstruct.com). Do not invent prices, stock levels, or
-claims not given to you in the brief below. Do not use hashtags unless asked.`
+const BRAND_BRIEF = `You write social media content for SYD Construction Supplies Trading, a
+hardware/construction supplies store in Talakag, Bukidnon, Philippines. The
+audience is a mix of DIY homeowners and contractors/bulk buyers. Tone:
+friendly, straightforward, locally-grounded — a natural mix of English and
+Filipino is fine (taglish), never overly formal or corporate. Do not invent
+prices, stock levels, or claims not given to you in the brief below.
+
+You produce two distinct outputs from the same brief — they serve different
+purposes and should not just be copies of each other:
+
+1. "script": a short spoken-style script (3-6 sentences) written to be read
+   aloud as the voiceover for a video or reel. Natural spoken cadence, short
+   sentences, no hashtags, no emoji.
+2. "caption": a short written caption for the Facebook/Instagram post itself
+   (2-4 short sentences), ending with a light call-to-action (visit the
+   store, message to order, or check the online shop at sydconstruct.com).
+3. "hashtags": up to 5 relevant hashtags (each including the leading #).`
 
 export async function POST(request: Request) {
   try {
@@ -129,7 +139,25 @@ export async function POST(request: Request) {
         body: JSON.stringify({
           system_instruction: { parts: [{ text: BRAND_BRIEF }] },
           contents: [{ role: 'user', parts: [{ text: briefParts.join('\n') }] }],
-          generationConfig: { maxOutputTokens: 300 },
+          generationConfig: {
+            maxOutputTokens: 500,
+            // Without this, gemini-3.6-flash burns most/all of
+            // maxOutputTokens on invisible "thinking" tokens before ever
+            // producing the actual JSON, truncating the response —
+            // confirmed directly against the live API before shipping.
+            thinkingConfig: { thinkingBudget: 0 },
+            responseMimeType: 'application/json',
+            responseSchema: {
+              type: 'OBJECT',
+              properties: {
+                script: { type: 'STRING', description: 'A short spoken-style script (3-6 sentences) for a video/reel voiceover.' },
+                caption: { type: 'STRING', description: 'A short written caption for the FB/IG post itself (2-4 sentences).' },
+                hashtags: { type: 'ARRAY', items: { type: 'STRING' }, description: 'Up to 5 relevant hashtags, each including the leading #.' },
+              },
+              required: ['script', 'caption', 'hashtags'],
+              propertyOrdering: ['script', 'caption', 'hashtags'],
+            },
+          },
         }),
       }
     )
@@ -141,7 +169,19 @@ export async function POST(request: Request) {
     }
 
     const geminiData = await geminiRes.json()
-    const caption_draft: string = (geminiData.candidates?.[0]?.content?.parts?.[0]?.text ?? '').trim()
+    const rawText: string = geminiData.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
+
+    let script: string | null = null
+    let caption_draft = ''
+    try {
+      const parsed = JSON.parse(rawText) as { script?: string; caption?: string; hashtags?: string[] }
+      script = parsed.script?.trim() || null
+      const caption = parsed.caption?.trim() || ''
+      const hashtags = parsed.hashtags?.filter(Boolean) ?? []
+      caption_draft = (caption + (hashtags.length ? '\n\n' + hashtags.join(' ') : '')).trim()
+    } catch (parseErr) {
+      console.error('[generate-suggestion] Failed to parse Gemini JSON output', parseErr, rawText)
+    }
 
     if (!caption_draft) {
       return NextResponse.json({ error: 'Gemini returned an empty draft — try again' }, { status: 502 })
@@ -158,6 +198,7 @@ export async function POST(request: Request) {
         source_idea_id: source_idea_id || null,
         platform,
         notes: notes?.trim() || null,
+        script,
         caption_draft,
       })
       .select()

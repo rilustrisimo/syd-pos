@@ -32,6 +32,7 @@ import {
   useUpdateContentSuggestionCaption,
   useAttachCreativeMedia,
   useGenerateCreative,
+  useUpdateContentSuggestionScript,
   useReviewContentSuggestion,
   useDeleteContentSuggestion,
   type ContentSuggestion,
@@ -217,6 +218,7 @@ function NewSuggestionForm({ onCreated }: { onCreated: () => void }) {
 
 function SuggestionCard({ suggestion }: { suggestion: ContentSuggestion }) {
   const updateCaption = useUpdateContentSuggestionCaption()
+  const updateScript = useUpdateContentSuggestionScript()
   const attachCreative = useAttachCreativeMedia()
   const generateCreative = useGenerateCreative()
   const review = useReviewContentSuggestion()
@@ -225,9 +227,12 @@ function SuggestionCard({ suggestion }: { suggestion: ContentSuggestion }) {
 
   const currentCaption = suggestion.caption_final ?? suggestion.caption_draft
   const [caption, setCaption] = useState(currentCaption)
+  const currentScript = suggestion.script ?? ''
+  const [script, setScript] = useState(currentScript)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [template, setTemplate] = useState<CreativeTemplate>('new-arrival')
   const dirty = caption !== currentCaption
+  const scriptDirty = script !== currentScript
 
   function handleGenerateCreative() {
     generateCreative.mutate(
@@ -243,6 +248,13 @@ function SuggestionCard({ suggestion }: { suggestion: ContentSuggestion }) {
     updateCaption.mutate(
       { id: suggestion.id, caption_final: caption },
       { onSuccess: () => toast.success('Caption updated'), onError: (e) => toast.error(e.message) }
+    )
+  }
+
+  function handleSaveScript() {
+    updateScript.mutate(
+      { id: suggestion.id, script },
+      { onSuccess: () => toast.success('Script updated'), onError: (e) => toast.error(e.message) }
     )
   }
 
@@ -292,12 +304,33 @@ function SuggestionCard({ suggestion }: { suggestion: ContentSuggestion }) {
           </div>
         )}
 
-        <Textarea
-          value={caption}
-          onChange={(e) => setCaption(e.target.value)}
-          rows={3}
-          className="text-sm"
-        />
+        <div className="space-y-1">
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-medium text-slate-600">Script — used for narration &amp; creative text</label>
+            {scriptDirty && (
+              <Button size="sm" variant="outline" className="h-6 text-[11px] px-2" onClick={handleSaveScript} disabled={updateScript.isPending}>
+                Save
+              </Button>
+            )}
+          </div>
+          <Textarea
+            value={script}
+            onChange={(e) => setScript(e.target.value)}
+            rows={4}
+            className="text-sm"
+            placeholder="No script yet — regenerate this suggestion to get one."
+          />
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-xs text-slate-500">Caption — the actual post text</label>
+          <Textarea
+            value={caption}
+            onChange={(e) => setCaption(e.target.value)}
+            rows={3}
+            className="text-sm"
+          />
+        </div>
 
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-2 flex-wrap">
@@ -344,7 +377,7 @@ function SuggestionCard({ suggestion }: { suggestion: ContentSuggestion }) {
           <div className="flex items-center gap-1">
             {dirty && (
               <Button size="sm" variant="outline" className="h-8 text-xs" onClick={handleSaveCaption} disabled={updateCaption.isPending}>
-                Save
+                Save Caption
               </Button>
             )}
             {suggestion.status === 'suggested' && (
