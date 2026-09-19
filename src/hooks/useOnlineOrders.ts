@@ -35,7 +35,7 @@ export interface OnlineOrder {
   latitude: number | null
   longitude: number | null
   distance_km: number | null
-  payment_method: OnlineOrderPaymentMethod
+  payment_method: OnlineOrderPaymentMethod | null
   payment_status: OnlineOrderPaymentStatus
   payment_proof_url: string | null
   payment_reference_no: string | null

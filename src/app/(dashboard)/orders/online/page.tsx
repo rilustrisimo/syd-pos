@@ -202,7 +202,7 @@ export default function OnlineOrdersPage() {
                     <TableCell>
                       <div className="space-y-0.5">
                         <p className="text-xs capitalize">
-                          {order.payment_method.replace('_', ' ')}
+                          {order.payment_method ? order.payment_method.replace('_', ' ') : <span className="text-slate-400 italic normal-case">Not selected yet</span>}
                           {order.payment_method === 'qr' && order.payment_qr_label && ` (${order.payment_qr_label})`}
                         </p>
                         <Badge

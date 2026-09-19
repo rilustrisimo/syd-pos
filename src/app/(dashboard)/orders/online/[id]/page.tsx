@@ -7,7 +7,7 @@ import dynamic from 'next/dynamic'
 import {
   ArrowLeft, MapPin, Package, CreditCard, Truck,
   Check, X, Edit2, Trash2, ExternalLink, ShoppingCart,
-  User, Phone, FileImage, AlertCircle, Plus, Percent, Search,
+  User, Phone, FileImage, AlertCircle, Plus, Percent, Search, Link2,
 } from 'lucide-react'
 import { PageTitle } from '@/components/page-title'
 import {
@@ -223,6 +223,14 @@ export default function OnlineOrderDetailPage({ params }: { params: Promise<{ id
     router.push(`/pos?from_order=${id}`)
   }
 
+  function handleCopyPaymentLink() {
+    const shopUrl = process.env.NEXT_PUBLIC_SHOP_URL ?? 'https://sydconstruct.com'
+    const link = `${shopUrl.replace(/\/$/, '')}/pay/${id}`
+    navigator.clipboard.writeText(link)
+      .then(() => toast.success('Payment link copied'))
+      .catch(() => toast.error('Failed to copy link'))
+  }
+
   function handleDeleteOrder() {
     softDelete.mutate(id, {
       onSuccess: () => {
@@ -431,6 +439,15 @@ export default function OnlineOrderDetailPage({ params }: { params: Promise<{ id
             </Button>
           ) : (
             <>
+              {/* Copy Payment Link button */}
+              <Button
+                onClick={handleCopyPaymentLink}
+                variant="outline"
+                className="gap-2"
+              >
+                <Link2 className="w-4 h-4" />
+                Copy Payment Link
+              </Button>
               {/* Convert to Sale button */}
               {!order.transaction_id && order.status !== 'cancelled' && (
                 <Button
@@ -930,7 +947,7 @@ export default function OnlineOrderDetailPage({ params }: { params: Promise<{ id
               <div className="flex justify-between items-center">
                 <span className="text-slate-500">Method</span>
                 <span className="capitalize font-medium">
-                  {order.payment_method.replace('_', ' ')}
+                  {order.payment_method ? order.payment_method.replace('_', ' ') : <span className="text-slate-400 italic normal-case">Not selected yet</span>}
                   {order.payment_method === 'qr' && order.payment_qr_label && ` (${order.payment_qr_label})`}
                 </span>
               </div>
