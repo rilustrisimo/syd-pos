@@ -17,6 +17,8 @@ export interface ContentSuggestion {
   script: string | null
   caption_draft: string
   caption_final: string | null
+  voice_script: string | null
+  voice_media_id: string | null
   status: SuggestionStatus
   reviewed_by: string | null
   reviewed_at: string | null
@@ -26,6 +28,7 @@ export interface ContentSuggestion {
   source_media?: { id: string; media_type: string; storage_key: string; original_filename: string } | null
   source_idea?: { id: string; title: string } | null
   creative_media?: { id: string; media_type: string; storage_key: string; original_filename: string } | null
+  voice_media?: { id: string; media_type: string; storage_key: string } | null
 }
 
 const keys = {
@@ -45,7 +48,8 @@ export function useContentSuggestions(statusFilter?: SuggestionStatus) {
           source_product:products(id, name),
           source_media:content_media!content_suggestions_source_media_id_fkey(id, media_type, storage_key, original_filename),
           source_idea:content_ideas(id, title),
-          creative_media:content_media!content_suggestions_creative_media_id_fkey(id, media_type, storage_key, original_filename)
+          creative_media:content_media!content_suggestions_creative_media_id_fkey(id, media_type, storage_key, original_filename),
+          voice_media:content_media!content_suggestions_voice_media_id_fkey(id, media_type, storage_key)
         `)
         .order('created_at', { ascending: false })
 
@@ -113,6 +117,62 @@ export function useUpdateContentSuggestionScript() {
       if (error) throw new Error(error.message)
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.all }),
+  })
+}
+
+// Goes through the API route since it calls Gemini with a server-only key.
+export function useGenerateVoiceScript() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch('/api/content/generate-voice-script', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ suggestion_id: id }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to generate voice script')
+      return data.voice_script as string
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.all }),
+  })
+}
+
+// Manual edit of the voice script — mirrors useUpdateContentSuggestionScript.
+export function useSaveVoiceScript() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, voice_script }: { id: string; voice_script: string }) => {
+      const supabase = getClient()
+      const { error } = await (supabase as any)
+        .from('content_suggestions')
+        .update({ voice_script })
+        .eq('id', id)
+      if (error) throw new Error(error.message)
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.all }),
+  })
+}
+
+// Goes through the API route since it calls Cloudflare Workers AI with a
+// server-only token and uploads the result to R2.
+export function useSynthesizeVoice() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch('/api/content/synthesize-voice', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ suggestion_id: id }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to synthesize narration')
+      return data.media
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: keys.all })
+      qc.invalidateQueries({ queryKey: ['content_media'] })
+    },
   })
 }
 

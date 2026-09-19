@@ -33,6 +33,9 @@ import {
   useAttachCreativeMedia,
   useGenerateCreative,
   useUpdateContentSuggestionScript,
+  useGenerateVoiceScript,
+  useSaveVoiceScript,
+  useSynthesizeVoice,
   useReviewContentSuggestion,
   useDeleteContentSuggestion,
   type ContentSuggestion,
@@ -219,6 +222,9 @@ function NewSuggestionForm({ onCreated }: { onCreated: () => void }) {
 function SuggestionCard({ suggestion }: { suggestion: ContentSuggestion }) {
   const updateCaption = useUpdateContentSuggestionCaption()
   const updateScript = useUpdateContentSuggestionScript()
+  const generateVoiceScript = useGenerateVoiceScript()
+  const saveVoiceScript = useSaveVoiceScript()
+  const synthesizeVoice = useSynthesizeVoice()
   const attachCreative = useAttachCreativeMedia()
   const generateCreative = useGenerateCreative()
   const review = useReviewContentSuggestion()
@@ -229,10 +235,14 @@ function SuggestionCard({ suggestion }: { suggestion: ContentSuggestion }) {
   const [caption, setCaption] = useState(currentCaption)
   const currentScript = suggestion.script ?? ''
   const [script, setScript] = useState(currentScript)
+  const currentVoiceScript = suggestion.voice_script ?? ''
+  const [voiceScript, setVoiceScript] = useState(currentVoiceScript)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [template, setTemplate] = useState<CreativeTemplate>('new-arrival')
   const dirty = caption !== currentCaption
   const scriptDirty = script !== currentScript
+  const voiceScriptDirty = voiceScript !== currentVoiceScript
+  const voiceUrl = suggestion.voice_media ? getContentMediaUrl(suggestion.voice_media.storage_key) : null
 
   function handleGenerateCreative() {
     generateCreative.mutate(
@@ -256,6 +266,27 @@ function SuggestionCard({ suggestion }: { suggestion: ContentSuggestion }) {
       { id: suggestion.id, script },
       { onSuccess: () => toast.success('Script updated'), onError: (e) => toast.error(e.message) }
     )
+  }
+
+  function handleGenerateVoiceScript() {
+    generateVoiceScript.mutate(suggestion.id, {
+      onSuccess: (newVoiceScript) => { setVoiceScript(newVoiceScript); toast.success('Voice script generated') },
+      onError: (e) => toast.error(e.message),
+    })
+  }
+
+  function handleSaveVoiceScript() {
+    saveVoiceScript.mutate(
+      { id: suggestion.id, voice_script: voiceScript },
+      { onSuccess: () => toast.success('Voice script updated'), onError: (e) => toast.error(e.message) }
+    )
+  }
+
+  function handleSynthesizeVoice() {
+    synthesizeVoice.mutate(suggestion.id, {
+      onSuccess: () => toast.success('Narration synthesized'),
+      onError: (e) => toast.error(e.message),
+    })
   }
 
   return (
@@ -320,6 +351,47 @@ function SuggestionCard({ suggestion }: { suggestion: ContentSuggestion }) {
             className="text-sm"
             placeholder="No script yet — regenerate this suggestion to get one."
           />
+        </div>
+
+        <div className="space-y-1">
+          <div className="flex items-center justify-between">
+            <label className="text-xs text-slate-500">Voice script — for narration audio</label>
+            {voiceScriptDirty && (
+              <Button size="sm" variant="outline" className="h-6 text-[11px] px-2" onClick={handleSaveVoiceScript} disabled={saveVoiceScript.isPending}>
+                Save
+              </Button>
+            )}
+          </div>
+          <Textarea
+            value={voiceScript}
+            onChange={(e) => setVoiceScript(e.target.value)}
+            rows={2}
+            className="text-sm"
+            placeholder="Generate a spoken-style version of the script, or write your own."
+          />
+          <div className="flex items-center gap-2 pt-1 flex-wrap">
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs"
+              onClick={handleGenerateVoiceScript}
+              disabled={generateVoiceScript.isPending || !script.trim()}
+            >
+              {generateVoiceScript.isPending ? 'Generating...' : 'Generate Script'}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs"
+              onClick={handleSynthesizeVoice}
+              disabled={synthesizeVoice.isPending || !voiceScript.trim()}
+            >
+              {synthesizeVoice.isPending ? 'Synthesizing...' : 'Synthesize Narration'}
+            </Button>
+            {voiceUrl && (
+              <audio controls src={voiceUrl} className="h-8 flex-1 min-w-[180px]" />
+            )}
+          </div>
         </div>
 
         <div className="space-y-1">
