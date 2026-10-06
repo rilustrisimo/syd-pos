@@ -31,7 +31,13 @@ const keys = {
 // bucket URL is used directly rather than generating a signed GET URL per
 // render. Requires the bucket's public access (R2.dev URL or a custom
 // domain) to be enabled in the Cloudflare dashboard.
+//
+// Product photos imported from the Library's "Product Photos" tab are the
+// one exception — they're referenced directly from wherever the product
+// catalog already hosts them (not copied into R2), so storage_key holds a
+// full URL for those rows instead of an R2-relative key.
 export function getContentMediaUrl(storageKey: string): string {
+  if (/^https?:\/\//.test(storageKey)) return storageKey
   const base = process.env.NEXT_PUBLIC_CLOUDFLARE_R2_PUBLIC_URL
   if (!base) return ''
   return `${base.replace(/\/$/, '')}/${storageKey}`
@@ -88,5 +94,44 @@ export function useDeleteContentMedia() {
       if (error) throw new Error(error.message)
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.list() }),
+  })
+}
+
+export interface ProductImageResult {
+  product_id: string
+  product_name: string
+  url: string
+  is_primary: boolean
+}
+
+// Every image for every matching product (not just one representative
+// thumbnail like the POS product search returns) — used by the Library's
+// "Product Photos" tab so staff can pull in any existing product photo
+// without re-uploading it.
+export function useProductImagesSearch(query: string) {
+  return useQuery({
+    queryKey: ['product_images_search', query],
+    queryFn: async () => {
+      const supabase = getClient()
+      const { data, error } = await supabase
+        .from('products')
+        .select('id, name, images:product_images(url, is_primary, sort_order)')
+        .eq('is_active', true)
+        .ilike('name', `%${query}%`)
+        .order('name')
+        .limit(20)
+      if (error) throw new Error(error.message)
+
+      const results: ProductImageResult[] = []
+      for (const p of (data ?? []) as any[]) {
+        const sorted = [...(p.images ?? [])].sort((a: any, b: any) => a.sort_order - b.sort_order)
+        for (const img of sorted) {
+          results.push({ product_id: p.id, product_name: p.name, url: img.url, is_primary: img.is_primary })
+        }
+      }
+      return results
+    },
+    enabled: query.trim().length >= 2,
+    staleTime: 10000,
   })
 }

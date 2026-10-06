@@ -298,6 +298,11 @@ function SuggestionCard({ suggestion }: { suggestion: ContentSuggestion }) {
           {suggestion.source_product && (
             <span className="text-xs text-slate-500">Product: {suggestion.source_product.name}</span>
           )}
+          {suggestion.source_idea && (
+            <span className="text-xs text-slate-500 flex items-center gap-1">
+              <Lightbulb className="w-3 h-3" /> {suggestion.source_idea.title}
+            </span>
+          )}
         </div>
 
         {(sourceUrl || creativeUrl) && (

@@ -21,6 +21,7 @@ import {
   useContentMedia,
   useCreateContentMedia,
   useDeleteContentMedia,
+  useProductImagesSearch,
   getContentMediaUrl,
   type ContentMedia,
 } from '@/hooks/useContentMedia'
@@ -116,6 +117,100 @@ function StockSearchTab() {
   )
 }
 
+function ProductPhotosTab() {
+  const [query, setQuery] = useState('')
+  const { data: results = [], isLoading } = useProductImagesSearch(query)
+  const createMedia = useCreateContentMedia()
+  const [importingUrl, setImportingUrl] = useState<string | null>(null)
+
+  // Product photos are referenced directly from wherever the catalog
+  // already hosts them — no download/re-upload to R2, so there's no
+  // server-side step here, just a content_media row pointing at the
+  // existing URL (getContentMediaUrl already knows to pass full URLs
+  // through as-is instead of treating them as an R2-relative key).
+  async function handleImport(url: string, productName: string) {
+    setImportingUrl(url)
+    try {
+      let sizeBytes = 0
+      try {
+        const headRes = await fetch(url, { method: 'HEAD' })
+        const len = headRes.headers.get('content-length')
+        if (len) sizeBytes = parseInt(len, 10)
+      } catch {
+        // Best-effort only — some hosts don't expose accurate HEAD responses.
+      }
+      const ext = url.split('.').pop()?.split('?')[0] || 'jpg'
+      await createMedia.mutateAsync({
+        media_type: 'image',
+        storage_key: url,
+        original_filename: `${productName}.${ext}`,
+        mime_type: `image/${ext === 'jpg' ? 'jpeg' : ext}`,
+        size_bytes: sizeBytes,
+      })
+      toast.success('Added to library')
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to import')
+    } finally {
+      setImportingUrl(null)
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="relative">
+        <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+        <Input
+          placeholder="Search products by name..."
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          className="pl-8 text-sm"
+        />
+      </div>
+
+      {isLoading ? (
+        <div className="flex items-center justify-center py-16 text-slate-400 text-sm">Searching...</div>
+      ) : query.trim().length < 2 ? (
+        <div className="flex flex-col items-center justify-center py-16 text-slate-400 gap-2">
+          <Search className="w-10 h-10 opacity-30" />
+          <p className="text-sm">Type at least 2 characters to search products</p>
+        </div>
+      ) : results.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 text-slate-400 gap-2">
+          <FileImage className="w-10 h-10 opacity-30" />
+          <p className="text-sm">No product photos found</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+          {results.map((result) => {
+            const key = `${result.product_id}-${result.url}`
+            return (
+              <div key={key} className="border rounded-lg overflow-hidden">
+                <div className="aspect-square bg-slate-100">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={result.url} alt={result.product_name} className="w-full h-full object-cover" />
+                </div>
+                <div className="p-2 space-y-1">
+                  <p className="text-[11px] text-slate-600 truncate" title={result.product_name}>{result.product_name}</p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="w-full h-7 text-xs gap-1"
+                    onClick={() => handleImport(result.url, result.product_name)}
+                    disabled={importingUrl === result.url}
+                  >
+                    <Download className="w-3 h-3" />
+                    {importingUrl === result.url ? 'Adding...' : 'Add to Library'}
+                  </Button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function formatSize(bytes: number) {
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
@@ -147,7 +242,7 @@ export default function ContentLibraryPage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
-  const [tab, setTab] = useState<'uploads' | 'stock'>('uploads')
+  const [tab, setTab] = useState<'uploads' | 'stock' | 'products'>('uploads')
 
   async function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -234,10 +329,15 @@ export default function ContentLibraryPage() {
         <Button size="sm" variant={tab === 'stock' ? 'default' : 'outline'} onClick={() => setTab('stock')}>
           Search Stock
         </Button>
+        <Button size="sm" variant={tab === 'products' ? 'default' : 'outline'} onClick={() => setTab('products')}>
+          Product Photos
+        </Button>
       </div>
 
       {tab === 'stock' ? (
         <StockSearchTab />
+      ) : tab === 'products' ? (
+        <ProductPhotosTab />
       ) : (
       <Card>
         <CardHeader className="pb-2">
