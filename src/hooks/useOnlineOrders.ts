@@ -269,6 +269,25 @@ export function useUpdateOnlineOrderPaymentStatus() {
   })
 }
 
+// Lets staff record a payment method the customer arranged over the phone
+// (e.g. COD) — payment_method is otherwise only ever written by the
+// customer's own /pay/{orderId} submission, which COD has no reason to go
+// through (nothing to submit online for a cash-on-delivery order).
+export function useUpdateOnlineOrderPaymentMethod() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, payment_method }: { id: string; payment_method: OnlineOrderPaymentMethod }) => {
+      const supabase = getClient()
+      const { error } = await supabase
+        .from('online_orders')
+        .update({ payment_method })
+        .eq('id', id)
+      if (error) throw new Error(error.message)
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.all }),
+  })
+}
+
 function logTimestamp() {
   return new Date().toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })
 }

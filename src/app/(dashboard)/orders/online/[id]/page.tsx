@@ -16,6 +16,7 @@ import {
   useSignedPaymentProofUrl,
   useUpdateOnlineOrderStatus,
   useUpdateOnlineOrderPaymentStatus,
+  useUpdateOnlineOrderPaymentMethod,
   useUpdateOnlineOrderLine,
   useDeleteOnlineOrderLine,
   useAddOnlineOrderLine,
@@ -27,6 +28,7 @@ import {
   useRestoreOnlineOrder,
   type OnlineOrderStatus,
   type OnlineOrderPaymentStatus,
+  type OnlineOrderPaymentMethod,
 } from '@/hooks/useOnlineOrders'
 import { usePOSProductSearch } from '@/hooks/useTransactions'
 import { useShopBranchId } from '@/hooks/useShopSettings'
@@ -100,6 +102,16 @@ const PAYMENT_STATUS_OPTIONS: { value: OnlineOrderPaymentStatus; label: string }
   { value: 'refunded', label: 'Refunded' },
 ]
 
+// Lets staff record what the customer arranged over the phone — needed
+// because payment_method is otherwise only ever written by the customer's
+// own /pay/{orderId} submission, and COD has no online step to submit.
+const PAYMENT_METHOD_OPTIONS: { value: OnlineOrderPaymentMethod; label: string }[] = [
+  { value: 'cod', label: 'Cash on Delivery' },
+  { value: 'gcash', label: 'GCash' },
+  { value: 'bank_transfer', label: 'Bank Transfer' },
+  { value: 'qr', label: 'QR Payment' },
+]
+
 type DiscountType = 'none' | 'fixed' | 'percentage' | 'standard' | 'cost'
 const DISCOUNT_TYPE_OPTIONS: { value: DiscountType; label: string }[] = [
   { value: 'none', label: 'None' },
@@ -116,6 +128,7 @@ export default function OnlineOrderDetailPage({ params }: { params: Promise<{ id
   const { data: order, isLoading, error } = useOnlineOrder(id)
   const updateStatus = useUpdateOnlineOrderStatus()
   const updatePaymentStatus = useUpdateOnlineOrderPaymentStatus()
+  const updatePaymentMethod = useUpdateOnlineOrderPaymentMethod()
   const updateLine = useUpdateOnlineOrderLine()
   const deleteLine = useDeleteOnlineOrderLine()
   const addLine = useAddOnlineOrderLine()
@@ -191,6 +204,13 @@ export default function OnlineOrderDetailPage({ params }: { params: Promise<{ id
   function handlePaymentStatusChange(payment_status: OnlineOrderPaymentStatus) {
     updatePaymentStatus.mutate({ id, payment_status }, {
       onSuccess: () => toast.success(`Payment status updated to "${payment_status}"`),
+      onError: (e) => toast.error(e.message),
+    })
+  }
+
+  function handlePaymentMethodChange(payment_method: OnlineOrderPaymentMethod) {
+    updatePaymentMethod.mutate({ id, payment_method }, {
+      onSuccess: () => toast.success(`Payment method set to "${payment_method.replace('_', ' ')}"`),
       onError: (e) => toast.error(e.message),
     })
   }
@@ -944,12 +964,28 @@ export default function OnlineOrderDetailPage({ params }: { params: Promise<{ id
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
-              <div className="flex justify-between items-center">
-                <span className="text-slate-500">Method</span>
-                <span className="capitalize font-medium">
-                  {order.payment_method ? order.payment_method.replace('_', ' ') : <span className="text-slate-400 italic normal-case">Not selected yet</span>}
+              <div>
+                <p className="text-xs text-slate-500 mb-1">
+                  Method
                   {order.payment_method === 'qr' && order.payment_qr_label && ` (${order.payment_qr_label})`}
-                </span>
+                </p>
+                <Select
+                  value={order.payment_method ?? undefined}
+                  onValueChange={v => handlePaymentMethodChange(v as OnlineOrderPaymentMethod)}
+                  disabled={!!order.deleted_at}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Not selected yet" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PAYMENT_METHOD_OPTIONS.map(m => (
+                      <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Normally set by the customer at checkout — use this to record what they arranged with you by phone (e.g. COD).
+                </p>
               </div>
               {order.payment_reference_no && (
                 <div className="flex justify-between items-center">
