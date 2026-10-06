@@ -53,3 +53,30 @@ export async function updateStoreContactInfo(
   const { error } = await supabase.from('shop_settings').update(updates).eq('id', id)
   if (error) throw error
 }
+
+// "Request a Quote" mode toggle for syd-shop — when on, the public shop
+// hides every price/total and shows products as requests only; staff call
+// back with pricing. Kept separate from StoreContactInfo so this one
+// boolean can be read/written without touching the contact-info shape.
+export interface HidePricesSetting {
+  id: string
+  hide_prices: boolean
+}
+
+export async function getHidePrices(): Promise<HidePricesSetting> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from('shop_settings')
+    .select('id, hide_prices')
+    .limit(1)
+    .single()
+
+  if (error || !data) return { id: '', hide_prices: false }
+  return { id: data.id, hide_prices: data.hide_prices ?? false }
+}
+
+export async function updateHidePrices(id: string, hide_prices: boolean): Promise<void> {
+  const supabase = getClient()
+  const { error } = await supabase.from('shop_settings').update({ hide_prices }).eq('id', id)
+  if (error) throw error
+}

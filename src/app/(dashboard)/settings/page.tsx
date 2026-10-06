@@ -34,11 +34,11 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Textarea } from '@/components/ui/textarea'
 import { Switch } from '@/components/ui/switch'
-import { User, Building, Bell, Lock, Loader2, Percent, Plus, Trash2, Pencil, Check, X, Phone, QrCode, Landmark } from 'lucide-react'
+import { User, Building, Bell, Lock, Loader2, Percent, Plus, Trash2, Pencil, Check, X, Phone, QrCode, Landmark, EyeOff } from 'lucide-react'
 import { toast } from 'sonner'
 import { useDiscountRules, useCreateDiscountRule, useUpdateDiscountRule, useDeleteDiscountRule } from '@/hooks/useDiscountRules'
 import type { DiscountRule } from '@/lib/supabase/queries/discount-rules'
-import { useStoreContactInfo, useUpdateStoreContactInfo } from '@/hooks/useShopSettings'
+import { useStoreContactInfo, useUpdateStoreContactInfo, useHidePrices, useUpdateHidePrices } from '@/hooks/useShopSettings'
 import { useShopQrCodes, useCreateShopQrCode, useUpdateShopQrCode, useDeleteShopQrCode } from '@/hooks/useShopQrCodes'
 import type { ShopQrCode } from '@/lib/supabase/queries/shop-qr-codes'
 import { useShopBankAccounts, useCreateShopBankAccount, useUpdateShopBankAccount, useDeleteShopBankAccount } from '@/hooks/useShopBankAccounts'
@@ -121,6 +121,60 @@ function StoreContactCard() {
               Save
             </Button>
           </>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function RequestQuoteModeCard() {
+  const { data: setting, isLoading } = useHidePrices()
+  const updateHidePrices = useUpdateHidePrices()
+
+  const handleToggle = async (checked: boolean) => {
+    if (!setting?.id) {
+      toast.error('Shop settings not loaded yet')
+      return
+    }
+    try {
+      await updateHidePrices.mutateAsync({ id: setting.id, hide_prices: checked })
+      toast.success(checked ? 'Prices are now hidden on the online shop' : 'Prices are now shown on the online shop')
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to update setting')
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center gap-2">
+          <EyeOff className="h-5 w-5" />
+          <div>
+            <CardTitle>Request a Quote Mode</CardTitle>
+            <CardDescription className="mt-1">
+              Hides every price and total on the online shop (syd-shop) — customers submit a request
+              with quantities only, and staff call back with pricing. Out-of-stock items show the
+              same as in-stock items while this is on. Takes effect immediately, no redeploy needed.
+            </CardDescription>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="flex items-center justify-center py-4">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : (
+          <div className="flex items-center gap-3">
+            <Switch
+              checked={setting?.hide_prices ?? false}
+              onCheckedChange={handleToggle}
+              disabled={updateHidePrices.isPending}
+            />
+            <span className="text-sm font-medium">
+              {setting?.hide_prices ? 'Prices are hidden' : 'Prices are shown'}
+            </span>
+          </div>
         )}
       </CardContent>
     </Card>
@@ -823,6 +877,9 @@ export default function SettingsPage() {
 
       {/* Store Contact & Address — full width */}
       <StoreContactCard />
+
+      {/* Request a Quote Mode — full width */}
+      <RequestQuoteModeCard />
 
       {/* Payment QR Codes — full width */}
       <PaymentQrCodesCard />
