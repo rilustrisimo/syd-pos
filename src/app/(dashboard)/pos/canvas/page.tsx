@@ -753,7 +753,7 @@ export default function CanvasPage() {
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium leading-tight truncate">{item.product_name}</p>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-xs text-muted-foreground truncate">
                       {formatCurrency(item.unit_price)} / {item.uom_name}
                     </p>
                     {item.discount_amount > 0 && (
@@ -762,11 +762,11 @@ export default function CanvasPage() {
                       </p>
                     )}
                   </div>
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1 shrink-0">
                     <Button
                       variant="outline"
                       size="icon"
-                      className="h-6 w-6"
+                      className="h-6 w-6 shrink-0"
                       onClick={() => updateItemQuantity(item.id, item.quantity - 1)}
                       disabled={item.quantity <= 0.01}
                     >
@@ -778,14 +778,14 @@ export default function CanvasPage() {
                       onChange={(e) =>
                         updateItemQuantity(item.id, parseFloat(e.target.value) || 0.01)
                       }
-                      className="w-16 h-6 text-center text-sm p-1"
+                      className="w-16 h-6 text-center text-sm p-1 shrink-0"
                       min="0.01"
                       step="any"
                     />
                     <Button
                       variant="outline"
                       size="icon"
-                      className="h-6 w-6"
+                      className="h-6 w-6 shrink-0"
                       onClick={() => updateItemQuantity(item.id, item.quantity + 1)}
                     >
                       <Plus className="h-3 w-3" />
@@ -793,7 +793,7 @@ export default function CanvasPage() {
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-6 w-6 text-destructive"
+                      className="h-6 w-6 shrink-0 text-destructive"
                       onClick={() => removeItem(item.id)}
                     >
                       <X className="h-3 w-3" />
