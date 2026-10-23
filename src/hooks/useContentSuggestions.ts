@@ -3,6 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { getClient } from '@/lib/supabase/client'
 import type { ContentFormat } from '@/hooks/useContentIdeas'
+import type { ReelTimeline } from '@/lib/marketing/reel-timeline'
 
 // One caption chunk of the synthesized narration and when it starts
 // (seconds into the audio), from Google TTS SSML mark timepoints.
@@ -29,6 +30,7 @@ export interface ContentSuggestion {
   voice_media_id: string | null
   format: ContentFormat | null
   voice_timepoints: VoiceTimepoint[] | null
+  reel_timeline: ReelTimeline | null
   status: SuggestionStatus
   reviewed_by: string | null
   reviewed_at: string | null
@@ -183,6 +185,24 @@ export function useSynthesizeVoice() {
       qc.invalidateQueries({ queryKey: keys.all })
       qc.invalidateQueries({ queryKey: ['content_media'] })
     },
+  })
+}
+
+// Saved (debounced) while editing a reel. The builder keeps its own working
+// copy, so the refetch this triggers doesn't disturb editing — it just
+// means reopening the builder shows the latest saved timeline.
+export function useSaveReelTimeline() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, reel_timeline }: { id: string; reel_timeline: ReelTimeline }) => {
+      const supabase = getClient()
+      const { error } = await (supabase as any)
+        .from('content_suggestions')
+        .update({ reel_timeline })
+        .eq('id', id)
+      if (error) throw new Error(error.message)
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.all }),
   })
 }
 

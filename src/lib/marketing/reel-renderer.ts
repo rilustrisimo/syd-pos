@@ -1,21 +1,27 @@
-// Renders a vertical reel (1080x1920 MP4) in the browser: the chosen
-// library clips/images play back-to-back under the synthesized narration,
-// with the voice script burned in as subtitles and an SYD end card.
+// Plays a reel timeline (reel-timeline.ts) onto a 1080x1920 canvas in the
+// browser: library clips/images under the synthesized narration, with
+// captions and an SYD end card. The same player drives the editor's live
+// preview (play / seek, nothing recorded) and the final render, which
+// records the canvas + audio mix with MediaRecorder to an MP4.
 //
 // Done client-side on purpose — Vercel functions can't practically run
-// ffmpeg, and hosted video renderers cost money. The canvas is recorded in
-// real time with MediaRecorder, so rendering takes as long as the reel
-// itself and the tab must stay visible (browsers throttle hidden tabs).
-// R2's public domain sends CORS headers for the app origin, which is what
-// keeps the canvas exportable when it draws R2 media.
+// ffmpeg, and hosted video renderers cost money. Rendering happens in real
+// time, so the tab must stay visible (browsers throttle hidden tabs). R2's
+// public domain sends CORS headers for the app origin, which is what keeps
+// the canvas exportable when it draws R2 media.
 
-import { splitIntoCaptionChunks } from '@/lib/marketing/captions'
-import type { VoiceTimepoint } from '@/hooks/useContentSuggestions'
+import {
+  captionAt,
+  clipAt,
+  contentLength,
+  totalLength,
+  type ReelTimeline,
+} from '@/lib/marketing/reel-timeline'
 
 export const REEL_WIDTH = 1080
 export const REEL_HEIGHT = 1920
 const FPS = 30
-const END_CARD_SECONDS = 2.5
+const CLIP_SOUND_VOLUME = 0.35
 const BRAND_DARK = '#0f172a'
 const BRAND_YELLOW = '#ffc107'
 const FONT = 'Inter, "Helvetica Neue", Arial, sans-serif'
@@ -25,22 +31,6 @@ const MP4_MIME_TYPES = [
   'video/mp4;codecs=avc1,mp4a.40.2',
   'video/mp4',
 ]
-
-export interface ReelClip {
-  url: string
-  type: 'image' | 'video'
-}
-
-export interface RenderReelOptions {
-  canvas: HTMLCanvasElement
-  clips: ReelClip[]
-  narrationUrl: string
-  voiceScript: string
-  timepoints: VoiceTimepoint[] | null
-  logoUrl: string
-  onProgress?: (fraction: number) => void
-  signal?: AbortSignal
-}
 
 export interface RenderedReel {
   blob: Blob
@@ -53,37 +43,6 @@ export function getSupportedReelMimeType(): string | null {
   return MP4_MIME_TYPES.find((t) => MediaRecorder.isTypeSupported(t)) ?? null
 }
 
-interface TimedCaption {
-  text: string
-  start: number
-  end: number
-}
-
-// Caption i shows from its own start until the next one starts; without
-// timepoints, chunks are spread across the narration by character count.
-function buildCaptionTimeline(
-  voiceScript: string,
-  timepoints: VoiceTimepoint[] | null,
-  narrationSeconds: number
-): TimedCaption[] {
-  if (timepoints?.length) {
-    return timepoints.map((tp, i) => ({
-      text: tp.text,
-      start: tp.start,
-      end: timepoints[i + 1]?.start ?? narrationSeconds,
-    }))
-  }
-  const chunks = splitIntoCaptionChunks(voiceScript)
-  const totalChars = chunks.reduce((sum, c) => sum + c.length, 0) || 1
-  let cursor = 0
-  return chunks.map((text) => {
-    const length = (text.length / totalChars) * narrationSeconds
-    const caption = { text, start: cursor, end: cursor + length }
-    cursor += length
-    return caption
-  })
-}
-
 function loadImage(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image()
@@ -94,11 +53,14 @@ function loadImage(url: string): Promise<HTMLImageElement> {
   })
 }
 
-function loadVideo(url: string): Promise<HTMLVideoElement> {
+function loadVideo(url: string, withSound: boolean): Promise<HTMLVideoElement> {
   return new Promise((resolve, reject) => {
     const video = document.createElement('video')
     video.crossOrigin = 'anonymous'
-    video.muted = true
+    // A muted element feeds silence into the audio graph, so clips whose
+    // sound is kept stay unmuted — their audio only reaches the speakers
+    // through the graph (createMediaElementSource takes over output).
+    video.muted = !withSound
     video.playsInline = true
     video.loop = true
     video.preload = 'auto'
@@ -118,6 +80,16 @@ function loadAudio(url: string): Promise<HTMLAudioElement> {
     audio.onerror = () => reject(new Error('Could not load the narration audio'))
     audio.src = url
     audio.load()
+  })
+}
+
+function seekVideo(video: HTMLVideoElement, time: number): Promise<void> {
+  return new Promise((resolve) => {
+    if (Math.abs(video.currentTime - time) < 0.02) return resolve()
+    const done = () => { video.removeEventListener('seeked', done); resolve() }
+    video.addEventListener('seeked', done)
+    video.currentTime = time
+    setTimeout(done, 1500)
   })
 }
 
@@ -209,127 +181,290 @@ function drawEndCard(ctx: CanvasRenderingContext2D, logo: HTMLImageElement) {
   ctx.fillText('COD within 5km · Talakag, Bukidnon', REEL_WIDTH / 2, 1140)
 }
 
-export async function renderReel(opts: RenderReelOptions): Promise<RenderedReel> {
-  const mimeType = getSupportedReelMimeType()
-  if (!mimeType) {
-    throw new Error('This browser cannot record MP4 video. Use the latest Google Chrome on a computer.')
+function drawPlaceholder(ctx: CanvasRenderingContext2D) {
+  ctx.fillStyle = BRAND_DARK
+  ctx.fillRect(0, 0, REEL_WIDTH, REEL_HEIGHT)
+  ctx.fillStyle = '#64748b'
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.font = `600 52px ${FONT}`
+  ctx.fillText('Add clips to start', REEL_WIDTH / 2, REEL_HEIGHT / 2)
+}
+
+export interface ReelPlayerOptions {
+  canvas: HTMLCanvasElement
+  timeline: ReelTimeline
+  /** Public URL for each clip's storage key. */
+  resolveUrl: (storageKey: string) => string
+  narrationUrl: string
+  logoUrl: string
+  onTime?: (seconds: number) => void
+  onEnded?: () => void
+}
+
+/**
+ * Loads a timeline's media once and plays it onto the canvas. Changes to
+ * clip lengths, trims and captions can be applied live with
+ * setTimeline(); changing which clips are used (or their keep-sound
+ * setting) needs a new player, since media elements are bound to the audio
+ * graph at load time.
+ */
+export class ReelPlayer {
+  private ctx: CanvasRenderingContext2D
+  private timeline: ReelTimeline
+  private audio!: HTMLAudioElement
+  private logo!: HTMLImageElement
+  private sources: (HTMLImageElement | HTMLVideoElement)[] = []
+  private audioCtx!: AudioContext
+  private recordDest!: MediaStreamAudioDestinationNode
+  private activeIndex = -1
+  private rafId = 0
+  private clockStart = 0
+  private clockOffset = 0
+  private playing = false
+  private finishPlayback: (() => void) | null = null
+  narrationSeconds = 0
+
+  private constructor(private opts: ReelPlayerOptions) {
+    const ctx = opts.canvas.getContext('2d')
+    if (!ctx) throw new Error('Canvas is not available in this browser.')
+    this.ctx = ctx
+    this.timeline = opts.timeline
+    opts.canvas.width = REEL_WIDTH
+    opts.canvas.height = REEL_HEIGHT
   }
-  if (!opts.clips.length) throw new Error('Pick at least one clip or image first.')
 
-  const { canvas } = opts
-  canvas.width = REEL_WIDTH
-  canvas.height = REEL_HEIGHT
-  const ctx = canvas.getContext('2d')
-  if (!ctx) throw new Error('Canvas is not available in this browser.')
+  static async load(opts: ReelPlayerOptions): Promise<ReelPlayer> {
+    const player = new ReelPlayer(opts)
+    const [audio, logo, ...sources] = await Promise.all([
+      loadAudio(opts.narrationUrl),
+      loadImage(opts.logoUrl),
+      ...opts.timeline.clips.map((c) =>
+        c.type === 'video' ? loadVideo(opts.resolveUrl(c.storageKey), c.keepSound) : loadImage(opts.resolveUrl(c.storageKey))
+      ),
+    ])
+    player.audio = audio
+    player.logo = logo
+    player.sources = sources
+    player.narrationSeconds = Number.isFinite(audio.duration) ? audio.duration : 0
+    if (!player.narrationSeconds) throw new Error('Could not read the narration length.')
 
-  const [audio, logo, ...sources] = await Promise.all([
-    loadAudio(opts.narrationUrl),
-    loadImage(opts.logoUrl),
-    ...opts.clips.map((c) => (c.type === 'video' ? loadVideo(c.url) : loadImage(c.url))),
-  ])
-
-  const narrationSeconds = audio.duration
-  if (!Number.isFinite(narrationSeconds) || narrationSeconds <= 0) {
-    throw new Error('Could not read the narration length.')
-  }
-  const totalSeconds = narrationSeconds + END_CARD_SECONDS
-  const segmentSeconds = narrationSeconds / sources.length
-  const captions = buildCaptionTimeline(opts.voiceScript, opts.timepoints, narrationSeconds)
-
-  const audioCtx = new AudioContext()
-  const audioSource = audioCtx.createMediaElementSource(audio)
-  const audioDest = audioCtx.createMediaStreamDestination()
-  audioSource.connect(audioDest)
-  audioSource.connect(audioCtx.destination)
-
-  const stream = canvas.captureStream(FPS)
-  audioDest.stream.getAudioTracks().forEach((t) => stream.addTrack(t))
-  const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 8_000_000 })
-  const chunks: Blob[] = []
-  recorder.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data) }
-  const stopped = new Promise<void>((resolve) => { recorder.onstop = () => resolve() })
-
-  let activeSegment = -1
-  let rafId = 0
-  let aborted = false
-
-  const cleanup = () => {
-    cancelAnimationFrame(rafId)
-    audio.pause()
-    sources.forEach((s) => { if (s instanceof HTMLVideoElement) s.pause() })
-    stream.getTracks().forEach((t) => t.stop())
-    audioCtx.close().catch(() => {})
-  }
-
-  const onAbort = () => {
-    aborted = true
-    if (recorder.state !== 'inactive') recorder.stop()
-  }
-  opts.signal?.addEventListener('abort', onAbort)
-
-  // Paint the first frame before recording so the video doesn't open black.
-  const first = sources[0]
-  if (first instanceof HTMLVideoElement) drawCover(ctx, first, first.videoWidth, first.videoHeight)
-  else drawCover(ctx, first, first.naturalWidth, first.naturalHeight)
-
-  await audioCtx.resume()
-  recorder.start(250)
-  const t0 = performance.now()
-  await audio.play()
-
-  await new Promise<void>((resolve) => {
-    const frame = () => {
-      if (aborted) return resolve()
-      const t = (performance.now() - t0) / 1000
-      opts.onProgress?.(Math.min(t / totalSeconds, 1))
-
-      if (t >= totalSeconds) {
-        if (recorder.state !== 'inactive') recorder.stop()
-        return resolve()
+    // Narration and any kept clip sound mix into both the speakers (for the
+    // preview) and a stream destination (for recording).
+    player.audioCtx = new AudioContext()
+    player.recordDest = player.audioCtx.createMediaStreamDestination()
+    const narration = player.audioCtx.createMediaElementSource(audio)
+    narration.connect(player.recordDest)
+    narration.connect(player.audioCtx.destination)
+    opts.timeline.clips.forEach((clip, i) => {
+      const el = sources[i]
+      if (clip.keepSound && el instanceof HTMLVideoElement) {
+        const gain = player.audioCtx.createGain()
+        gain.gain.value = CLIP_SOUND_VOLUME
+        player.audioCtx.createMediaElementSource(el).connect(gain)
+        gain.connect(player.recordDest)
+        gain.connect(player.audioCtx.destination)
       }
+    })
 
-      if (t >= narrationSeconds) {
-        drawEndCard(ctx, logo)
-      } else {
-        const segment = Math.min(Math.floor(t / segmentSeconds), sources.length - 1)
-        const source = sources[segment]
-        if (segment !== activeSegment) {
-          const previous = sources[activeSegment]
-          if (previous instanceof HTMLVideoElement) previous.pause()
-          if (source instanceof HTMLVideoElement) {
-            source.currentTime = 0
-            source.play().catch(() => {})
-          }
-          activeSegment = segment
-        }
+    await player.seek(0)
+    return player
+  }
 
-        ctx.fillStyle = '#000000'
-        ctx.fillRect(0, 0, REEL_WIDTH, REEL_HEIGHT)
-        if (source instanceof HTMLVideoElement) {
-          drawCover(ctx, source, source.videoWidth, source.videoHeight)
-        } else {
-          const progress = (t - segment * segmentSeconds) / segmentSeconds
-          drawCover(ctx, source, source.naturalWidth, source.naturalHeight, 1 + 0.12 * progress)
-        }
+  get duration() {
+    return totalLength(this.timeline, this.narrationSeconds)
+  }
 
-        drawWatermark(ctx, logo)
-        const caption = captions.find((c) => t >= c.start && t < c.end)
-        if (caption) drawCaption(ctx, caption.text)
-      }
+  get isPlaying() {
+    return this.playing
+  }
 
-      rafId = requestAnimationFrame(frame)
+  setTimeline(timeline: ReelTimeline) {
+    this.timeline = timeline
+    if (!this.playing) this.drawAt(this.currentTime())
+  }
+
+  currentTime() {
+    return this.playing ? this.clockOffset + (performance.now() - this.clockStart) / 1000 : this.clockOffset
+  }
+
+  /** Shows the frame at time t (paused). */
+  async seek(t: number) {
+    this.pause()
+    const time = Math.min(Math.max(0, t), this.duration)
+    this.clockOffset = time
+    await this.positionVideoFor(time, false)
+    this.drawAt(time)
+    this.opts.onTime?.(time)
+  }
+
+  /** Plays from the current position in real time. Resolves when it reaches
+   * the end or is paused. */
+  async play(): Promise<void> {
+    if (this.playing) return
+    if (this.clockOffset >= this.duration - 0.05) await this.seek(0)
+    await this.audioCtx.resume()
+    const from = this.clockOffset
+
+    this.activeIndex = -1
+    await this.positionVideoFor(from, true)
+    if (from < this.narrationSeconds) {
+      this.audio.currentTime = from
+      await this.audio.play()
     }
-    rafId = requestAnimationFrame(frame)
-  })
+    this.playing = true
+    this.clockStart = performance.now()
 
-  await stopped
-  opts.signal?.removeEventListener('abort', onAbort)
-  cleanup()
+    await new Promise<void>((resolve) => {
+      this.finishPlayback = resolve
+      const frame = () => {
+        if (!this.playing) return
+        const t = this.currentTime()
+        if (t >= this.duration) {
+          this.clockOffset = this.duration
+          this.stopMedia()
+          this.playing = false
+          this.drawAt(this.duration - 0.01)
+          this.opts.onTime?.(this.duration)
+          this.opts.onEnded?.()
+          this.finishPlayback = null
+          return resolve()
+        }
+        this.syncVideo(t)
+        this.drawAt(t)
+        this.opts.onTime?.(t)
+        this.rafId = requestAnimationFrame(frame)
+      }
+      this.rafId = requestAnimationFrame(frame)
+    })
+  }
 
-  if (aborted) throw new DOMException('Render cancelled', 'AbortError')
-  return {
-    blob: new Blob(chunks, { type: mimeType.split(';')[0] }),
-    mimeType: mimeType.split(';')[0],
-    durationSeconds: totalSeconds,
+  pause() {
+    if (!this.playing) return
+    this.clockOffset = this.currentTime()
+    this.playing = false
+    cancelAnimationFrame(this.rafId)
+    this.stopMedia()
+    this.finishPlayback?.()
+    this.finishPlayback = null
+  }
+
+  /** Plays the whole reel from the start while recording it to an MP4. */
+  async record(onProgress?: (fraction: number) => void, signal?: AbortSignal): Promise<RenderedReel> {
+    const mimeType = getSupportedReelMimeType()
+    if (!mimeType) throw new Error('This browser cannot record MP4 video. Use the latest Google Chrome on a computer.')
+    if (!this.timeline.clips.length) throw new Error('Add at least one clip first.')
+
+    await this.seek(0)
+    const stream = this.opts.canvas.captureStream(FPS)
+    this.recordDest.stream.getAudioTracks().forEach((t) => stream.addTrack(t))
+    const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 8_000_000 })
+    const chunks: Blob[] = []
+    recorder.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data) }
+    const stopped = new Promise<void>((resolve) => { recorder.onstop = () => resolve() })
+
+    let aborted = false
+    const onAbort = () => { aborted = true; this.pause() }
+    signal?.addEventListener('abort', onAbort)
+    const stopProgress = this.opts.onTime
+    const total = this.duration
+    this.opts.onTime = (t) => { stopProgress?.(t); onProgress?.(Math.min(t / total, 1)) }
+
+    try {
+      recorder.start(250)
+      await this.play()
+      recorder.stop()
+      await stopped
+    } finally {
+      this.opts.onTime = stopProgress
+      signal?.removeEventListener('abort', onAbort)
+      stream.getVideoTracks().forEach((t) => t.stop())
+    }
+
+    if (aborted) throw new DOMException('Render cancelled', 'AbortError')
+    const type = mimeType.split(';')[0]
+    return { blob: new Blob(chunks, { type }), mimeType: type, durationSeconds: total }
+  }
+
+  dispose() {
+    this.pause()
+    this.sources.forEach((s) => { if (s instanceof HTMLVideoElement) s.removeAttribute('src') })
+    this.audio?.removeAttribute('src')
+    this.audioCtx?.close().catch(() => {})
+  }
+
+  private stopMedia() {
+    this.audio.pause()
+    this.sources.forEach((s) => { if (s instanceof HTMLVideoElement) s.pause() })
+  }
+
+  /** Where in its source the clip on screen at time t should be. */
+  private sourceTimeFor(t: number): { index: number; time: number } {
+    const { index, offset } = clipAt(this.timeline, Math.min(t, contentLength(this.timeline, this.narrationSeconds) - 0.001))
+    const clip = this.timeline.clips[index]
+    if (!clip || clip.type !== 'video') return { index, time: 0 }
+    const el = this.sources[index] as HTMLVideoElement
+    const available = Math.max(0.1, (clip.sourceDuration ?? el.duration ?? 0) - clip.trimStart)
+    return { index, time: clip.trimStart + (offset % available) }
+  }
+
+  private async positionVideoFor(t: number, startPlaying: boolean) {
+    if (t >= contentLength(this.timeline, this.narrationSeconds)) return
+    const { index, time } = this.sourceTimeFor(t)
+    const el = this.sources[index]
+    if (!(el instanceof HTMLVideoElement)) return
+    await seekVideo(el, time)
+    if (startPlaying) {
+      this.activeIndex = index
+      el.play().catch(() => {})
+    }
+  }
+
+  // Keeps the on-screen video in step with the clock: starts the next clip
+  // at its trim point, and pulls a video back to its trim start when it
+  // loops past the end of its source.
+  private syncVideo(t: number) {
+    if (t >= contentLength(this.timeline, this.narrationSeconds)) {
+      this.sources.forEach((s) => { if (s instanceof HTMLVideoElement && !s.paused) s.pause() })
+      return
+    }
+    const { index, time } = this.sourceTimeFor(t)
+    if (index !== this.activeIndex) {
+      const previous = this.sources[this.activeIndex]
+      if (previous instanceof HTMLVideoElement) previous.pause()
+      const el = this.sources[index]
+      if (el instanceof HTMLVideoElement) {
+        el.currentTime = time
+        el.play().catch(() => {})
+      }
+      this.activeIndex = index
+      return
+    }
+    const el = this.sources[index]
+    const clip = this.timeline.clips[index]
+    if (el instanceof HTMLVideoElement && clip && el.currentTime < clip.trimStart - 0.25) {
+      el.currentTime = clip.trimStart
+    }
+  }
+
+  private drawAt(t: number) {
+    const { ctx } = this
+    if (!this.timeline.clips.length) return drawPlaceholder(ctx)
+    if (t >= contentLength(this.timeline, this.narrationSeconds)) return drawEndCard(ctx, this.logo)
+
+    const { index, offset } = clipAt(this.timeline, t)
+    const source = this.sources[index]
+    const clip = this.timeline.clips[index]
+    ctx.fillStyle = '#000000'
+    ctx.fillRect(0, 0, REEL_WIDTH, REEL_HEIGHT)
+    if (source instanceof HTMLVideoElement) {
+      drawCover(ctx, source, source.videoWidth, source.videoHeight)
+    } else if (source) {
+      const progress = Math.min(offset / Math.max(clip.duration, 0.1), 1)
+      drawCover(ctx, source, source.naturalWidth, source.naturalHeight, 1 + 0.12 * progress)
+    }
+    drawWatermark(ctx, this.logo)
+    const caption = captionAt(this.timeline, t)
+    if (caption) drawCaption(ctx, caption.text)
   }
 }

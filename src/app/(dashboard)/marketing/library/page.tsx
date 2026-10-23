@@ -27,6 +27,7 @@ import {
 } from '@/hooks/useContentMedia'
 import { useSearchStockMedia, useImportStockMedia, type StockSearchResult } from '@/hooks/useStockMedia'
 import { MediaLightbox } from '@/components/marketing/media-lightbox'
+import { uploadMediaFile } from '@/lib/marketing/upload'
 
 const SOURCE_LABELS: Record<StockSearchResult['source'], string> = {
   pexels: 'Pexels',
@@ -216,24 +217,6 @@ function formatSize(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-// Reads a video file's duration client-side before upload, so the DB row
-// has it without needing any server-side processing.
-function getVideoDuration(file: File): Promise<number | null> {
-  return new Promise((resolve) => {
-    const video = document.createElement('video')
-    video.preload = 'metadata'
-    video.onloadedmetadata = () => {
-      URL.revokeObjectURL(video.src)
-      resolve(Number.isFinite(video.duration) ? video.duration : null)
-    }
-    video.onerror = () => {
-      URL.revokeObjectURL(video.src)
-      resolve(null)
-    }
-    video.src = URL.createObjectURL(file)
-  })
-}
-
 export default function ContentLibraryPage() {
   const { data: media = [], isLoading } = useContentMedia()
   const createMedia = useCreateContentMedia()
@@ -249,34 +232,9 @@ export default function ContentLibraryPage() {
     e.target.value = ''
     if (!file) return
 
-    const isVideo = file.type.startsWith('video/')
     setUploading(true)
     try {
-      const presignRes = await fetch('/api/media/presign-upload', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filename: file.name, contentType: file.type }),
-      })
-      const presignData = await presignRes.json()
-      if (!presignRes.ok) throw new Error(presignData.error || 'Failed to get upload URL')
-
-      const putRes = await fetch(presignData.uploadUrl, {
-        method: 'PUT',
-        headers: { 'Content-Type': file.type },
-        body: file,
-      })
-      if (!putRes.ok) throw new Error('Upload to storage failed')
-
-      const duration = isVideo ? await getVideoDuration(file) : null
-
-      await createMedia.mutateAsync({
-        media_type: isVideo ? 'video' : 'image',
-        storage_key: presignData.key,
-        original_filename: file.name,
-        mime_type: file.type,
-        size_bytes: file.size,
-        ...(duration != null ? { duration_seconds: duration } : {}),
-      })
+      await createMedia.mutateAsync(await uploadMediaFile(file, file.name))
 
       toast.success(`${file.name} uploaded`)
     } catch (err: any) {

@@ -477,8 +477,6 @@ function SuggestionCard({ suggestion }: { suggestion: ContentSuggestion }) {
                 size="sm"
                 className="h-8 text-xs gap-1"
                 onClick={() => setShowReelBuilder(true)}
-                disabled={!voiceUrl}
-                title={voiceUrl ? undefined : 'Synthesize the narration first'}
               >
                 <Film className="w-3.5 h-3.5" /> Build Reel
               </Button>
@@ -523,10 +521,9 @@ function SuggestionCard({ suggestion }: { suggestion: ContentSuggestion }) {
         </div>
       </CardContent>
 
-      {isReel && voiceUrl && showReelBuilder && (
+      {isReel && showReelBuilder && (
         <ReelBuilderDialog
           suggestion={suggestion}
-          narrationUrl={voiceUrl}
           open={showReelBuilder}
           onOpenChange={setShowReelBuilder}
         />

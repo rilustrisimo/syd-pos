@@ -173,8 +173,12 @@ export async function POST(request: Request) {
       body: new Uint8Array(mp3Buffer),
     })
     if (!putRes.ok) {
-      console.error('[synthesize-voice] R2 upload failed', putRes.status, await putRes.text())
-      return NextResponse.json({ error: 'Failed to store the narration audio' }, { status: 502 })
+      const errBody = await putRes.text()
+      console.error('[synthesize-voice] R2 upload failed', putRes.status, errBody)
+      // R2's S3-style error code (e.g. InvalidAccessKeyId, NoSuchBucket) is
+      // safe to show and says which R2 setting on the server is wrong.
+      const code = errBody.match(/<Code>([^<]+)<\/Code>/)?.[1] ?? `HTTP ${putRes.status}`
+      return NextResponse.json({ error: `Failed to store the narration audio (R2: ${code})` }, { status: 502 })
     }
 
     // Google TTS doesn't return a duration figure — left null rather than
