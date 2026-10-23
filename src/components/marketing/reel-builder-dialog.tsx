@@ -52,7 +52,8 @@ export function ReelBuilderDialog({ suggestion, open, onOpenChange }: ReelBuilde
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-6xl max-h-[94vh] overflow-y-auto">
+      {/* sm:max-w-* is needed to override the dialog's default sm:max-w-lg cap. */}
+      <DialogContent className="w-[96vw] max-w-[96vw] sm:max-w-6xl max-h-[94vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2"><Film className="w-5 h-5" /> Build Reel</DialogTitle>
           <DialogDescription>
@@ -331,7 +332,7 @@ function ReelEditorLoaded({
   const keywords = suggestion.source_idea?.stock_keywords
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-5">
+    <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_340px] gap-6">
       {/* ── Left: editing ── */}
       <div className="space-y-4 min-w-0">
         <TimelineBar timeline={timeline} narrationSeconds={narrationSeconds} total={total} currentTime={currentTime} onSeek={seek} />
@@ -358,7 +359,7 @@ function ReelEditorLoaded({
 
             {timeline.clips.length === 0 ? (
               <p className="text-xs text-slate-400 border border-dashed rounded-md px-3 py-4 text-center">
-                Upload your own video or tap clips from the library below. 3–5 clips works well.
+                No clips yet — pick videos or photos below (or upload your own). 3–5 clips works well.
               </p>
             ) : (
               <ol className="space-y-1.5">
@@ -386,49 +387,16 @@ function ReelEditorLoaded({
               </ol>
             )}
 
-            <div className="space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-xs font-medium text-slate-600">Add from library</p>
-                <input ref={fileInputRef} type="file" accept="video/mp4,video/quicktime,video/webm,image/*" className="hidden" onChange={handleUpload} />
-                <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => fileInputRef.current?.click()} disabled={busy || uploading}>
-                  <Upload className="w-3.5 h-3.5" /> {uploading ? 'Uploading...' : 'Upload your own'}
-                </Button>
-              </div>
-              {keywords && <p className="text-[11px] text-slate-500">Stock search idea: <span className="font-medium">{keywords}</span></p>}
-              <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5 max-h-[220px] overflow-y-auto pr-1">
-                {visualMedia.map((m) => {
-                  const url = getContentMediaUrl(m.storage_key)
-                  const uses = timeline.clips.filter((c) => c.mediaId === m.id).length
-                  return (
-                    <button
-                      key={m.id}
-                      type="button"
-                      onClick={() => addClip(m)}
-                      disabled={busy}
-                      className={`relative aspect-[9/16] rounded overflow-hidden bg-slate-100 ring-2 ${uses ? 'ring-blue-500' : 'ring-transparent hover:ring-slate-300'}`}
-                      title={`Add ${m.original_filename}`}
-                    >
-                      {m.media_type === 'video' ? (
-                        <video src={url} className="w-full h-full object-cover" muted preload="metadata" />
-                      ) : (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={url} alt="" className="w-full h-full object-cover" loading="lazy" />
-                      )}
-                      {m.media_type === 'video' && (
-                        <span className="absolute bottom-0.5 left-0.5 text-[9px] bg-black/60 text-white rounded px-1">
-                          {m.duration_seconds ? `${m.duration_seconds.toFixed(0)}s` : 'video'}
-                        </span>
-                      )}
-                      {uses > 0 && (
-                        <span className="absolute top-0.5 right-0.5 min-w-4 h-4 px-1 rounded-full bg-blue-600 text-white text-[10px] font-bold flex items-center justify-center">
-                          {uses}
-                        </span>
-                      )}
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
+            <input ref={fileInputRef} type="file" accept="video/mp4,video/quicktime,video/webm,image/*" className="hidden" onChange={handleUpload} />
+            <MediaPicker
+              media={visualMedia}
+              usedCounts={timeline.clips.reduce<Record<string, number>>((acc, c) => ({ ...acc, [c.mediaId]: (acc[c.mediaId] ?? 0) + 1 }), {})}
+              keywords={keywords}
+              disabled={busy}
+              uploading={uploading}
+              onAdd={addClip}
+              onUpload={() => fileInputRef.current?.click()}
+            />
           </TabsContent>
 
           <TabsContent value="captions" className="pt-2">
@@ -520,7 +488,109 @@ function ReelEditorLoaded({
   )
 }
 
-const CLIP_COLORS = ['bg-sky-400', 'bg-violet-400', 'bg-emerald-400', 'bg-amber-400', 'bg-rose-400', 'bg-teal-400']
+type MediaFilter = 'video' | 'image' | 'all'
+
+function MediaPicker({
+  media, usedCounts, keywords, disabled, uploading, onAdd, onUpload,
+}: {
+  media: ContentMedia[]
+  usedCounts: Record<string, number>
+  keywords?: string | null
+  disabled?: boolean
+  uploading?: boolean
+  onAdd: (media: ContentMedia) => void
+  onUpload: () => void
+}) {
+  const videoCount = media.filter((m) => m.media_type === 'video').length
+  const [filter, setFilter] = useState<MediaFilter>(() => (videoCount > 0 ? 'video' : 'all'))
+  const imageCount = media.length - videoCount
+  const shown = filter === 'all' ? media : media.filter((m) => m.media_type === filter)
+  const filters: { value: MediaFilter; label: string }[] = [
+    { value: 'video', label: `Videos (${videoCount})` },
+    { value: 'image', label: `Photos (${imageCount})` },
+    { value: 'all', label: 'All' },
+  ]
+
+  return (
+    <div className="space-y-2 rounded-md border p-3 bg-slate-50/60">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <p className="text-sm font-medium text-slate-700">Add clips</p>
+        <Button size="sm" className="h-8 text-xs gap-1" onClick={onUpload} disabled={disabled || uploading}>
+          <Upload className="w-3.5 h-3.5" /> {uploading ? 'Uploading...' : 'Upload your own video or photo'}
+        </Button>
+      </div>
+      <div className="flex gap-1">
+        {filters.map((f) => (
+          <Button key={f.value} size="sm" variant={filter === f.value ? 'default' : 'outline'} className="h-7 text-xs" onClick={() => setFilter(f.value)}>
+            {f.label}
+          </Button>
+        ))}
+      </div>
+      {keywords && (
+        <p className="text-[11px] text-slate-500">
+          Need more clips? Search stock in Marketing → Library for: <span className="font-medium">{keywords}</span>
+        </p>
+      )}
+
+      {shown.length === 0 ? (
+        <p className="text-xs text-slate-400 py-6 text-center">
+          No {filter === 'image' ? 'photos' : filter === 'video' ? 'videos' : 'media'} in the library yet — upload your own above.
+        </p>
+      ) : (
+        <div className="grid grid-cols-3 sm:grid-cols-4 xl:grid-cols-5 gap-2 max-h-[380px] overflow-y-auto pr-1">
+          {shown.map((m) => {
+            const url = getContentMediaUrl(m.storage_key)
+            const uses = usedCounts[m.id] ?? 0
+            return (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => onAdd(m)}
+                disabled={disabled}
+                className="group text-left space-y-1"
+                title={`Add ${m.original_filename}`}
+              >
+                <div className={`relative aspect-[9/16] rounded-md overflow-hidden bg-slate-200 ring-2 transition ${uses ? 'ring-blue-500' : 'ring-transparent group-hover:ring-slate-400'}`}>
+                  {m.media_type === 'video' ? (
+                    <video
+                      src={url}
+                      className="w-full h-full object-cover"
+                      muted
+                      loop
+                      playsInline
+                      preload="metadata"
+                      onMouseEnter={(e) => { e.currentTarget.play().catch(() => {}) }}
+                      onMouseLeave={(e) => { e.currentTarget.pause() }}
+                    />
+                  ) : (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={url} alt="" className="w-full h-full object-cover" loading="lazy" />
+                  )}
+                  {m.media_type === 'video' && (
+                    <span className="absolute bottom-1 left-1 text-[10px] bg-black/70 text-white rounded px-1.5 py-0.5 flex items-center gap-1">
+                      <Film className="w-3 h-3" /> {m.duration_seconds ? `${m.duration_seconds.toFixed(0)}s` : 'video'}
+                    </span>
+                  )}
+                  <span className="absolute inset-0 flex items-center justify-center bg-black/40 text-white text-xs font-semibold opacity-0 group-hover:opacity-100 transition">
+                    + Add
+                  </span>
+                  {uses > 0 && (
+                    <span className="absolute top-1 right-1 min-w-5 h-5 px-1 rounded-full bg-blue-600 text-white text-[11px] font-bold flex items-center justify-center">
+                      {uses}×
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-slate-600 truncate">{m.original_filename}</p>
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+const CLIP_COLORS =['bg-sky-400', 'bg-violet-400', 'bg-emerald-400', 'bg-amber-400', 'bg-rose-400', 'bg-teal-400']
 
 function TimelineBar({
   timeline, narrationSeconds, total, currentTime, onSeek,

@@ -43,6 +43,18 @@ export function getSupportedReelMimeType(): string | null {
   return MP4_MIME_TYPES.find((t) => MediaRecorder.isTypeSupported(t)) ?? null
 }
 
+// R2's public URLs only send Access-Control-Allow-Origin when the request
+// has an Origin header, and they don't send Vary: Origin. So once a plain
+// <img>/<video>/<audio> elsewhere on the page (thumbnails, the narration
+// player on the card) has cached the no-CORS response, Chrome reuses it
+// for the player's crossOrigin request and blocks it ("Could not load the
+// narration audio"). A distinct query string gives the player its own
+// cache entry; R2 ignores the query when serving the object.
+function corsUrl(url: string): string {
+  if (!/^https?:\/\//.test(url)) return url
+  return `${url}${url.includes('?') ? '&' : '?'}reel=1`
+}
+
 function loadImage(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image()
@@ -237,11 +249,12 @@ export class ReelPlayer {
   static async load(opts: ReelPlayerOptions): Promise<ReelPlayer> {
     const player = new ReelPlayer(opts)
     const [audio, logo, ...sources] = await Promise.all([
-      loadAudio(opts.narrationUrl),
+      loadAudio(corsUrl(opts.narrationUrl)),
       loadImage(opts.logoUrl),
-      ...opts.timeline.clips.map((c) =>
-        c.type === 'video' ? loadVideo(opts.resolveUrl(c.storageKey), c.keepSound) : loadImage(opts.resolveUrl(c.storageKey))
-      ),
+      ...opts.timeline.clips.map((c) => {
+        const url = corsUrl(opts.resolveUrl(c.storageKey))
+        return c.type === 'video' ? loadVideo(url, c.keepSound) : loadImage(url)
+      }),
     ])
     player.audio = audio
     player.logo = logo
