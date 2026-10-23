@@ -79,7 +79,8 @@ export async function POST(request: Request) {
     const endpoint = `https://${accountId}.r2.cloudflarestorage.com/${bucket}/${key}`
     const putRes = await r2.fetch(endpoint, {
       method: 'PUT',
-      headers: { 'Content-Type': contentType },
+      // Explicit Content-Length — R2 rejects PUTs without it (see synthesize-voice).
+      headers: { 'Content-Type': contentType, 'Content-Length': String(buffer.byteLength) },
       body: buffer,
     })
     if (!putRes.ok) {

@@ -169,7 +169,10 @@ export async function POST(request: Request) {
     const endpoint = `https://${accountId}.r2.cloudflarestorage.com/${bucket}/${key}`
     const putRes = await r2.fetch(endpoint, {
       method: 'PUT',
-      headers: { 'Content-Type': 'audio/mpeg' },
+      // Explicit Content-Length: R2 rejects PUTs without it
+      // (MissingContentLength), and the Vercel runtime's fetch doesn't
+      // always add it for a Uint8Array body.
+      headers: { 'Content-Type': 'audio/mpeg', 'Content-Length': String(mp3Buffer.byteLength) },
       body: new Uint8Array(mp3Buffer),
     })
     if (!putRes.ok) {

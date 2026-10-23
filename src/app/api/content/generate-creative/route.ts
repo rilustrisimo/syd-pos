@@ -110,7 +110,8 @@ export async function POST(request: Request) {
     const endpoint = `https://${accountId}.r2.cloudflarestorage.com/${bucket}/${key}`
     const putRes = await r2.fetch(endpoint, {
       method: 'PUT',
-      headers: { 'Content-Type': 'image/png' },
+      // Explicit Content-Length — R2 rejects PUTs without it (see synthesize-voice).
+      headers: { 'Content-Type': 'image/png', 'Content-Length': String(pngBuffer.byteLength) },
       body: pngBuffer,
     })
     if (!putRes.ok) {
