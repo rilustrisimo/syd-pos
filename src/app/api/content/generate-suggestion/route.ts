@@ -16,6 +16,7 @@
 
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import type { ContentFormat } from '@/hooks/useContentIdeas'
 
 const GEMINI_MODEL = 'gemini-3.6-flash'
 
@@ -36,6 +37,15 @@ purposes and should not just be copies of each other:
    (2-4 short sentences), ending with a light call-to-action (visit the
    store, message to order, or check the online shop at sydconstruct.com).
 3. "hashtags": up to 5 relevant hashtags (each including the leading #).`
+
+// Reels are narrated by an English TTS voice that mispronounces Tagalog
+// and Bisaya, so the spoken script stays in plain English; the written
+// caption can still be taglish.
+const REEL_INSTRUCTIONS = `This is a short vertical reel (15-30 seconds). The "script" is the
+voiceover: 5-7 short sentences, about 60-80 words, in simple, plain ENGLISH
+only (no Tagalog or Bisaya words — it is read by an English text-to-speech
+voice). Open with a hook in the first sentence, and end by pointing viewers
+to sydconstruct.com to request a quote. The "caption" may still be taglish.`
 
 export async function POST(request: Request) {
   try {
@@ -109,21 +119,38 @@ export async function POST(request: Request) {
       }
     }
 
+    let format: ContentFormat | null = null
+
     if (source_idea_id) {
       const { data: idea } = await (supabase as any)
         .from('content_ideas')
-        .select('title, description, image_concept')
+        .select('title, description, image_concept, format, creative_prompt')
         .eq('id', source_idea_id)
-        .single() as { data: { title: string; description: string | null; image_concept: string | null } | null }
+        .single() as {
+          data: {
+            title: string
+            description: string | null
+            image_concept: string | null
+            format: ContentFormat
+            creative_prompt: string | null
+          } | null
+        }
 
       if (idea) {
+        format = idea.format
         briefParts.push(
           `Post idea: ${idea.title}` +
           (idea.description ? ` — ${idea.description}` : '') +
           (idea.image_concept ? ` (suggested visual: ${idea.image_concept})` : '')
         )
+        if (idea.creative_prompt) {
+          briefParts.push(`Planned creative (for context, keep the caption consistent with it): ${idea.creative_prompt}`)
+        }
       }
     }
+
+    if (format) briefParts.push(`Post format: ${format}`)
+    if (format === 'reel') briefParts.push(REEL_INSTRUCTIONS)
 
     if (notes?.trim()) {
       briefParts.push(`Staff notes: ${notes.trim()}`)
@@ -200,6 +227,7 @@ export async function POST(request: Request) {
         notes: notes?.trim() || null,
         script,
         caption_draft,
+        format,
       })
       .select()
       .single()

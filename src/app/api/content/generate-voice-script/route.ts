@@ -21,8 +21,10 @@ supplies store in Talakag, Bukidnon, Philippines. Spoken cadence: short
 sentences, natural contractions, no bullet points, no emoji, no hashtags —
 this will be read aloud by a text-to-speech voice over a 15-20 second
 video clip. Keep the same key facts and tone as the original script, just
-tighter and more natural to say out loud. Return only the rewritten
-script text, nothing else.`
+tighter and more natural to say out loud. Write it in plain English only —
+the voice is an English text-to-speech voice that mispronounces Tagalog and
+Bisaya words, so translate any taglish into simple English. Return only the
+rewritten script text, nothing else.`
 
 export async function POST(request: Request) {
   try {

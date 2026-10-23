@@ -1,7 +1,7 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import { Lightbulb, Search, X, Sparkles, Trash2, Check, Upload, Download } from 'lucide-react'
+import { Lightbulb, Search, X, Sparkles, Trash2, Check, Upload, Download, Copy } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { downloadCSV } from '@/lib/utils/export'
 import { Button } from '@/components/ui/button'
@@ -25,9 +25,13 @@ import {
   useCreateContentIdea,
   useMarkContentIdeaStatus,
   useDeleteContentIdea,
+  CONTENT_FORMATS,
+  type ContentFormat,
   type ContentIdea,
   type ContentIdeaStatus,
 } from '@/hooks/useContentIdeas'
+import { FORMAT_LABELS, FORMAT_COLORS, copyToClipboard, parseContentFormat } from '@/lib/marketing/formats'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { usePOSProductSearch } from '@/hooks/useTransactions'
 import { useShopBranchId } from '@/hooks/useShopSettings'
 
@@ -44,10 +48,33 @@ const STATUS_COLORS: Record<ContentIdeaStatus, string> = {
   posted: 'bg-green-100 text-green-800 border-green-200',
 }
 
+// format / creative_prompt / stock_keywords are optional columns — a CSV
+// with only title/description/image_concept still imports as image posts.
 const SAMPLE_CSV_ROWS = [
-  { title: 'Rainy season roofing tips', description: 'Quick checks homeowners can do before the rains get heavy', image_concept: 'worker inspecting a roof in light rain' },
-  { title: 'Cement restock announcement', description: 'Portland cement 40kg back in stock, mention bulk pricing for contractors', image_concept: 'stacked cement bags in the warehouse' },
-  { title: 'Bulk discount reminder', description: 'Remind contractors about volume pricing on rebar and hollow blocks', image_concept: '' },
+  {
+    title: 'Rainy season roofing tips',
+    description: 'Quick checks homeowners can do before the rains get heavy',
+    format: 'carousel',
+    image_concept: 'worker inspecting a roof in light rain',
+    creative_prompt: 'Instagram carousel, 1080x1350, 4 slides, dark slate #0f172a with yellow #ffc107 accents. Slide 1: "Handa na ba ang bubong mo?"...',
+    stock_keywords: '',
+  },
+  {
+    title: 'Cement restock announcement',
+    description: 'Portland cement 40kg back in stock, mention bulk orders for contractors',
+    format: 'image',
+    image_concept: 'stacked cement bags in the warehouse',
+    creative_prompt: 'Square social post, 1080x1350, photo of stacked cement bags, headline "Back in stock!"...',
+    stock_keywords: '',
+  },
+  {
+    title: 'How to order online',
+    description: 'Walk through adding items, submitting a request, and getting a quote',
+    format: 'reel',
+    image_concept: '',
+    creative_prompt: '',
+    stock_keywords: 'construction supplies store; delivery truck; phone shopping',
+  },
 ]
 
 function downloadSampleIdeasCSV() {
@@ -112,6 +139,8 @@ function NewIdeaForm({ onCreated }: { onCreated: () => void }) {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [imageConcept, setImageConcept] = useState('')
+  const [format, setFormat] = useState<ContentFormat>('image')
+  const [creativePrompt, setCreativePrompt] = useState('')
   const [productQuery, setProductQuery] = useState('')
   const { data: searchResults = [], isLoading: isSearching } = usePOSProductSearch(productQuery, branchId ?? '')
   const [selectedProduct, setSelectedProduct] = useState<{ id: string; name: string } | null>(null)
@@ -127,11 +156,15 @@ function NewIdeaForm({ onCreated }: { onCreated: () => void }) {
         description: description.trim() || undefined,
         image_concept: imageConcept.trim() || undefined,
         source_product_id: selectedProduct?.id,
+        format,
+        creative_prompt: creativePrompt.trim() || undefined,
       })
       toast.success('Idea added')
       setTitle('')
       setDescription('')
       setImageConcept('')
+      setFormat('image')
+      setCreativePrompt('')
       setSelectedProduct(null)
       setProductQuery('')
       onCreated()
@@ -148,12 +181,24 @@ function NewIdeaForm({ onCreated }: { onCreated: () => void }) {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
-        <Input
-          placeholder={'Title — e.g. "Rainy season roofing tips"'}
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          className="text-sm"
-        />
+        <div className="flex gap-2">
+          <Input
+            placeholder={'Title — e.g. "Rainy season roofing tips"'}
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            className="text-sm flex-1"
+          />
+          <Select value={format} onValueChange={(v) => setFormat(v as ContentFormat)}>
+            <SelectTrigger className="w-32 text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {CONTENT_FORMATS.map((f) => (
+                <SelectItem key={f} value={f}>{FORMAT_LABELS[f]}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
         <Textarea
           placeholder="Description / brief — what should this post cover?"
           value={description}
@@ -209,6 +254,15 @@ function NewIdeaForm({ onCreated }: { onCreated: () => void }) {
             )}
           </div>
         </div>
+        {format !== 'reel' && (
+          <Textarea
+            placeholder="Creative prompt (optional) — paste-ready instructions for Canva AI"
+            value={creativePrompt}
+            onChange={(e) => setCreativePrompt(e.target.value)}
+            rows={2}
+            className="text-sm"
+          />
+        )}
         <div className="flex justify-end">
           <Button onClick={handleCreate} disabled={create.isPending}>
             {create.isPending ? 'Adding...' : 'Add Idea'}
@@ -230,6 +284,7 @@ function IdeaCard({ idea }: { idea: ContentIdea }) {
       <CardContent className="pt-4 space-y-2">
         <div className="flex items-center gap-2 flex-wrap">
           <Badge variant="outline" className={STATUS_COLORS[idea.status]}>{idea.status}</Badge>
+          <Badge variant="outline" className={FORMAT_COLORS[idea.format]}>{FORMAT_LABELS[idea.format]}</Badge>
           {idea.source_product && (
             <span className="text-xs text-slate-500">Product: {idea.source_product.name}</span>
           )}
@@ -238,6 +293,29 @@ function IdeaCard({ idea }: { idea: ContentIdea }) {
         {idea.description && <p className="text-sm text-slate-600">{idea.description}</p>}
         {idea.image_concept && (
           <p className="text-xs text-slate-400 italic">Visual: {idea.image_concept}</p>
+        )}
+        {idea.stock_keywords && (
+          <p className="text-xs text-slate-500">
+            <span className="font-medium">Stock search:</span> {idea.stock_keywords}
+          </p>
+        )}
+        {idea.creative_prompt && (
+          <details className="rounded-md border bg-slate-50 text-xs">
+            <summary className="cursor-pointer px-3 py-2 font-medium text-slate-600 select-none">
+              {idea.format === 'carousel' ? 'Canva prompt (slides)' : 'Canva prompt'}
+            </summary>
+            <div className="px-3 pb-3 space-y-2">
+              <p className="whitespace-pre-wrap text-slate-700">{idea.creative_prompt}</p>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs gap-1"
+                onClick={() => copyToClipboard(idea.creative_prompt!)}
+              >
+                <Copy className="w-3 h-3" /> Copy prompt
+              </Button>
+            </div>
+          </details>
         )}
         <div className="flex items-center justify-between gap-2 flex-wrap pt-1">
           <div className="flex items-center gap-1">
@@ -318,6 +396,10 @@ export default function ContentIdeasPage() {
       const titleCol = headers.indexOf('title')
       const descriptionCol = headers.indexOf('description')
       const imageConceptCol = headers.indexOf('image_concept')
+      const formatCol = headers.indexOf('format')
+      const creativePromptCol = headers.indexOf('creative_prompt')
+      const stockKeywordsCol = headers.indexOf('stock_keywords')
+      const cell = (row: string[], col: number) => (col !== -1 ? row[col]?.trim() || undefined : undefined)
 
       if (titleCol === -1) {
         toast.error('CSV must have a "title" column — see the sample CSV for the expected format')
@@ -332,8 +414,11 @@ export default function ContentIdeasPage() {
         try {
           await createIdea.mutateAsync({
             title,
-            description: descriptionCol !== -1 ? row[descriptionCol]?.trim() || undefined : undefined,
-            image_concept: imageConceptCol !== -1 ? row[imageConceptCol]?.trim() || undefined : undefined,
+            description: cell(row, descriptionCol),
+            image_concept: cell(row, imageConceptCol),
+            format: parseContentFormat(cell(row, formatCol)),
+            creative_prompt: cell(row, creativePromptCol),
+            stock_keywords: cell(row, stockKeywordsCol),
           })
           imported++
         } catch {

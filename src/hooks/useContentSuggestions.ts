@@ -2,6 +2,14 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { getClient } from '@/lib/supabase/client'
+import type { ContentFormat } from '@/hooks/useContentIdeas'
+
+// One caption chunk of the synthesized narration and when it starts
+// (seconds into the audio), from Google TTS SSML mark timepoints.
+export interface VoiceTimepoint {
+  text: string
+  start: number
+}
 
 export type SuggestionStatus = 'suggested' | 'approved' | 'rejected'
 export type SuggestionPlatform = 'facebook' | 'instagram' | 'both'
@@ -19,6 +27,8 @@ export interface ContentSuggestion {
   caption_final: string | null
   voice_script: string | null
   voice_media_id: string | null
+  format: ContentFormat | null
+  voice_timepoints: VoiceTimepoint[] | null
   status: SuggestionStatus
   reviewed_by: string | null
   reviewed_at: string | null
@@ -26,7 +36,7 @@ export interface ContentSuggestion {
   // joined
   source_product?: { id: string; name: string } | null
   source_media?: { id: string; media_type: string; storage_key: string; original_filename: string } | null
-  source_idea?: { id: string; title: string } | null
+  source_idea?: { id: string; title: string; creative_prompt: string | null; stock_keywords: string | null } | null
   creative_media?: { id: string; media_type: string; storage_key: string; original_filename: string } | null
   voice_media?: { id: string; media_type: string; storage_key: string } | null
 }
@@ -47,7 +57,7 @@ export function useContentSuggestions(statusFilter?: SuggestionStatus) {
           *,
           source_product:products(id, name),
           source_media:content_media!content_suggestions_source_media_id_fkey(id, media_type, storage_key, original_filename),
-          source_idea:content_ideas(id, title),
+          source_idea:content_ideas(id, title, creative_prompt, stock_keywords),
           creative_media:content_media!content_suggestions_creative_media_id_fkey(id, media_type, storage_key, original_filename),
           voice_media:content_media!content_suggestions_voice_media_id_fkey(id, media_type, storage_key)
         `)

@@ -65,6 +65,7 @@ export interface NewContentMediaInput {
   original_filename: string
   mime_type: string
   size_bytes: number
+  duration_seconds?: number
 }
 
 export function useCreateContentMedia() {

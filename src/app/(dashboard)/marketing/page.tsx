@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { Megaphone, Sparkles, Search, ExternalLink, Check, X, Trash2, Image as ImageIcon, Wand2, Lightbulb } from 'lucide-react'
+import { Megaphone, Sparkles, Search, ExternalLink, Check, X, Trash2, Image as ImageIcon, Wand2, Lightbulb, Copy, Film } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -46,6 +46,8 @@ import {
 import { useContentMedia, getContentMediaUrl } from '@/hooks/useContentMedia'
 import { useContentIdeas } from '@/hooks/useContentIdeas'
 import { MediaLightbox } from '@/components/marketing/media-lightbox'
+import { ReelBuilderDialog } from '@/components/marketing/reel-builder-dialog'
+import { FORMAT_LABELS, FORMAT_COLORS, copyToClipboard } from '@/lib/marketing/formats'
 import { usePOSProductSearch } from '@/hooks/useTransactions'
 import { useShopBranchId } from '@/hooks/useShopSettings'
 
@@ -253,6 +255,10 @@ function SuggestionCard({ suggestion }: { suggestion: ContentSuggestion }) {
 
   const sourceUrl = suggestion.source_media ? getContentMediaUrl(suggestion.source_media.storage_key) : null
   const creativeUrl = suggestion.creative_media ? getContentMediaUrl(suggestion.creative_media.storage_key) : null
+  const creativeIsVideo = suggestion.creative_media?.media_type === 'video'
+  const isReel = suggestion.format === 'reel'
+  const creativePrompt = suggestion.source_idea?.creative_prompt
+  const [showReelBuilder, setShowReelBuilder] = useState(false)
 
   function handleSaveCaption() {
     updateCaption.mutate(
@@ -295,6 +301,9 @@ function SuggestionCard({ suggestion }: { suggestion: ContentSuggestion }) {
         <div className="flex items-center gap-2 flex-wrap">
           <Badge variant="outline" className={STATUS_COLORS[suggestion.status]}>{suggestion.status}</Badge>
           <Badge variant="outline" className="capitalize">{suggestion.platform}</Badge>
+          {suggestion.format && (
+            <Badge variant="outline" className={FORMAT_COLORS[suggestion.format]}>{FORMAT_LABELS[suggestion.format]}</Badge>
+          )}
           {suggestion.source_product && (
             <span className="text-xs text-slate-500">Product: {suggestion.source_product.name}</span>
           )}
@@ -328,11 +337,15 @@ function SuggestionCard({ suggestion }: { suggestion: ContentSuggestion }) {
               <div className="w-20 h-20 rounded-md overflow-hidden bg-slate-100 flex-shrink-0 ring-2 ring-blue-400">
                 <MediaLightbox
                   url={creativeUrl}
-                  mediaType="image"
+                  mediaType={creativeIsVideo ? 'video' : 'image'}
                   label="Creative"
                   trigger={
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={creativeUrl} alt="Creative" className="w-full h-full object-cover" />
+                    creativeIsVideo ? (
+                      <video src={creativeUrl} className="w-full h-full object-cover" muted />
+                    ) : (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={creativeUrl} alt="Creative" className="w-full h-full object-cover" />
+                    )
                   }
                 />
               </div>
@@ -439,7 +452,7 @@ function SuggestionCard({ suggestion }: { suggestion: ContentSuggestion }) {
                 <SelectValue placeholder="Attach existing..." />
               </SelectTrigger>
               <SelectContent>
-                {mediaList.filter((m) => m.media_type === 'image').map((m) => (
+                {mediaList.filter((m) => m.media_type === 'image' || (isReel && m.media_type === 'video')).map((m) => (
                   <SelectItem key={m.id} value={m.id}>{m.original_filename}</SelectItem>
                 ))}
               </SelectContent>
@@ -449,6 +462,27 @@ function SuggestionCard({ suggestion }: { suggestion: ContentSuggestion }) {
                 Create in Canva <ExternalLink className="w-3 h-3" />
               </Button>
             </a>
+            {creativePrompt && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 text-xs gap-1"
+                onClick={() => copyToClipboard(creativePrompt)}
+              >
+                <Copy className="w-3 h-3" /> Copy Canva prompt
+              </Button>
+            )}
+            {isReel && (
+              <Button
+                size="sm"
+                className="h-8 text-xs gap-1"
+                onClick={() => setShowReelBuilder(true)}
+                disabled={!voiceUrl}
+                title={voiceUrl ? undefined : 'Synthesize the narration first'}
+              >
+                <Film className="w-3.5 h-3.5" /> Build Reel
+              </Button>
+            )}
           </div>
 
           <div className="flex items-center gap-1">
@@ -488,6 +522,15 @@ function SuggestionCard({ suggestion }: { suggestion: ContentSuggestion }) {
           </div>
         </div>
       </CardContent>
+
+      {isReel && voiceUrl && showReelBuilder && (
+        <ReelBuilderDialog
+          suggestion={suggestion}
+          narrationUrl={voiceUrl}
+          open={showReelBuilder}
+          onOpenChange={setShowReelBuilder}
+        />
+      )}
 
       <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
         <AlertDialogContent>

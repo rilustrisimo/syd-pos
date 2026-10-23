@@ -4,12 +4,17 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { getClient } from '@/lib/supabase/client'
 
 export type ContentIdeaStatus = 'idea' | 'created' | 'posted'
+export type ContentFormat = 'image' | 'carousel' | 'reel'
+export const CONTENT_FORMATS: ContentFormat[] = ['image', 'carousel', 'reel']
 
 export interface ContentIdea {
   id: string
   title: string
   description: string | null
   image_concept: string | null
+  format: ContentFormat
+  creative_prompt: string | null
+  stock_keywords: string | null
   source_product_id: string | null
   status: ContentIdeaStatus
   created_by: string | null
@@ -49,6 +54,9 @@ export interface NewContentIdeaInput {
   description?: string
   image_concept?: string
   source_product_id?: string
+  format?: ContentFormat
+  creative_prompt?: string
+  stock_keywords?: string
 }
 
 export function useCreateContentIdea() {

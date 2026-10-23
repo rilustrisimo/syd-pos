@@ -23,6 +23,10 @@ import { NextResponse } from 'next/server'
 import { AwsClient } from 'aws4fetch'
 import { GoogleAuth } from 'google-auth-library'
 import { createClient } from '@/lib/supabase/server'
+import { splitIntoCaptionChunks, captionChunksToSsml } from '@/lib/marketing/captions'
+
+const MAX_VOICE_SCRIPT_CHARS = 1500
+const MAX_NARRATIONS_PER_MONTH = 300
 
 async function getGoogleAccessToken(): Promise<string> {
   const credentialsJson = process.env.GOOGLE_TTS_SERVICE_ACCOUNT_JSON
@@ -70,6 +74,31 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Write or generate a voice script first.' }, { status: 400 })
     }
 
+    // Free-tier guard: the Cloud project has billing enabled (TTS requires
+    // it), so nothing on Google's side stops charges. Neural2 is free up to
+    // 1M characters/month; capping script length and narrations per month
+    // keeps the worst case (incl. SSML mark overhead) around half of that.
+    if (suggestion.voice_script.length > MAX_VOICE_SCRIPT_CHARS) {
+      return NextResponse.json(
+        { error: `Voice script is too long (${suggestion.voice_script.length} characters, max ${MAX_VOICE_SCRIPT_CHARS}). Shorten it first.` },
+        { status: 400 }
+      )
+    }
+    const monthStart = new Date()
+    monthStart.setUTCDate(1)
+    monthStart.setUTCHours(0, 0, 0, 0)
+    const { count: narrationsThisMonth } = await (supabase as any)
+      .from('content_media')
+      .select('id', { count: 'exact', head: true })
+      .eq('media_type', 'audio')
+      .gte('created_at', monthStart.toISOString())
+    if ((narrationsThisMonth ?? 0) >= MAX_NARRATIONS_PER_MONTH) {
+      return NextResponse.json(
+        { error: `Monthly narration limit reached (${MAX_NARRATIONS_PER_MONTH}) — this keeps text-to-speech inside Google's free tier. It resets on the 1st.` },
+        { status: 429 }
+      )
+    }
+
     let accessToken: string
     try {
       accessToken = await getGoogleAccessToken()
@@ -78,19 +107,25 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Text-to-speech is not configured on the server' }, { status: 500 })
     }
 
-    const ttsRes = await fetch('https://texttospeech.googleapis.com/v1/text:synthesize', {
+    // Sent as SSML with a mark before each caption chunk; v1beta1 reports
+    // when each mark is reached (confirmed working with this Neural2 voice
+    // against the live API), which times the reel builder's subtitles.
+    const captionChunks = splitIntoCaptionChunks(suggestion.voice_script)
+
+    const ttsRes = await fetch('https://texttospeech.googleapis.com/v1beta1/text:synthesize', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        input: { text: suggestion.voice_script },
+        input: { ssml: captionChunksToSsml(captionChunks) },
         // Neural2 — noticeably more natural than Standard voices, and
         // this feature's volume (a handful of ~15-20s clips a week)
         // stays nowhere near even Neural2's smaller free allowance.
         voice: { languageCode: 'en-US', name: 'en-US-Neural2-C' },
         audioConfig: { audioEncoding: 'MP3' },
+        enableTimePointing: ['SSML_MARK'],
       }),
     })
 
@@ -100,10 +135,21 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Failed to synthesize narration — try again' }, { status: 502 })
     }
 
-    const ttsData = await ttsRes.json() as { audioContent?: string }
+    const ttsData = await ttsRes.json() as {
+      audioContent?: string
+      timepoints?: { markName: string; timeSeconds: number }[]
+    }
     if (!ttsData.audioContent) {
       return NextResponse.json({ error: 'Google TTS returned no audio — try again' }, { status: 502 })
     }
+
+    // Null (not a partial list) when any mark is missing, so the reel
+    // builder falls back to its even-spread timing instead of drawing
+    // misaligned subtitles.
+    const markTimes = new Map((ttsData.timepoints ?? []).map((t) => [t.markName, t.timeSeconds]))
+    const voiceTimepoints = captionChunks.every((_, i) => markTimes.has(`c${i}`))
+      ? captionChunks.map((text, i) => ({ text, start: Math.round(markTimes.get(`c${i}`)! * 1000) / 1000 }))
+      : null
     const mp3Buffer = Buffer.from(ttsData.audioContent, 'base64')
 
     const r2AccessKeyId = process.env.CLOUDFLARE_R2_ACCESS_KEY_ID
@@ -153,7 +199,7 @@ export async function POST(request: Request) {
 
     const { error: attachError } = await (supabase as any)
       .from('content_suggestions')
-      .update({ voice_media_id: media.id })
+      .update({ voice_media_id: media.id, voice_timepoints: voiceTimepoints })
       .eq('id', suggestion_id)
 
     if (attachError) {
