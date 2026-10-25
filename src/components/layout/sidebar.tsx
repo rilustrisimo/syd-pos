@@ -41,6 +41,7 @@ import {
   Megaphone,
   Images,
   Lightbulb,
+  LineChart,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
@@ -86,7 +87,7 @@ const navigation = [
       { name: 'Ideas', href: '/marketing/ideas', icon: Lightbulb },
       { name: 'Feed', href: '/marketing', icon: Megaphone },
       { name: 'Library', href: '/marketing/library', icon: Images },
-      { name: 'Calendar', href: '/marketing/calendar', icon: CalendarClock },
+      { name: 'Insights', href: '/marketing/insights', icon: LineChart },
     ],
   },
   { name: 'Purchases', href: '/purchases', icon: ClipboardList },

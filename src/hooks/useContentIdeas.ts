@@ -6,6 +6,9 @@ import { getClient } from '@/lib/supabase/client'
 export type ContentIdeaStatus = 'idea' | 'created' | 'posted'
 export type ContentFormat = 'image' | 'carousel' | 'reel'
 export const CONTENT_FORMATS: ContentFormat[] = ['image', 'carousel', 'reel']
+export type ContentAudience = 'contractor' | 'business_farm' | 'family_build' | 'general'
+export const CONTENT_AUDIENCES: ContentAudience[] = ['contractor', 'business_farm', 'family_build', 'general']
+export type ContentPurpose = 'daily' | 'ad'
 
 export interface ContentIdea {
   id: string
@@ -15,6 +18,14 @@ export interface ContentIdea {
   format: ContentFormat
   creative_prompt: string | null
   stock_keywords: string | null
+  audience: ContentAudience
+  angle: string | null
+  concept_code: string | null
+  purpose: ContentPurpose
+  planned_for: string | null
+  best_time: string | null
+  hashtags: string | null
+  tags: string | null
   source_product_id: string | null
   status: ContentIdeaStatus
   created_by: string | null
@@ -29,8 +40,7 @@ const keys = {
 }
 
 // content_ideas isn't in the hand-maintained Database type yet — casts
-// here match this codebase's established pattern for content_suggestions
-// and scheduled_posts.
+// here match this codebase's established pattern for content_suggestions.
 export function useContentIdeas(statusFilter?: ContentIdeaStatus) {
   return useQuery({
     queryKey: keys.list(statusFilter),
@@ -57,6 +67,14 @@ export interface NewContentIdeaInput {
   format?: ContentFormat
   creative_prompt?: string
   stock_keywords?: string
+  audience?: ContentAudience
+  angle?: string
+  concept_code?: string
+  purpose?: ContentPurpose
+  planned_for?: string
+  best_time?: string
+  hashtags?: string
+  tags?: string
 }
 
 export function useCreateContentIdea() {

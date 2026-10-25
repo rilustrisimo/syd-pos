@@ -16,7 +16,8 @@
 
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import type { ContentFormat } from '@/hooks/useContentIdeas'
+import type { ContentAudience, ContentFormat } from '@/hooks/useContentIdeas'
+import { AUDIENCE_BRIEFS } from '@/lib/marketing/brand'
 
 const GEMINI_MODEL = 'gemini-3.6-flash'
 
@@ -120,11 +121,13 @@ export async function POST(request: Request) {
     }
 
     let format: ContentFormat | null = null
+    let audience: ContentAudience | null = null
+    let conceptCode: string | null = null
 
     if (source_idea_id) {
       const { data: idea } = await (supabase as any)
         .from('content_ideas')
-        .select('title, description, image_concept, format, creative_prompt')
+        .select('title, description, image_concept, format, creative_prompt, audience, angle, concept_code, hashtags')
         .eq('id', source_idea_id)
         .single() as {
           data: {
@@ -133,11 +136,22 @@ export async function POST(request: Request) {
             image_concept: string | null
             format: ContentFormat
             creative_prompt: string | null
+            audience: ContentAudience | null
+            angle: string | null
+            concept_code: string | null
+            hashtags: string | null
           } | null
         }
 
       if (idea) {
         format = idea.format
+        audience = idea.audience ?? null
+        conceptCode = idea.concept_code ?? null
+        if (idea.audience && idea.audience !== 'general') {
+          briefParts.push(`Speak to this audience: ${AUDIENCE_BRIEFS[idea.audience]}`)
+        }
+        if (idea.angle) briefParts.push(`Concept angle / hook to build the post around: ${idea.angle}`)
+        if (idea.hashtags) briefParts.push(`Use these hashtags: ${idea.hashtags}`)
         briefParts.push(
           `Post idea: ${idea.title}` +
           (idea.description ? ` — ${idea.description}` : '') +
@@ -228,6 +242,8 @@ export async function POST(request: Request) {
         script,
         caption_draft,
         format,
+        audience,
+        concept_code: conceptCode,
       })
       .select()
       .single()

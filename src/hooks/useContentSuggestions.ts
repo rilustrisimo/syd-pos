@@ -2,7 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { getClient } from '@/lib/supabase/client'
-import type { ContentFormat } from '@/hooks/useContentIdeas'
+import type { ContentAudience, ContentFormat } from '@/hooks/useContentIdeas'
 import type { ReelTimeline } from '@/lib/marketing/reel-timeline'
 
 // One caption chunk of the synthesized narration and when it starts
@@ -29,6 +29,8 @@ export interface ContentSuggestion {
   voice_script: string | null
   voice_media_id: string | null
   format: ContentFormat | null
+  audience: ContentAudience | null
+  concept_code: string | null
   voice_timepoints: VoiceTimepoint[] | null
   reel_timeline: ReelTimeline | null
   status: SuggestionStatus
@@ -38,7 +40,16 @@ export interface ContentSuggestion {
   // joined
   source_product?: { id: string; name: string } | null
   source_media?: { id: string; media_type: string; storage_key: string; original_filename: string } | null
-  source_idea?: { id: string; title: string; creative_prompt: string | null; stock_keywords: string | null } | null
+  source_idea?: {
+    id: string
+    title: string
+    creative_prompt: string | null
+    stock_keywords: string | null
+    hashtags: string | null
+    tags: string | null
+    best_time: string | null
+    purpose: string | null
+  } | null
   creative_media?: { id: string; media_type: string; storage_key: string; original_filename: string } | null
   voice_media?: { id: string; media_type: string; storage_key: string } | null
 }
@@ -59,7 +70,7 @@ export function useContentSuggestions(statusFilter?: SuggestionStatus) {
           *,
           source_product:products(id, name),
           source_media:content_media!content_suggestions_source_media_id_fkey(id, media_type, storage_key, original_filename),
-          source_idea:content_ideas(id, title, creative_prompt, stock_keywords),
+          source_idea:content_ideas(id, title, creative_prompt, stock_keywords, hashtags, tags, best_time, purpose),
           creative_media:content_media!content_suggestions_creative_media_id_fkey(id, media_type, storage_key, original_filename),
           voice_media:content_media!content_suggestions_voice_media_id_fkey(id, media_type, storage_key)
         `)

@@ -47,7 +47,15 @@ import { useContentMedia, getContentMediaUrl } from '@/hooks/useContentMedia'
 import { useContentIdeas } from '@/hooks/useContentIdeas'
 import { MediaLightbox } from '@/components/marketing/media-lightbox'
 import { ReelBuilderDialog } from '@/components/marketing/reel-builder-dialog'
-import { FORMAT_LABELS, FORMAT_COLORS, copyToClipboard } from '@/lib/marketing/formats'
+import { PostPlanner } from '@/components/marketing/post-planner'
+import {
+  FORMAT_LABELS,
+  FORMAT_COLORS,
+  AUDIENCE_LABELS,
+  AUDIENCE_COLORS,
+  buildAdLink,
+  copyToClipboard,
+} from '@/lib/marketing/formats'
 import { usePOSProductSearch } from '@/hooks/useTransactions'
 import { useShopBranchId } from '@/hooks/useShopSettings'
 
@@ -221,6 +229,38 @@ function NewSuggestionForm({ onCreated }: { onCreated: () => void }) {
   )
 }
 
+// What's needed when uploading the post to Meta's scheduler: when to post,
+// tags to add, and — for ads — the ad name and tracked link that tie Ads
+// Manager and GA4 results back to this concept.
+function PostingDetails({ suggestion }: { suggestion: ContentSuggestion }) {
+  const idea = suggestion.source_idea
+  const code = suggestion.concept_code
+  if (!idea?.best_time && !idea?.tags && !code) return null
+
+  return (
+    <div className="rounded-md border bg-slate-50 px-3 py-2 text-xs space-y-1.5">
+      {idea?.best_time && (
+        <p><span className="font-medium text-slate-600">Post at:</span> {idea.best_time}</p>
+      )}
+      {idea?.tags && (
+        <p><span className="font-medium text-slate-600">Tag:</span> {idea.tags}</p>
+      )}
+      {code && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-medium text-slate-600">Ad name:</span>
+          <code className="bg-white border rounded px-1.5 py-0.5">{code}</code>
+          <Button size="sm" variant="outline" className="h-6 text-[11px] gap-1 px-2" onClick={() => copyToClipboard(buildAdLink(code, 'paid'), 'Ad link')}>
+            <Copy className="w-3 h-3" /> Copy ad link
+          </Button>
+          <Button size="sm" variant="ghost" className="h-6 text-[11px] gap-1 px-2" onClick={() => copyToClipboard(buildAdLink(code, 'organic'), 'Post link')}>
+            <Copy className="w-3 h-3" /> Copy post link
+          </Button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function SuggestionCard({ suggestion }: { suggestion: ContentSuggestion }) {
   const updateCaption = useUpdateContentSuggestionCaption()
   const updateScript = useUpdateContentSuggestionScript()
@@ -303,6 +343,9 @@ function SuggestionCard({ suggestion }: { suggestion: ContentSuggestion }) {
           <Badge variant="outline" className="capitalize">{suggestion.platform}</Badge>
           {suggestion.format && (
             <Badge variant="outline" className={FORMAT_COLORS[suggestion.format]}>{FORMAT_LABELS[suggestion.format]}</Badge>
+          )}
+          {suggestion.audience && (
+            <Badge variant="outline" className={AUDIENCE_COLORS[suggestion.audience]}>{AUDIENCE_LABELS[suggestion.audience]}</Badge>
           )}
           {suggestion.source_product && (
             <span className="text-xs text-slate-500">Product: {suggestion.source_product.name}</span>
@@ -421,6 +464,8 @@ function SuggestionCard({ suggestion }: { suggestion: ContentSuggestion }) {
             className="text-sm"
           />
         </div>
+
+        <PostingDetails suggestion={suggestion} />
 
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-2 flex-wrap">
@@ -563,6 +608,8 @@ function MarketingFeedPage() {
         </h1>
         <p className="text-sm text-slate-500 mt-0.5">AI-drafted post ideas, awaiting your review</p>
       </div>
+
+      <PostPlanner />
 
       <NewSuggestionForm onCreated={() => refetch()} />
 

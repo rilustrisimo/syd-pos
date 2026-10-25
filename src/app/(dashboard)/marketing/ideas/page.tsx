@@ -26,12 +26,24 @@ import {
   useMarkContentIdeaStatus,
   useDeleteContentIdea,
   CONTENT_FORMATS,
+  CONTENT_AUDIENCES,
+  type ContentAudience,
   type ContentFormat,
   type ContentIdea,
   type ContentIdeaStatus,
 } from '@/hooks/useContentIdeas'
-import { FORMAT_LABELS, FORMAT_COLORS, copyToClipboard, parseContentFormat } from '@/lib/marketing/formats'
+import {
+  FORMAT_LABELS,
+  FORMAT_COLORS,
+  AUDIENCE_LABELS,
+  AUDIENCE_COLORS,
+  copyToClipboard,
+  parseContentFormat,
+  parseContentAudience,
+  toConceptCode,
+} from '@/lib/marketing/formats'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { ConceptGenerator } from '@/components/marketing/concept-generator'
 import { usePOSProductSearch } from '@/hooks/useTransactions'
 import { useShopBranchId } from '@/hooks/useShopSettings'
 
@@ -48,32 +60,52 @@ const STATUS_COLORS: Record<ContentIdeaStatus, string> = {
   posted: 'bg-green-100 text-green-800 border-green-200',
 }
 
-// format / creative_prompt / stock_keywords are optional columns — a CSV
-// with only title/description/image_concept still imports as image posts.
+// Only "title" is required — every other column is optional, so a CSV
+// with just title/description/image_concept still imports (as general
+// image posts). audience accepts contractor / business_farm /
+// family_build / general; purpose accepts daily / ad.
 const SAMPLE_CSV_ROWS = [
   {
     title: 'Rainy season roofing tips',
     description: 'Quick checks homeowners can do before the rains get heavy',
     format: 'carousel',
+    audience: 'family_build',
+    angle: 'Prevent leaks before the rainy season',
+    purpose: 'daily',
+    concept_code: 'fam-roof-rain-carousel',
     image_concept: 'worker inspecting a roof in light rain',
     creative_prompt: 'Instagram carousel, 1080x1350, 4 slides, dark slate #0f172a with yellow #ffc107 accents. Slide 1: "Handa na ba ang bubong mo?"...',
     stock_keywords: '',
+    hashtags: '#TalakagBukidnon #RoofRepair #SYDConstruction',
+    tags: 'Location: Talakag, Bukidnon',
   },
   {
-    title: 'Cement restock announcement',
-    description: 'Portland cement 40kg back in stock, mention bulk orders for contractors',
+    title: 'Cement for big pours, delivered to site',
+    description: 'Bulk cement orders for contractors, one quote including delivery',
     format: 'image',
+    audience: 'contractor',
+    angle: 'One quote for the whole order, delivered to site',
+    purpose: 'ad',
+    concept_code: 'ctr-cement-bulk-image',
     image_concept: 'stacked cement bags in the warehouse',
-    creative_prompt: 'Square social post, 1080x1350, photo of stacked cement bags, headline "Back in stock!"...',
+    creative_prompt: 'Feed post, 1080x1350, photo of stacked cement bags, headline "Bulk cement? One quote lang."...',
     stock_keywords: '',
+    hashtags: '',
+    tags: '',
   },
   {
     title: 'How to order online',
     description: 'Walk through adding items, submitting a request, and getting a quote',
     format: 'reel',
+    audience: 'general',
+    angle: 'No prices online, quote with delivery fee',
+    purpose: 'ad',
+    concept_code: 'gen-how-to-order-reel',
     image_concept: '',
     creative_prompt: '',
     stock_keywords: 'construction supplies store; delivery truck; phone shopping',
+    hashtags: '',
+    tags: '',
   },
 ]
 
@@ -140,6 +172,7 @@ function NewIdeaForm({ onCreated }: { onCreated: () => void }) {
   const [description, setDescription] = useState('')
   const [imageConcept, setImageConcept] = useState('')
   const [format, setFormat] = useState<ContentFormat>('image')
+  const [audience, setAudience] = useState<ContentAudience>('general')
   const [creativePrompt, setCreativePrompt] = useState('')
   const [productQuery, setProductQuery] = useState('')
   const { data: searchResults = [], isLoading: isSearching } = usePOSProductSearch(productQuery, branchId ?? '')
@@ -157,6 +190,8 @@ function NewIdeaForm({ onCreated }: { onCreated: () => void }) {
         image_concept: imageConcept.trim() || undefined,
         source_product_id: selectedProduct?.id,
         format,
+        audience,
+        concept_code: toConceptCode(title),
         creative_prompt: creativePrompt.trim() || undefined,
       })
       toast.success('Idea added')
@@ -164,6 +199,7 @@ function NewIdeaForm({ onCreated }: { onCreated: () => void }) {
       setDescription('')
       setImageConcept('')
       setFormat('image')
+      setAudience('general')
       setCreativePrompt('')
       setSelectedProduct(null)
       setProductQuery('')
@@ -195,6 +231,16 @@ function NewIdeaForm({ onCreated }: { onCreated: () => void }) {
             <SelectContent>
               {CONTENT_FORMATS.map((f) => (
                 <SelectItem key={f} value={f}>{FORMAT_LABELS[f]}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={audience} onValueChange={(v) => setAudience(v as ContentAudience)}>
+            <SelectTrigger className="w-40 text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {CONTENT_AUDIENCES.map((a) => (
+                <SelectItem key={a} value={a}>{AUDIENCE_LABELS[a]}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -285,14 +331,31 @@ function IdeaCard({ idea }: { idea: ContentIdea }) {
         <div className="flex items-center gap-2 flex-wrap">
           <Badge variant="outline" className={STATUS_COLORS[idea.status]}>{idea.status}</Badge>
           <Badge variant="outline" className={FORMAT_COLORS[idea.format]}>{FORMAT_LABELS[idea.format]}</Badge>
+          <Badge variant="outline" className={AUDIENCE_COLORS[idea.audience]}>{AUDIENCE_LABELS[idea.audience]}</Badge>
+          {idea.purpose === 'ad' && <Badge variant="outline" className="bg-blue-600 text-white border-blue-600">Ad concept</Badge>}
+          {idea.planned_for && (
+            <span className="text-xs text-slate-500">
+              For {idea.planned_for}{idea.best_time ? ` · post ${idea.best_time}` : ''}
+            </span>
+          )}
           {idea.source_product && (
             <span className="text-xs text-slate-500">Product: {idea.source_product.name}</span>
           )}
         </div>
         <p className="font-medium text-sm">{idea.title}</p>
+        {idea.angle && <p className="text-xs text-slate-500"><span className="font-medium">Angle:</span> {idea.angle}</p>}
         {idea.description && <p className="text-sm text-slate-600">{idea.description}</p>}
         {idea.image_concept && (
           <p className="text-xs text-slate-400 italic">Visual: {idea.image_concept}</p>
+        )}
+        {(idea.hashtags || idea.tags) && (
+          <div className="text-xs text-slate-500 space-y-0.5">
+            {idea.hashtags && <p className="text-blue-700">{idea.hashtags}</p>}
+            {idea.tags && <p><span className="font-medium">Tag:</span> {idea.tags}</p>}
+          </div>
+        )}
+        {idea.concept_code && (
+          <p className="text-[11px] text-slate-400 font-mono">ad name / code: {idea.concept_code}</p>
         )}
         {idea.stock_keywords && (
           <p className="text-xs text-slate-500">
@@ -373,7 +436,12 @@ function IdeaCard({ idea }: { idea: ContentIdea }) {
 
 export default function ContentIdeasPage() {
   const [statusTab, setStatusTab] = useState<ContentIdeaStatus | 'all'>('idea')
-  const { data: ideas = [], isLoading, refetch } = useContentIdeas(statusTab === 'all' ? undefined : statusTab)
+  const { data: allIdeas = [], isLoading, refetch } = useContentIdeas(statusTab === 'all' ? undefined : statusTab)
+  const [audienceFilter, setAudienceFilter] = useState<ContentAudience | 'all'>('all')
+  const [purposeFilter, setPurposeFilter] = useState<'all' | 'daily' | 'ad'>('all')
+  const ideas = allIdeas.filter(
+    (i) => (audienceFilter === 'all' || i.audience === audienceFilter) && (purposeFilter === 'all' || i.purpose === purposeFilter)
+  )
   const createIdea = useCreateContentIdea()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [importing, setImporting] = useState(false)
@@ -399,6 +467,13 @@ export default function ContentIdeasPage() {
       const formatCol = headers.indexOf('format')
       const creativePromptCol = headers.indexOf('creative_prompt')
       const stockKeywordsCol = headers.indexOf('stock_keywords')
+      const audienceCol = headers.indexOf('audience')
+      const angleCol = headers.indexOf('angle')
+      const purposeCol = headers.indexOf('purpose')
+      const conceptCodeCol = headers.indexOf('concept_code')
+      const hashtagsCol = headers.indexOf('hashtags')
+      const tagsCol = headers.indexOf('tags')
+      const bestTimeCol = headers.indexOf('best_time')
       const cell = (row: string[], col: number) => (col !== -1 ? row[col]?.trim() || undefined : undefined)
 
       if (titleCol === -1) {
@@ -419,6 +494,13 @@ export default function ContentIdeasPage() {
             format: parseContentFormat(cell(row, formatCol)),
             creative_prompt: cell(row, creativePromptCol),
             stock_keywords: cell(row, stockKeywordsCol),
+            audience: parseContentAudience(cell(row, audienceCol)),
+            angle: cell(row, angleCol),
+            purpose: cell(row, purposeCol)?.toLowerCase() === 'ad' ? 'ad' : 'daily',
+            concept_code: cell(row, conceptCodeCol) ? toConceptCode(cell(row, conceptCodeCol)!) : toConceptCode(title),
+            hashtags: cell(row, hashtagsCol),
+            tags: cell(row, tagsCol),
+            best_time: cell(row, bestTimeCol),
           })
           imported++
         } catch {
@@ -466,9 +548,11 @@ export default function ContentIdeasPage() {
         </div>
       </div>
 
+      <ConceptGenerator onAdded={() => refetch()} />
+
       <NewIdeaForm onCreated={() => refetch()} />
 
-      <div className="flex gap-2">
+      <div className="flex gap-2 flex-wrap items-center">
         {STATUS_TABS.map((tab) => (
           <Button
             key={tab.value}
@@ -479,6 +563,25 @@ export default function ContentIdeasPage() {
             {tab.label}
           </Button>
         ))}
+        <div className="flex gap-2 ml-auto">
+          <Select value={purposeFilter} onValueChange={(v) => setPurposeFilter(v as 'all' | 'daily' | 'ad')}>
+            <SelectTrigger className="h-8 w-36 text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Daily + ads</SelectItem>
+              <SelectItem value="daily">Daily posts</SelectItem>
+              <SelectItem value="ad">Ad concepts</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={audienceFilter} onValueChange={(v) => setAudienceFilter(v as ContentAudience | 'all')}>
+            <SelectTrigger className="h-8 w-40 text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All audiences</SelectItem>
+              {CONTENT_AUDIENCES.map((a) => (
+                <SelectItem key={a} value={a}>{AUDIENCE_LABELS[a]}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       {isLoading ? (
