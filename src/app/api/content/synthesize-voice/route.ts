@@ -23,10 +23,96 @@ import { NextResponse } from 'next/server'
 import { AwsClient } from 'aws4fetch'
 import { GoogleAuth } from 'google-auth-library'
 import { createClient } from '@/lib/supabase/server'
-import { splitIntoCaptionChunks, captionChunksToSsml } from '@/lib/marketing/captions'
+import { splitIntoCaptionChunks, splitIntoSentences, captionChunksToSsml } from '@/lib/marketing/captions'
+import { getNarrationVoice } from '@/lib/marketing/voices'
+import { joinWav, parseWav, pcmSeconds } from '@/lib/marketing/wav'
 
 const MAX_VOICE_SCRIPT_CHARS = 1500
 const MAX_NARRATIONS_PER_MONTH = 300
+const TTS_URL = 'https://texttospeech.googleapis.com'
+
+interface SynthesizedNarration {
+  audio: Buffer
+  mime: string
+  ext: string
+  durationSeconds: number | null
+  voiceTimepoints: { text: string; start: number }[] | null
+}
+
+async function callTts(accessToken: string, version: 'v1' | 'v1beta1', body: Record<string, unknown>) {
+  const res = await fetch(`${TTS_URL}/${version}/text:synthesize`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) throw new Error(`TTS ${res.status}: ${(await res.text()).slice(0, 300)}`)
+  const data = await res.json() as { audioContent?: string; timepoints?: { markName: string; timeSeconds: number }[] }
+  if (!data.audioContent) throw new Error('TTS returned no audio')
+  return data
+}
+
+/**
+ * Neural2: one request as SSML with a mark before each caption chunk;
+ * v1beta1 reports when each mark is reached, which times the captions.
+ */
+async function synthesizeWithMarks(accessToken: string, voiceId: string, script: string): Promise<SynthesizedNarration> {
+  const chunks = splitIntoCaptionChunks(script)
+  const data = await callTts(accessToken, 'v1beta1', {
+    input: { ssml: captionChunksToSsml(chunks) },
+    voice: { languageCode: 'en-US', name: voiceId },
+    audioConfig: { audioEncoding: 'MP3' },
+    enableTimePointing: ['SSML_MARK'],
+  })
+  // Null (not a partial list) when any mark is missing, so the reel
+  // builder falls back to its even-spread timing.
+  const marks = new Map((data.timepoints ?? []).map((t) => [t.markName, t.timeSeconds]))
+  const voiceTimepoints = chunks.every((_, i) => marks.has(`c${i}`))
+    ? chunks.map((text, i) => ({ text, start: Math.round(marks.get(`c${i}`)! * 1000) / 1000 }))
+    : null
+  return { audio: Buffer.from(data.audioContent!, 'base64'), mime: 'audio/mpeg', ext: 'mp3', durationSeconds: null, voiceTimepoints }
+}
+
+/**
+ * Chirp 3 HD: far more natural, but returns no mark timepoints (tested).
+ * Each sentence is synthesized on its own as uncompressed audio, so its
+ * exact length is known; the pieces are joined into one WAV and every
+ * sentence's start time is exact. Caption chunks inside a sentence are
+ * spread by character count, which is close enough for short phrases.
+ * Same total characters as one request, so the free tier is unaffected.
+ */
+async function synthesizeBySentence(accessToken: string, voiceId: string, script: string): Promise<SynthesizedNarration> {
+  const sentences = splitIntoSentences(script)
+  const pieces = await Promise.all(sentences.map(async (sentence) => {
+    const data = await callTts(accessToken, 'v1', {
+      input: { text: sentence },
+      voice: { languageCode: 'en-US', name: voiceId },
+      audioConfig: { audioEncoding: 'LINEAR16', sampleRateHertz: 24000 },
+    })
+    return parseWav(new Uint8Array(Buffer.from(data.audioContent!, 'base64')))
+  }))
+
+  const voiceTimepoints: { text: string; start: number }[] = []
+  let cursor = 0
+  sentences.forEach((sentence, i) => {
+    const length = pcmSeconds(pieces[i])
+    const chunks = splitIntoCaptionChunks(sentence)
+    const chars = chunks.reduce((s, c) => s + c.length, 0) || 1
+    let offset = 0
+    for (const text of chunks) {
+      voiceTimepoints.push({ text, start: Math.round((cursor + offset) * 1000) / 1000 })
+      offset += (text.length / chars) * length
+    }
+    cursor += length
+  })
+
+  return {
+    audio: Buffer.from(joinWav(pieces)),
+    mime: 'audio/wav',
+    ext: 'wav',
+    durationSeconds: Math.round(cursor * 100) / 100,
+    voiceTimepoints,
+  }
+}
 
 async function getGoogleAccessToken(): Promise<string> {
   const credentialsJson = process.env.GOOGLE_TTS_SERVICE_ACCOUNT_JSON
@@ -59,10 +145,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Not authorized' }, { status: 403 })
     }
 
-    const { suggestion_id } = await request.json() as { suggestion_id?: string }
+    const { suggestion_id, voice: voiceId } = await request.json() as { suggestion_id?: string; voice?: string }
     if (!suggestion_id) {
       return NextResponse.json({ error: 'suggestion_id is required' }, { status: 400 })
     }
+    const voice = getNarrationVoice(voiceId)
 
     const { data: suggestion } = await (supabase as any)
       .from('content_suggestions')
@@ -75,9 +162,10 @@ export async function POST(request: Request) {
     }
 
     // Free-tier guard: the Cloud project has billing enabled (TTS requires
-    // it), so nothing on Google's side stops charges. Neural2 is free up to
-    // 1M characters/month; capping script length and narrations per month
-    // keeps the worst case (incl. SSML mark overhead) around half of that.
+    // it), so nothing on Google's side stops charges. Chirp 3 HD and Neural2
+    // are each free up to 1M characters/month; capping script length and
+    // narrations per month keeps the worst case (incl. SSML mark overhead)
+    // around 70% of that.
     if (suggestion.voice_script.length > MAX_VOICE_SCRIPT_CHARS) {
       return NextResponse.json(
         { error: `Voice script is too long (${suggestion.voice_script.length} characters, max ${MAX_VOICE_SCRIPT_CHARS}). Shorten it first.` },
@@ -107,50 +195,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Text-to-speech is not configured on the server' }, { status: 500 })
     }
 
-    // Sent as SSML with a mark before each caption chunk; v1beta1 reports
-    // when each mark is reached (confirmed working with this Neural2 voice
-    // against the live API), which times the reel builder's subtitles.
-    const captionChunks = splitIntoCaptionChunks(suggestion.voice_script)
-
-    const ttsRes = await fetch('https://texttospeech.googleapis.com/v1beta1/text:synthesize', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        input: { ssml: captionChunksToSsml(captionChunks) },
-        // Neural2 — noticeably more natural than Standard voices, and
-        // this feature's volume (a handful of ~15-20s clips a week)
-        // stays nowhere near even Neural2's smaller free allowance.
-        voice: { languageCode: 'en-US', name: 'en-US-Neural2-C' },
-        audioConfig: { audioEncoding: 'MP3' },
-        enableTimePointing: ['SSML_MARK'],
-      }),
-    })
-
-    if (!ttsRes.ok) {
-      const errBody = await ttsRes.text()
-      console.error('[synthesize-voice] Google TTS error', ttsRes.status, errBody)
+    let narration: SynthesizedNarration
+    try {
+      narration = voice.kind === 'chirp3hd'
+        ? await synthesizeBySentence(accessToken, voice.id, suggestion.voice_script)
+        : await synthesizeWithMarks(accessToken, voice.id, suggestion.voice_script)
+    } catch (ttsErr: any) {
+      console.error('[synthesize-voice] Google TTS error', ttsErr?.message)
       return NextResponse.json({ error: 'Failed to synthesize narration — try again' }, { status: 502 })
     }
-
-    const ttsData = await ttsRes.json() as {
-      audioContent?: string
-      timepoints?: { markName: string; timeSeconds: number }[]
-    }
-    if (!ttsData.audioContent) {
-      return NextResponse.json({ error: 'Google TTS returned no audio — try again' }, { status: 502 })
-    }
-
-    // Null (not a partial list) when any mark is missing, so the reel
-    // builder falls back to its even-spread timing instead of drawing
-    // misaligned subtitles.
-    const markTimes = new Map((ttsData.timepoints ?? []).map((t) => [t.markName, t.timeSeconds]))
-    const voiceTimepoints = captionChunks.every((_, i) => markTimes.has(`c${i}`))
-      ? captionChunks.map((text, i) => ({ text, start: Math.round(markTimes.get(`c${i}`)! * 1000) / 1000 }))
-      : null
-    const mp3Buffer = Buffer.from(ttsData.audioContent, 'base64')
+    const { audio: mp3Buffer, voiceTimepoints } = narration
 
     const r2AccessKeyId = process.env.CLOUDFLARE_R2_ACCESS_KEY_ID
     const r2SecretAccessKey = process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY
@@ -164,7 +218,7 @@ export async function POST(request: Request) {
       )
     }
 
-    const key = `voice/${crypto.randomUUID()}.mp3`
+    const key = `voice/${crypto.randomUUID()}.${narration.ext}`
     const r2 = new AwsClient({ accessKeyId: r2AccessKeyId, secretAccessKey: r2SecretAccessKey, service: 's3', region: 'auto' })
     const endpoint = `https://${accountId}.r2.cloudflarestorage.com/${bucket}/${key}`
     const putRes = await r2.fetch(endpoint, {
@@ -172,7 +226,7 @@ export async function POST(request: Request) {
       // Explicit Content-Length: R2 rejects PUTs without it
       // (MissingContentLength), and the Vercel runtime's fetch doesn't
       // always add it for a Uint8Array body.
-      headers: { 'Content-Type': 'audio/mpeg', 'Content-Length': String(mp3Buffer.byteLength) },
+      headers: { 'Content-Type': narration.mime, 'Content-Length': String(mp3Buffer.byteLength) },
       body: new Uint8Array(mp3Buffer),
     })
     if (!putRes.ok) {
@@ -184,17 +238,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: `Failed to store the narration audio (R2: ${code})` }, { status: 502 })
     }
 
-    // Google TTS doesn't return a duration figure — left null rather than
-    // guessed. duration_seconds is otherwise a video-only field; reused
-    // here for audio's sake rather than adding a new column.
+    // duration_seconds is otherwise a video-only field, reused for audio;
+    // known exactly for per-sentence (WAV) narration, null for MP3.
     const { data: media, error: insertError } = await (supabase as any)
       .from('content_media')
       .insert({
         media_type: 'audio',
         storage_key: key,
-        original_filename: `voice-${Date.now()}.mp3`,
-        mime_type: 'audio/mpeg',
+        original_filename: `voice-${voice.id.split('-').pop()}-${Date.now()}.${narration.ext}`,
+        mime_type: narration.mime,
         size_bytes: mp3Buffer.byteLength,
+        duration_seconds: narration.durationSeconds,
         uploaded_by: user.id,
       })
       .select()

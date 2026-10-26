@@ -187,11 +187,11 @@ export function useSaveVoiceScript() {
 export function useSynthesizeVoice() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (id: string) => {
+    mutationFn: async ({ id, voice }: { id: string; voice?: string }) => {
       const res = await fetch('/api/content/synthesize-voice', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ suggestion_id: id }),
+        body: JSON.stringify({ suggestion_id: id, voice }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Failed to synthesize narration')

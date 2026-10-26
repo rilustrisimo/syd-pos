@@ -36,6 +36,16 @@ export function splitIntoCaptionChunks(script: string): string[] {
   }, [])
 }
 
+/** Splits a script into sentences (kept with their end punctuation). */
+export function splitIntoSentences(script: string): string[] {
+  return script
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(/(?<=[.!?])\s+(?=[A-Z0-9"'“(])/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+}
+
 function escapeXml(text: string): string {
   return text
     .replace(/&/g, '&amp;')

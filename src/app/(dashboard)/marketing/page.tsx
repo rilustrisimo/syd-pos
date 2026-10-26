@@ -50,6 +50,8 @@ import { ReelBuilderDialog } from '@/components/marketing/reel-builder-dialog'
 import { PostPlanner } from '@/components/marketing/post-planner'
 import { CreativeStyleBadge } from '@/components/marketing/creative-style-badge'
 import { CalendarReminders } from '@/components/marketing/calendar-reminders'
+import { VoiceSelect } from '@/components/marketing/voice-select'
+import { DEFAULT_NARRATION_VOICE } from '@/lib/marketing/voices'
 import {
   FORMAT_LABELS,
   FORMAT_COLORS,
@@ -269,6 +271,7 @@ function SuggestionCard({ suggestion }: { suggestion: ContentSuggestion }) {
   const generateVoiceScript = useGenerateVoiceScript()
   const saveVoiceScript = useSaveVoiceScript()
   const synthesizeVoice = useSynthesizeVoice()
+  const [voice, setVoice] = useState(DEFAULT_NARRATION_VOICE)
   const attachCreative = useAttachCreativeMedia()
   const generateCreative = useGenerateCreative()
   const review = useReviewContentSuggestion()
@@ -331,7 +334,7 @@ function SuggestionCard({ suggestion }: { suggestion: ContentSuggestion }) {
   }
 
   function handleSynthesizeVoice() {
-    synthesizeVoice.mutate(suggestion.id, {
+    synthesizeVoice.mutate({ id: suggestion.id, voice }, {
       onSuccess: () => toast.success('Narration synthesized'),
       onError: (e) => toast.error(e.message),
     })
@@ -443,6 +446,7 @@ function SuggestionCard({ suggestion }: { suggestion: ContentSuggestion }) {
             >
               {generateVoiceScript.isPending ? 'Generating...' : 'Generate Script'}
             </Button>
+            <VoiceSelect value={voice} onChange={setVoice} disabled={synthesizeVoice.isPending} />
             <Button
               size="sm"
               variant="outline"

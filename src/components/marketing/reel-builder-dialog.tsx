@@ -34,6 +34,8 @@ import { applyReelPreset, type ReelPreset } from '@/lib/marketing/reel-timeline'
 import { CREATIVE_STYLES, isCreativeStyle } from '@/lib/marketing/creative-styles'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ReelClipRow } from '@/components/marketing/reel-clip-row'
+import { VoiceSelect } from '@/components/marketing/voice-select'
+import { DEFAULT_NARRATION_VOICE } from '@/lib/marketing/voices'
 import { ReelCaptionsEditor } from '@/components/marketing/reel-captions-editor'
 
 interface ReelBuilderDialogProps {
@@ -79,6 +81,7 @@ function NarrationStep({ suggestion }: { suggestion: ContentSuggestion }) {
   const generate = useGenerateVoiceScript()
   const save = useSaveVoiceScript()
   const synthesize = useSynthesizeVoice()
+  const [voice, setVoice] = useState(DEFAULT_NARRATION_VOICE)
   const [voiceScript, setVoiceScript] = useState(suggestion.voice_script ?? '')
   const busy = generate.isPending || save.isPending || synthesize.isPending
 
@@ -94,7 +97,7 @@ function NarrationStep({ suggestion }: { suggestion: ContentSuggestion }) {
       if (voiceScript !== (suggestion.voice_script ?? '')) {
         await save.mutateAsync({ id: suggestion.id, voice_script: voiceScript })
       }
-      await synthesize.mutateAsync(suggestion.id)
+      await synthesize.mutateAsync({ id: suggestion.id, voice })
       toast.success('Narration ready — opening the editor')
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Failed to create the narration')
@@ -121,9 +124,12 @@ function NarrationStep({ suggestion }: { suggestion: ContentSuggestion }) {
         <Button variant="outline" onClick={handleGenerate} disabled={busy || !suggestion.script?.trim()}>
           <Sparkles className="w-4 h-4 mr-1.5" /> {generate.isPending ? 'Generating...' : 'Generate Voice Script'}
         </Button>
-        <Button onClick={handleSynthesize} disabled={busy || !voiceScript.trim()}>
-          <Mic className="w-4 h-4 mr-1.5" /> {save.isPending || synthesize.isPending ? 'Creating narration...' : 'Create Narration'}
-        </Button>
+        <div className="flex items-center gap-2">
+          <VoiceSelect value={voice} onChange={setVoice} disabled={busy} />
+          <Button onClick={handleSynthesize} disabled={busy || !voiceScript.trim()}>
+            <Mic className="w-4 h-4 mr-1.5" /> {save.isPending || synthesize.isPending ? 'Creating narration...' : 'Create Narration'}
+          </Button>
+        </div>
       </div>
     </div>
   )
