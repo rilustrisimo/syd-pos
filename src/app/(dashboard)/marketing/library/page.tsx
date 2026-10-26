@@ -28,6 +28,7 @@ import {
 import { useSearchStockMedia, useImportStockMedia, type StockSearchResult } from '@/hooks/useStockMedia'
 import { MediaLightbox } from '@/components/marketing/media-lightbox'
 import { uploadMediaFile } from '@/lib/marketing/upload'
+import { downloadMediaFile } from '@/lib/marketing/download'
 
 const SOURCE_LABELS: Record<StockSearchResult['source'], string> = {
   pexels: 'Pexels',
@@ -225,6 +226,16 @@ export default function ContentLibraryPage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [downloadingId, setDownloadingId] = useState<string | null>(null)
+
+  async function handleDownload(item: ContentMedia, url: string) {
+    setDownloadingId(item.id)
+    try {
+      await downloadMediaFile(url, item.original_filename)
+    } finally {
+      setDownloadingId(null)
+    }
+  }
   const [tab, setTab] = useState<'uploads' | 'stock' | 'products'>('uploads')
 
   async function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
@@ -338,12 +349,27 @@ export default function ContentLibraryPage() {
                           : <Film className="w-8 h-8 text-slate-300" />
                       )}
                     </div>
-                    <div className="p-2 space-y-0.5">
-                      <p className="text-xs font-medium truncate">{item.original_filename}</p>
-                      <p className="text-[11px] text-slate-400">
-                        {formatSize(item.size_bytes)}
-                        {item.duration_seconds != null && ` · ${Math.round(item.duration_seconds)}s`}
-                      </p>
+                    <div className="p-2 flex items-start gap-1">
+                      <div className="flex-1 min-w-0 space-y-0.5">
+                        <p className="text-xs font-medium truncate" title={item.original_filename}>{item.original_filename}</p>
+                        <p className="text-[11px] text-slate-400">
+                          {formatSize(item.size_bytes)}
+                          {item.duration_seconds != null && ` · ${Math.round(item.duration_seconds)}s`}
+                        </p>
+                      </div>
+                      {url && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 w-7 p-0 flex-shrink-0 text-slate-500 hover:text-blue-600"
+                          title="Download"
+                          aria-label={`Download ${item.original_filename}`}
+                          disabled={downloadingId === item.id}
+                          onClick={() => handleDownload(item, url)}
+                        >
+                          <Download className={`w-3.5 h-3.5 ${downloadingId === item.id ? 'animate-pulse' : ''}`} />
+                        </Button>
+                      )}
                     </div>
                     <Button
                       size="sm"
