@@ -27,6 +27,13 @@ export interface SiteSample {
   sessions: number
 }
 
+/** Meta ads "Time of day" breakdown: responses (results + link clicks) per hour. */
+export interface AdHourSample {
+  hour: number
+  impressions: number
+  actions: number
+}
+
 export type Confidence = 'low' | 'medium' | 'high'
 
 export interface BestTimes {
@@ -36,7 +43,8 @@ export interface BestTimes {
   confidence: Confidence
   postCount: number
   sessionCount: number
-  weights: { assumption: number; posts: number; site: number }
+  adImpressions: number
+  weights: { assumption: number; posts: number; site: number; ads: number }
 }
 
 export const DAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -89,7 +97,7 @@ function engagementRate(p: PostSample): number | null {
   return engaged / p.reach
 }
 
-export function computeBestTimes(posts: PostSample[], site: SiteSample[]): BestTimes {
+export function computeBestTimes(posts: PostSample[], site: SiteSample[], adHours: AdHourSample[] = []): BestTimes {
   // ── 1. Posts ──
   const rated = posts
     .map((p) => ({ ...manilaDayHour(p.published_at), rate: engagementRate(p) }))
@@ -131,17 +139,38 @@ export function computeBestTimes(posts: PostSample[], site: SiteSample[]): BestT
   }
   const siteGrid = normalize(siteRaw)
 
-  // ── 3. Blend ── real data takes over as it accumulates.
+  // ── 3. Ad responses by hour (same for every weekday — Meta's time-of-day
+  //    breakdown has no weekday). Response rate per impression, shrunk
+  //    toward the overall rate with ~500 impressions of prior, so a quiet
+  //    hour with a lucky click doesn't top the list.
+  const hourImpr = Array(24).fill(0)
+  const hourActs = Array(24).fill(0)
+  for (const a of adHours) {
+    if (a.hour < 0 || a.hour > 23) continue
+    hourImpr[a.hour] += a.impressions
+    hourActs[a.hour] += a.actions
+  }
+  const adImpressions = hourImpr.reduce((s, n) => s + n, 0)
+  const adRate = adImpressions ? hourActs.reduce((s, n) => s + n, 0) / adImpressions : 0
+  const adHourScore = hourImpr.map((impr, h) => (adRate > 0 ? (hourActs[h] + 500 * adRate) / (impr + 500) : 0))
+  const adGrid = normalize(Array.from({ length: 7 }, () => adHourScore.map((v, h) => 0.6 * v + 0.2 * adHourScore[(h + 23) % 24] + 0.2 * adHourScore[(h + 1) % 24])))
+
+  // ── 4. Blend ── real data takes over as it accumulates.
   const postsW = Math.min(1, rated.length / 30) * 0.75
   const siteW = Math.min(1, sessionCount / 300) * 0.3
-  const assumptionW = Math.max(0.1, 1 - postsW - siteW)
-  const total = postsW + siteW + assumptionW
+  const adsW = adRate > 0 ? Math.min(1, adImpressions / 20000) * 0.35 : 0
+  const assumptionW = Math.max(0.1, 1 - postsW - siteW - adsW)
+  const total = postsW + siteW + adsW + assumptionW
 
   const blended = emptyGrid()
   for (let d = 0; d < 7; d++) {
     for (let h = 0; h < 24; h++) {
-      blended[d][h] =
-        (assumption(d, h) * assumptionW + (rated.length ? postGrid[d][h] : 0) * postsW + (sessionCount ? siteGrid[d][h] : 0) * siteW) / total
+      blended[d][h] = (
+        assumption(d, h) * assumptionW +
+        (rated.length ? postGrid[d][h] : 0) * postsW +
+        (sessionCount ? siteGrid[d][h] : 0) * siteW +
+        (adsW ? adGrid[d][h] : 0) * adsW
+      ) / total
     }
   }
   const grid = normalize(blended)
@@ -157,9 +186,9 @@ export function computeBestTimes(posts: PostSample[], site: SiteSample[]): BestT
     return picks
   })
 
-  const confidence: Confidence = rated.length >= 30 || (rated.length >= 15 && sessionCount >= 300)
+  const confidence: Confidence = rated.length >= 30 || (rated.length >= 15 && (sessionCount >= 300 || adImpressions >= 20000))
     ? 'high'
-    : rated.length >= 10 || sessionCount >= 150 ? 'medium' : 'low'
+    : rated.length >= 10 || sessionCount >= 150 || adImpressions >= 10000 ? 'medium' : 'low'
 
   return {
     grid,
@@ -167,6 +196,7 @@ export function computeBestTimes(posts: PostSample[], site: SiteSample[]): BestT
     confidence,
     postCount: rated.length,
     sessionCount,
-    weights: { assumption: assumptionW / total, posts: postsW / total, site: siteW / total },
+    adImpressions,
+    weights: { assumption: assumptionW / total, posts: postsW / total, site: siteW / total, ads: adsW / total },
   }
 }

@@ -57,8 +57,8 @@ export function BestTimesHeatmap({ best }: { best: BestTimes }) {
         </div>
 
         <p className="text-[11px] text-slate-500">
-          Based on {best.postCount} post{best.postCount === 1 ? '' : 's'} and {best.sessionCount} website session{best.sessionCount === 1 ? '' : 's'}.
-          {' '}Mix: {Math.round(best.weights.posts * 100)}% your post results, {Math.round(best.weights.site * 100)}% website visits,
+          Based on {best.postCount} post{best.postCount === 1 ? '' : 's'}, {best.sessionCount} website session{best.sessionCount === 1 ? '' : 's'} and {best.adImpressions.toLocaleString()} ad impressions by hour.
+          {' '}Mix: {Math.round(best.weights.posts * 100)}% your post results, {Math.round(best.weights.site * 100)}% website visits, {Math.round(best.weights.ads * 100)}% ad responses by hour,
           {' '}{Math.round(best.weights.assumption * 100)}% starting assumption (local lunch and evening peaks), which fades as you import more data.
           Outlined cells are each day&apos;s top 3.
         </p>

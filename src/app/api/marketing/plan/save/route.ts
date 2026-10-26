@@ -12,6 +12,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { requireMarketingStaff } from '@/lib/marketing/staff-auth'
 import { toConceptCode } from '@/lib/marketing/concept-code'
+import { isCreativeStyle } from '@/lib/marketing/creative-styles'
 import type { PlannedPost } from '@/lib/marketing/planner-prompts'
 
 export async function POST(request: Request) {
@@ -49,6 +50,8 @@ export async function POST(request: Request) {
           best_time: p.best_time,
           hashtags,
           tags: p.tags.join(' · '),
+          creative_style: isCreativeStyle(p.creative_style) ? p.creative_style : null,
+          reel_stickers: isReel && p.stickers?.length ? p.stickers : null,
           status: 'created',
           created_by: auth.userId,
         })
@@ -65,6 +68,8 @@ export async function POST(request: Request) {
         format: p.format,
         audience: p.audience,
         concept_code: conceptCode,
+        creative_style: isCreativeStyle(p.creative_style) ? p.creative_style : null,
+        reel_stickers: isReel && p.stickers?.length ? p.stickers : null,
         notes: `Planned for ${p.date}, post at ${p.best_time}. ${p.why}`,
       })
       if (suggestionError) throw new Error(suggestionError.message)

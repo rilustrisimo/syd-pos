@@ -24,6 +24,8 @@ export interface ReelTimelineClip {
   keepSound: boolean
   /** Videos only: length of the source video, when known. */
   sourceDuration: number | null
+  /** On-screen text sticker shown over this clip (Meta's "text sticker" technique). */
+  label?: string
 }
 
 export interface ReelCaption {
@@ -74,7 +76,7 @@ export function buildDefaultCaptions(
   })
 }
 
-export function makeClip(media: ContentMedia, duration: number): ReelTimelineClip {
+export function makeClip(media: ContentMedia, duration: number, label = ''): ReelTimelineClip {
   const isVideo = media.media_type === 'video'
   return {
     mediaId: media.id,
@@ -85,7 +87,66 @@ export function makeClip(media: ContentMedia, duration: number): ReelTimelineCli
     trimStart: 0,
     keepSound: false,
     sourceDuration: isVideo ? media.duration_seconds : null,
+    label,
   }
+}
+
+// ── Creative style presets ─────────────────────────────────────────
+
+/** Styles whose layout the builder can apply automatically. */
+export type ReelPreset = 'listicle' | 'transition' | 'qa'
+
+const stripNumber = (s: string) => s.replace(/^\s*\d+[.)]\s*/, '').trim()
+
+/**
+ * Applies a Meta-style reel layout to the current clips:
+ * - listicle: numbered text stickers ("1. Hollow blocks"), one per clip
+ * - transition: quick ~1.2s cuts cycling through the clips for the whole
+ *   narration (videos advance their start point on each pass, so repeats
+ *   show new footage)
+ * - qa: the first clip holds the question sticker for at least 2.5s
+ * Sticker text comes from the clip's own label, else the planner's stickers.
+ */
+export function applyReelPreset(
+  timeline: ReelTimeline,
+  preset: ReelPreset,
+  narrationSeconds: number,
+  stickers: string[] = []
+): ReelTimeline {
+  const clips = timeline.clips
+  if (!clips.length) return timeline
+  const textFor = (i: number) => clips[i]?.label?.trim() || stickers[i]?.trim() || ''
+
+  if (preset === 'listicle') {
+    return {
+      ...timeline,
+      clips: clips.map((c, i) => {
+        const text = stripNumber(textFor(i))
+        return { ...c, label: text ? `${i + 1}. ${text}` : `${i + 1}.` }
+      }),
+    }
+  }
+
+  if (preset === 'qa') {
+    const first = { ...clips[0], label: textFor(0) || 'Tanong: …?' }
+    const firstLength = Math.max(first.duration, 2.5)
+    return {
+      ...timeline,
+      clips: [{ ...first, duration: round(firstLength), trimStart: clampTrim(first, firstLength, first.trimStart) }, ...clips.slice(1)],
+    }
+  }
+
+  // transition: rebuild as quick cuts across the narration.
+  const CUT = 1.2
+  const count = Math.max(clips.length, Math.ceil(narrationSeconds / CUT))
+  const cuts: ReelTimelineClip[] = []
+  for (let i = 0; i < count; i++) {
+    const source = clips[i % clips.length]
+    const pass = Math.floor(i / clips.length)
+    const trimStart = source.type === 'video' ? clampTrim(source, CUT, source.trimStart + pass * CUT) : 0
+    cuts.push({ ...source, duration: CUT, trimStart, label: pass === 0 ? textFor(i % clips.length) : '' })
+  }
+  return { ...timeline, clips: cuts }
 }
 
 /** Splits the narration evenly across the clips (the "auto" timing). */

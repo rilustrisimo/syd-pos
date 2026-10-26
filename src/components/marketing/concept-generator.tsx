@@ -12,6 +12,8 @@ import { useCreateContentIdea, type ContentAudience } from '@/hooks/useContentId
 import { useGenerateConcepts } from '@/hooks/useMarketingInsights'
 import { AUDIENCE_COLORS, AUDIENCE_LABELS, FORMAT_COLORS, FORMAT_LABELS } from '@/lib/marketing/formats'
 import type { AdConcept } from '@/lib/marketing/planner-prompts'
+import { isCreativeStyle } from '@/lib/marketing/creative-styles'
+import { CreativeStyleBadge } from '@/components/marketing/creative-style-badge'
 
 const AD_AUDIENCES: ContentAudience[] = ['contractor', 'business_farm', 'family_build']
 
@@ -68,6 +70,8 @@ export function ConceptGenerator({ onAdded }: { onAdded: () => void }) {
           angle: c.angle,
           concept_code: c.concept_code,
           purpose: 'ad',
+          creative_style: isCreativeStyle(c.creative_style) ? c.creative_style : undefined,
+          reel_stickers: isReel && c.stickers?.length ? c.stickers : undefined,
           creative_prompt: isReel ? undefined : c.creative_prompt,
           stock_keywords: c.stock_keywords || undefined,
         })
@@ -136,6 +140,7 @@ export function ConceptGenerator({ onAdded }: { onAdded: () => void }) {
                     <span className="text-sm font-medium">{c.title}</span>
                     <Badge variant="outline" className={FORMAT_COLORS[c.format]}>{FORMAT_LABELS[c.format]}</Badge>
                     <Badge variant="outline" className={AUDIENCE_COLORS[c.audience]}>{AUDIENCE_LABELS[c.audience]}</Badge>
+                    <CreativeStyleBadge style={c.creative_style} />
                     <span className="text-[11px] text-slate-400">{c.proof_type}</span>
                   </div>
                   <p className="text-xs text-slate-600"><span className="font-medium">Hook:</span> {c.angle}</p>

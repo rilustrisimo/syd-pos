@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { getClient } from '@/lib/supabase/client'
 import type { ContentAudience, ContentFormat } from '@/hooks/useContentIdeas'
 import type { ReelTimeline } from '@/lib/marketing/reel-timeline'
+import type { CreativeStyle } from '@/lib/marketing/creative-styles'
 
 // One caption chunk of the synthesized narration and when it starts
 // (seconds into the audio), from Google TTS SSML mark timepoints.
@@ -31,6 +32,9 @@ export interface ContentSuggestion {
   format: ContentFormat | null
   audience: ContentAudience | null
   concept_code: string | null
+  creative_style: CreativeStyle | null
+  /** On-screen text stickers for a reel, one per shot (from the planner). */
+  reel_stickers: string[] | null
   voice_timepoints: VoiceTimepoint[] | null
   reel_timeline: ReelTimeline | null
   status: SuggestionStatus

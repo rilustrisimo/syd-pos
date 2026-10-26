@@ -18,6 +18,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import type { ContentAudience, ContentFormat } from '@/hooks/useContentIdeas'
 import { AUDIENCE_BRIEFS } from '@/lib/marketing/brand'
+import { CREATIVE_STYLES, isCreativeStyle, type CreativeStyle } from '@/lib/marketing/creative-styles'
 
 const GEMINI_MODEL = 'gemini-3.6-flash'
 
@@ -123,11 +124,13 @@ export async function POST(request: Request) {
     let format: ContentFormat | null = null
     let audience: ContentAudience | null = null
     let conceptCode: string | null = null
+    let creativeStyle: CreativeStyle | null = null
+    let reelStickers: string[] | null = null
 
     if (source_idea_id) {
       const { data: idea } = await (supabase as any)
         .from('content_ideas')
-        .select('title, description, image_concept, format, creative_prompt, audience, angle, concept_code, hashtags')
+        .select('title, description, image_concept, format, creative_prompt, audience, angle, concept_code, hashtags, creative_style, reel_stickers')
         .eq('id', source_idea_id)
         .single() as {
           data: {
@@ -140,6 +143,8 @@ export async function POST(request: Request) {
             angle: string | null
             concept_code: string | null
             hashtags: string | null
+            creative_style: string | null
+            reel_stickers: string[] | null
           } | null
         }
 
@@ -152,6 +157,12 @@ export async function POST(request: Request) {
         }
         if (idea.angle) briefParts.push(`Concept angle / hook to build the post around: ${idea.angle}`)
         if (idea.hashtags) briefParts.push(`Use these hashtags: ${idea.hashtags}`)
+        if (isCreativeStyle(idea.creative_style)) {
+          creativeStyle = idea.creative_style
+          const style = CREATIVE_STYLES[idea.creative_style]
+          briefParts.push(`Creative style: ${style.label} — ${style.recipe} Write the script and caption to fit this style.`)
+        }
+        reelStickers = idea.reel_stickers?.length ? idea.reel_stickers : null
         briefParts.push(
           `Post idea: ${idea.title}` +
           (idea.description ? ` — ${idea.description}` : '') +
@@ -244,6 +255,8 @@ export async function POST(request: Request) {
         format,
         audience,
         concept_code: conceptCode,
+        creative_style: creativeStyle,
+        reel_stickers: reelStickers,
       })
       .select()
       .single()

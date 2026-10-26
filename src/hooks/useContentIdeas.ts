@@ -2,6 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { getClient } from '@/lib/supabase/client'
+import type { CreativeStyle } from '@/lib/marketing/creative-styles'
 
 export type ContentIdeaStatus = 'idea' | 'created' | 'posted'
 export type ContentFormat = 'image' | 'carousel' | 'reel'
@@ -26,6 +27,8 @@ export interface ContentIdea {
   best_time: string | null
   hashtags: string | null
   tags: string | null
+  creative_style: CreativeStyle | null
+  reel_stickers: string[] | null
   source_product_id: string | null
   status: ContentIdeaStatus
   created_by: string | null
@@ -75,6 +78,8 @@ export interface NewContentIdeaInput {
   best_time?: string
   hashtags?: string
   tags?: string
+  creative_style?: CreativeStyle
+  reel_stickers?: string[]
 }
 
 export function useCreateContentIdea() {

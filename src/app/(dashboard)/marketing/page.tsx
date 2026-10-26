@@ -48,6 +48,7 @@ import { useContentIdeas } from '@/hooks/useContentIdeas'
 import { MediaLightbox } from '@/components/marketing/media-lightbox'
 import { ReelBuilderDialog } from '@/components/marketing/reel-builder-dialog'
 import { PostPlanner } from '@/components/marketing/post-planner'
+import { CreativeStyleBadge } from '@/components/marketing/creative-style-badge'
 import {
   FORMAT_LABELS,
   FORMAT_COLORS,
@@ -347,6 +348,7 @@ function SuggestionCard({ suggestion }: { suggestion: ContentSuggestion }) {
           {suggestion.audience && (
             <Badge variant="outline" className={AUDIENCE_COLORS[suggestion.audience]}>{AUDIENCE_LABELS[suggestion.audience]}</Badge>
           )}
+          <CreativeStyleBadge style={suggestion.creative_style} />
           {suggestion.source_product && (
             <span className="text-xs text-slate-500">Product: {suggestion.source_product.name}</span>
           )}

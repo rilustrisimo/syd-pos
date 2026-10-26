@@ -30,6 +30,9 @@ import {
   type ReelTimeline,
 } from '@/lib/marketing/reel-timeline'
 import { uploadMediaFile } from '@/lib/marketing/upload'
+import { applyReelPreset, type ReelPreset } from '@/lib/marketing/reel-timeline'
+import { CREATIVE_STYLES, isCreativeStyle } from '@/lib/marketing/creative-styles'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ReelClipRow } from '@/components/marketing/reel-clip-row'
 import { ReelCaptionsEditor } from '@/components/marketing/reel-captions-editor'
 
@@ -250,7 +253,19 @@ function ReelEditorLoaded({
     const remaining = narrationSeconds - timeline.clips.reduce((s, c) => s + c.duration, 0)
     let length = remaining > 1 ? Math.min(remaining, 5) : 3
     if (media.media_type === 'video' && media.duration_seconds) length = Math.min(length, media.duration_seconds)
-    update({ clips: [...timeline.clips, makeClip(media, length)] })
+    // Prefill the planner's on-screen text for this shot position.
+    const sticker = suggestion.reel_stickers?.[timeline.clips.length] ?? ''
+    update({ clips: [...timeline.clips, makeClip(media, length, sticker)] })
+  }
+
+  const stylePreset: ReelPreset | null =
+    suggestion.creative_style === 'listicle' || suggestion.creative_style === 'transition' || suggestion.creative_style === 'qa'
+      ? suggestion.creative_style
+      : null
+
+  function applyPreset(preset: ReelPreset) {
+    update({ clips: applyReelPreset(timeline, preset, narrationSeconds, suggestion.reel_stickers ?? []).clips })
+    toast.success(`${CREATIVE_STYLES[preset].label} layout applied — check the clips and preview`)
   }
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -344,17 +359,41 @@ function ReelEditorLoaded({
           </TabsList>
 
           <TabsContent value="clips" className="space-y-3 pt-2">
+            {isCreativeStyle(suggestion.creative_style) && (
+              <p className="text-xs rounded-md border border-orange-200 bg-orange-50 text-orange-900 px-3 py-2">
+                <span className="font-semibold">{CREATIVE_STYLES[suggestion.creative_style].label} reel:</span>{' '}
+                {CREATIVE_STYLES[suggestion.creative_style].reel}
+              </p>
+            )}
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <p className="text-[11px] text-slate-500">
                 Narration {narrationSeconds.toFixed(1)}s · clips {timeline.clips.reduce((s, c) => s + c.duration, 0).toFixed(1)}s · end card {END_CARD_SECONDS}s
               </p>
-              <Button
-                size="sm" variant="outline" className="h-7 text-xs gap-1"
-                disabled={busy || !timeline.clips.length}
-                onClick={() => update({ clips: spreadClipsEvenly(timeline.clips, narrationSeconds) })}
-              >
-                <Wand2 className="w-3.5 h-3.5" /> Fit clips to narration
-              </Button>
+              <div className="flex gap-1 flex-wrap">
+                <Button
+                  size="sm" variant="outline" className="h-7 text-xs gap-1"
+                  disabled={busy || !timeline.clips.length}
+                  onClick={() => update({ clips: spreadClipsEvenly(timeline.clips, narrationSeconds) })}
+                >
+                  <Wand2 className="w-3.5 h-3.5" /> Fit clips to narration
+                </Button>
+                <Select
+                  value=""
+                  onValueChange={(v) => applyPreset(v as ReelPreset)}
+                  disabled={busy || !timeline.clips.length}
+                >
+                  <SelectTrigger className="h-7 w-44 text-xs">
+                    <SelectValue placeholder={stylePreset ? `Apply ${CREATIVE_STYLES[stylePreset].label} layout` : 'Apply a style layout…'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(['listicle', 'transition', 'qa'] as ReelPreset[]).map((p) => (
+                      <SelectItem key={p} value={p}>
+                        {CREATIVE_STYLES[p].label}{p === stylePreset ? ' (this post)' : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             {timeline.clips.length === 0 ? (

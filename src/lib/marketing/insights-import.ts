@@ -7,7 +7,7 @@
 // column-mapping preview the user can correct before importing.
 // Pure functions (no browser/server APIs), shared by the page and route.
 
-export type InsightSource = 'meta_posts' | 'meta_ads' | 'ga4'
+export type InsightSource = 'meta_posts' | 'meta_ads' | 'meta_ads_hourly' | 'ga4'
 
 export interface FieldSpec {
   key: string
@@ -19,6 +19,7 @@ export interface FieldSpec {
 export const SOURCE_LABELS: Record<InsightSource, string> = {
   meta_posts: 'Meta Business Suite — post insights',
   meta_ads: 'Meta Ads Manager — ad results',
+  meta_ads_hourly: 'Meta Ads Manager — results by time of day',
   ga4: 'Google Analytics 4 — report',
 }
 
@@ -53,6 +54,16 @@ export const SOURCE_FIELDS: Record<InsightSource, FieldSpec[]> = {
     { key: 'result_type', label: 'Result indicator', aliases: ['result indicator', 'result type'] },
     { key: 'spend', label: 'Amount spent', aliases: ['amount spent (php)', 'amount spent', 'spend', 'cost'] },
     { key: 'follows', label: 'Follows / page likes', aliases: ['follows or likes', 'page likes', 'follows', 'instagram follows', 'facebook likes'] },
+    { key: 'delivery_status', label: 'Delivery (status)', aliases: ['delivery', 'delivery status', 'ad delivery'] },
+  ],
+  meta_ads_hourly: [
+    { key: 'time_of_day', label: 'Time of day', required: true, aliases: ["time of day (viewer's time zone)", 'time of day (ad account time zone)', 'time of day', 'hour of day'] },
+    { key: 'period_start', label: 'Reporting starts', required: true, aliases: ['reporting starts', 'reporting start', 'day', 'date', 'starts'] },
+    { key: 'period_end', label: 'Reporting ends', aliases: ['reporting ends', 'reporting end', 'ends'] },
+    { key: 'impressions', label: 'Impressions', required: true, aliases: ['impressions'] },
+    { key: 'results', label: 'Results', aliases: ['results'] },
+    { key: 'link_clicks', label: 'Link clicks', aliases: ['link clicks', 'clicks (all)', 'clicks'] },
+    { key: 'spend', label: 'Amount spent', aliases: ['amount spent (php)', 'amount spent', 'spend', 'cost'] },
   ],
   ga4: [
     { key: 'day_of_week', label: 'Day of week', aliases: ['day of week', 'day of week name', 'dayofweek', 'day'] },
@@ -133,6 +144,7 @@ const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ')
 export function detectSource(headers: string[]): InsightSource | null {
   const h = headers.map(norm)
   const has = (name: string) => h.some((x) => x === name || x.startsWith(`${name} `) || x.startsWith(`${name}(`))
+  if (has('time of day') && (has('impressions') || has('amount spent'))) return 'meta_ads_hourly'
   if (has('ad name') && (has('amount spent') || has('reporting starts') || has('impressions'))) return 'meta_ads'
   if ((has('post id') || has('media id')) && (has('publish time') || has('reach') || has('permalink'))) return 'meta_posts'
   if (has('sessions') && (has('hour') || has('day of week') || has('session manual ad content') || has('active users'))) return 'ga4'
@@ -323,6 +335,7 @@ export interface AdMetricRow {
   result_type: string | null
   spend: number | null
   follows: number | null
+  delivery_status: string | null
 }
 
 export function buildAdRows(parsed: ParsedCsv, mapping: Record<string, number>): BuildResult<AdMetricRow> {
@@ -345,9 +358,48 @@ export function buildAdRows(parsed: ParsedCsv, mapping: Record<string, number>):
       result_type: get(r, mapping, 'result_type') || null,
       spend: toNumber(get(r, mapping, 'spend')),
       follows: toInt(get(r, mapping, 'follows')),
+      delivery_status: get(r, mapping, 'delivery_status') || null,
     })
   }
   return { rows, skipped }
+}
+
+/** "19:00:00 - 19:59:59", "19:00", "7 PM" → 19. */
+export function parseTimeOfDay(value: string | undefined): number | null {
+  const m = value?.trim().match(/^(\d{1,2})(?::\d{2})?(?::\d{2})?\s*(am|pm)?/i)
+  if (!m) return null
+  let hour = Number(m[1])
+  if (m[2]) { const pm = m[2].toLowerCase() === 'pm'; if (pm && hour < 12) hour += 12; if (!pm && hour === 12) hour = 0 }
+  return hour >= 0 && hour <= 23 ? hour : null
+}
+
+/**
+ * Ads Manager export with the "Time of day" breakdown → one row per hour
+ * (dimension "ad_hour", summed across ads), stored in the generic
+ * dimension/metrics table alongside GA4 rows. Feeds best posting times.
+ */
+export function buildAdHourlyRows(parsed: ParsedCsv, mapping: Record<string, number>): BuildResult<GaMetricRow> {
+  const merged = new Map<string, GaMetricRow>()
+  let skipped = 0
+  for (const r of parsed.rows) {
+    const hour = parseTimeOfDay(get(r, mapping, 'time_of_day'))
+    const start = parseDateOnly(get(r, mapping, 'period_start'))
+    if (hour == null || !start) { skipped++; continue }
+    const end = parseDateOnly(get(r, mapping, 'period_end')) ?? start
+    const metrics: Record<string, number> = {}
+    for (const key of ['impressions', 'results', 'link_clicks', 'spend']) {
+      const n = toNumber(get(r, mapping, key))
+      if (n != null) metrics[key] = n
+    }
+    const id = `${hour}|${start}|${end}`
+    const existing = merged.get(id)
+    if (existing) {
+      for (const [k, n] of Object.entries(metrics)) existing.metrics[k] = (existing.metrics[k] ?? 0) + n
+    } else {
+      merged.set(id, { dimension: 'ad_hour', dimension_value: String(hour), period_start: start, period_end: end, metrics })
+    }
+  }
+  return { rows: [...merged.values()], skipped }
 }
 
 export interface GaMetricRow {

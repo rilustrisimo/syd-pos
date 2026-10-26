@@ -14,6 +14,8 @@ import type { InsightSource } from '@/lib/marketing/insights-import'
 const TABLES: Record<InsightSource, { table: string; onConflict: string }> = {
   meta_posts: { table: 'social_post_metrics', onConflict: 'platform,external_id' },
   meta_ads: { table: 'ad_metrics', onConflict: 'ad_name,period_start,period_end' },
+  // Hourly ad breakdown shares the generic dimension/metrics table with GA4.
+  meta_ads_hourly: { table: 'ga_metrics', onConflict: 'dimension,dimension_value,period_start,period_end' },
   ga4: { table: 'ga_metrics', onConflict: 'dimension,dimension_value,period_start,period_end' },
 }
 

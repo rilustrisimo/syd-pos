@@ -38,9 +38,10 @@ export async function geminiJson<T>({
 
   // The free tier regularly answers 503 "high demand" for a few seconds;
   // retry those (and 500s) with a short backoff before giving up.
+  const backoffMs = [0, 2000, 5000, 10000]
   let res: Response | null = null
-  for (let attempt = 0; attempt < 3; attempt++) {
-    if (attempt) await new Promise((r) => setTimeout(r, 2000 * attempt))
+  for (const wait of backoffMs) {
+    if (wait) await new Promise((r) => setTimeout(r, wait))
     res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${key}`,
       { method: 'POST', headers: { 'Content-Type': 'application/json' }, body }

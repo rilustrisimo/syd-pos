@@ -164,6 +164,36 @@ function drawCaption(ctx: CanvasRenderingContext2D, text: string) {
   lines.forEach((l, i) => ctx.fillText(l, REEL_WIDTH / 2, y + paddingY + i * lineHeight + 4))
 }
 
+// On-screen text sticker (per clip): brand-yellow box, dark bold text, in
+// the upper third — clearly separate from the narration captions below.
+function drawSticker(ctx: CanvasRenderingContext2D, text: string) {
+  const fontSize = 62
+  const lineHeight = fontSize * 1.18
+  const paddingX = 40
+  const paddingY = 26
+  ctx.font = `900 ${fontSize}px ${FONT}`
+  const lines = wrapLines(ctx, text, REEL_WIDTH - 240).slice(0, 3)
+  const textWidth = Math.max(...lines.map((l) => ctx.measureText(l).width))
+  const boxWidth = textWidth + paddingX * 2
+  const boxHeight = lines.length * lineHeight + paddingY * 2
+  const x = (REEL_WIDTH - boxWidth) / 2
+  const y = REEL_HEIGHT * 0.15
+
+  ctx.save()
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.35)'
+  ctx.shadowBlur = 24
+  ctx.fillStyle = BRAND_YELLOW
+  ctx.beginPath()
+  ctx.roundRect(x, y, boxWidth, boxHeight, 22)
+  ctx.fill()
+  ctx.restore()
+
+  ctx.fillStyle = BRAND_DARK
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'top'
+  lines.forEach((l, i) => ctx.fillText(l, REEL_WIDTH / 2, y + paddingY + i * lineHeight + 4))
+}
+
 function drawWatermark(ctx: CanvasRenderingContext2D, logo: HTMLImageElement) {
   const h = 90
   const w = (logo.naturalWidth / logo.naturalHeight) * h
@@ -477,6 +507,7 @@ export class ReelPlayer {
       drawCover(ctx, source, source.naturalWidth, source.naturalHeight, 1 + 0.12 * progress)
     }
     drawWatermark(ctx, this.logo)
+    if (clip?.label?.trim()) drawSticker(ctx, clip.label.trim())
     const caption = captionAt(this.timeline, t)
     if (caption) drawCaption(ctx, caption.text)
   }

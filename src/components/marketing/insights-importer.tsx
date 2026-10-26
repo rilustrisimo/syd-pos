@@ -13,6 +13,7 @@ import {
   SOURCE_LABELS,
   autoMap,
   buildAdRows,
+  buildAdHourlyRows,
   buildGaRows,
   buildSocialPostRows,
   detectSource,
@@ -32,6 +33,12 @@ const HOW_TO: Record<InsightSource, string[]> = {
     'Open Ads Manager → Ads tab, and set the date range.',
     'Columns: keep Ad name, Reach, Impressions, Results, Amount spent, Link clicks (add Follows or likes if you ran follower ads).',
     'Reports (or Export) → Export table data → CSV.',
+    'Call ads count too: their "Results" are calls, and reach/impressions show how many people saw them.',
+  ],
+  meta_ads_hourly: [
+    'Ads Manager → Ads (or Campaigns) tab, set the date range (e.g. last 30 days).',
+    'Breakdown → By time → "Time of day (viewer\'s time zone)".',
+    'Keep Impressions, Results, Link clicks, Amount spent → Export table data → CSV. This tells the best-time heatmap when people respond.',
   ],
   ga4: [
     'For best times: GA4 → Explore → Free form. Rows: "Day of week name" and "Hour". Values: Sessions, Active users, Key events. Then Export → CSV (or Download → CSV).',
@@ -80,6 +87,7 @@ export function InsightsImporter() {
     if (!parsed || !source) return null
     if (source === 'meta_posts') return buildSocialPostRows(parsed, mapping)
     if (source === 'meta_ads') return buildAdRows(parsed, mapping)
+    if (source === 'meta_ads_hourly') return buildAdHourlyRows(parsed, mapping)
     if (!period.start || !period.end) return null
     return buildGaRows(parsed, mapping, period)
   }, [parsed, source, mapping, period])
@@ -120,7 +128,7 @@ export function InsightsImporter() {
             <div className="flex gap-1 flex-wrap">
               {(Object.keys(HOW_TO) as InsightSource[]).map((s) => (
                 <Button key={s} size="sm" variant={guide === s ? 'default' : 'outline'} className="h-7 text-[11px]" onClick={() => setGuide(s)}>
-                  {s === 'meta_posts' ? 'Meta posts' : s === 'meta_ads' ? 'Meta ads' : 'GA4'}
+                  {s === 'meta_posts' ? 'Meta posts' : s === 'meta_ads' ? 'Meta ads' : s === 'meta_ads_hourly' ? 'Ads by hour' : 'GA4'}
                 </Button>
               ))}
             </div>

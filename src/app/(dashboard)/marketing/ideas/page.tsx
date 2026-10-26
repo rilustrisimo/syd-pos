@@ -44,6 +44,8 @@ import {
 } from '@/lib/marketing/formats'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ConceptGenerator } from '@/components/marketing/concept-generator'
+import { CreativeStyleBadge } from '@/components/marketing/creative-style-badge'
+import { CREATIVE_STYLES, CREATIVE_STYLE_KEYS, parseCreativeStyle, type CreativeStyle } from '@/lib/marketing/creative-styles'
 import { usePOSProductSearch } from '@/hooks/useTransactions'
 import { useShopBranchId } from '@/hooks/useShopSettings'
 
@@ -332,6 +334,7 @@ function IdeaCard({ idea }: { idea: ContentIdea }) {
           <Badge variant="outline" className={STATUS_COLORS[idea.status]}>{idea.status}</Badge>
           <Badge variant="outline" className={FORMAT_COLORS[idea.format]}>{FORMAT_LABELS[idea.format]}</Badge>
           <Badge variant="outline" className={AUDIENCE_COLORS[idea.audience]}>{AUDIENCE_LABELS[idea.audience]}</Badge>
+          <CreativeStyleBadge style={idea.creative_style} />
           {idea.purpose === 'ad' && <Badge variant="outline" className="bg-blue-600 text-white border-blue-600">Ad concept</Badge>}
           {idea.planned_for && (
             <span className="text-xs text-slate-500">
@@ -439,8 +442,12 @@ export default function ContentIdeasPage() {
   const { data: allIdeas = [], isLoading, refetch } = useContentIdeas(statusTab === 'all' ? undefined : statusTab)
   const [audienceFilter, setAudienceFilter] = useState<ContentAudience | 'all'>('all')
   const [purposeFilter, setPurposeFilter] = useState<'all' | 'daily' | 'ad'>('all')
+  const [styleFilter, setStyleFilter] = useState<CreativeStyle | 'all'>('all')
   const ideas = allIdeas.filter(
-    (i) => (audienceFilter === 'all' || i.audience === audienceFilter) && (purposeFilter === 'all' || i.purpose === purposeFilter)
+    (i) =>
+      (audienceFilter === 'all' || i.audience === audienceFilter) &&
+      (purposeFilter === 'all' || i.purpose === purposeFilter) &&
+      (styleFilter === 'all' || i.creative_style === styleFilter)
   )
   const createIdea = useCreateContentIdea()
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -474,6 +481,7 @@ export default function ContentIdeasPage() {
       const hashtagsCol = headers.indexOf('hashtags')
       const tagsCol = headers.indexOf('tags')
       const bestTimeCol = headers.indexOf('best_time')
+      const styleCol = headers.indexOf('creative_style')
       const cell = (row: string[], col: number) => (col !== -1 ? row[col]?.trim() || undefined : undefined)
 
       if (titleCol === -1) {
@@ -501,6 +509,7 @@ export default function ContentIdeasPage() {
             hashtags: cell(row, hashtagsCol),
             tags: cell(row, tagsCol),
             best_time: cell(row, bestTimeCol),
+            creative_style: parseCreativeStyle(cell(row, styleCol)) ?? undefined,
           })
           imported++
         } catch {
@@ -570,6 +579,15 @@ export default function ContentIdeasPage() {
               <SelectItem value="all">Daily + ads</SelectItem>
               <SelectItem value="daily">Daily posts</SelectItem>
               <SelectItem value="ad">Ad concepts</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={styleFilter} onValueChange={(v) => setStyleFilter(v as CreativeStyle | 'all')}>
+            <SelectTrigger className="h-8 w-36 text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All styles</SelectItem>
+              {CREATIVE_STYLE_KEYS.map((s) => (
+                <SelectItem key={s} value={s}>{CREATIVE_STYLES[s].label}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
           <Select value={audienceFilter} onValueChange={(v) => setAudienceFilter(v as ContentAudience | 'all')}>

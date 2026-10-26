@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input'
 import { usePlanPosts, useSavePlannedPosts } from '@/hooks/useMarketingInsights'
 import { AUDIENCE_COLORS, AUDIENCE_LABELS, FORMAT_COLORS, FORMAT_LABELS } from '@/lib/marketing/formats'
 import type { PlannedPost } from '@/lib/marketing/planner-prompts'
+import { CreativeStyleBadge } from '@/components/marketing/creative-style-badge'
 
 /**
  * The "social media manager" panel on the Feed: Gemini plans today's post
@@ -122,6 +123,7 @@ function PlannedPostCard({ post, picked, onToggle }: { post: PlannedPost; picked
             <span className="text-xs text-slate-500">post at {post.best_time}</span>
             <Badge variant="outline" className={FORMAT_COLORS[post.format]}>{FORMAT_LABELS[post.format]}</Badge>
             <Badge variant="outline" className={AUDIENCE_COLORS[post.audience]}>{AUDIENCE_LABELS[post.audience]}</Badge>
+            <CreativeStyleBadge style={post.creative_style} />
           </div>
           <p className="text-sm font-medium">{post.title}</p>
           <p className="text-xs text-slate-500">{post.why}</p>
@@ -138,6 +140,9 @@ function PlannedPostCard({ post, picked, onToggle }: { post: PlannedPost; picked
           {isReel ? (
             <>
               <p><span className="font-medium">Shots:</span> <span className="whitespace-pre-wrap">{post.shot_list}</span></p>
+              {post.stickers?.some(Boolean) && (
+                <p><span className="font-medium">On-screen text:</span> {post.stickers.filter(Boolean).join(' · ')}</p>
+              )}
               <p><span className="font-medium">Voiceover:</span> {post.voice_script}</p>
               <p><span className="font-medium">Stock search:</span> {post.stock_keywords}</p>
             </>

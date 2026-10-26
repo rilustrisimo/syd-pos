@@ -2,6 +2,7 @@
 
 import { ArrowDown, ArrowUp, Volume2, VolumeX, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { SecondsField } from '@/components/marketing/seconds-field'
 import {
   MIN_CLIP_SECONDS,
@@ -53,6 +54,15 @@ export function ReelClipRow({ clip, index, count, thumbUrl, startsAt, disabled, 
             <X className="w-3.5 h-3.5" />
           </Button>
         </div>
+
+        <Input
+          value={clip.label ?? ''}
+          onChange={(e) => onChange({ ...clip, label: e.target.value })}
+          placeholder="On-screen text (optional) — e.g. 1. Hollow blocks"
+          disabled={disabled}
+          className="h-7 text-xs"
+          maxLength={60}
+        />
 
         <div className="flex items-center gap-x-3 gap-y-1 flex-wrap">
           <div className="flex items-center gap-1">
