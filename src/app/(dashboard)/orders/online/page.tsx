@@ -186,6 +186,11 @@ export default function OnlineOrdersPage() {
                       >
                         {order.order_number}
                       </Link>
+                      {(order.special_lines?.length ?? 0) > 0 && (
+                        <span className="block mt-0.5 w-fit rounded-full bg-blue-100 text-blue-800 border border-blue-200 px-2 py-0.5 text-[10px] font-semibold">
+                          {order.special_lines!.length} special request{order.special_lines!.length > 1 ? 's' : ''}
+                        </span>
+                      )}
                     </TableCell>
                     <TableCell>
                       <div>

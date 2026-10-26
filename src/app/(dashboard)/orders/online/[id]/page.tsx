@@ -26,10 +26,14 @@ import {
   useUpdateOnlineOrderFulfillment,
   useSoftDeleteOnlineOrder,
   useRestoreOnlineOrder,
+  useReplaceSpecialRequestLine,
+  useSignedRequestPhotoUrls,
+  type OnlineOrderLine,
   type OnlineOrderStatus,
   type OnlineOrderPaymentStatus,
   type OnlineOrderPaymentMethod,
 } from '@/hooks/useOnlineOrders'
+import { MediaLightbox } from '@/components/marketing/media-lightbox'
 import { usePOSProductSearch } from '@/hooks/useTransactions'
 import { useShopBranchId } from '@/hooks/useShopSettings'
 import { useDiscountRules } from '@/hooks/useDiscountRules'
@@ -64,6 +68,42 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Input } from '@/components/ui/input'
 import { toast } from 'sonner'
+
+// A customer's request for an item that isn't in the catalog: what they
+// described, their sample photos (private bucket → signed URLs), and the
+// action to swap it for a real product so the order can become a sale.
+function SpecialRequestDetails({ line, canReplace, onReplace }: { line: OnlineOrderLine; canReplace: boolean; onReplace: () => void }) {
+  const { data: photoUrls = [], isLoading } = useSignedRequestPhotoUrls(line.request_photos)
+  return (
+    <div className="mt-1 space-y-1.5">
+      <Badge className="bg-blue-100 text-blue-800 border border-blue-200 text-[10px]">Special request · not in catalog</Badge>
+      {line.request_description && <p className="text-xs text-slate-600 whitespace-pre-wrap">{line.request_description}</p>}
+      {(line.request_photos?.length ?? 0) > 0 && (
+        <div className="flex gap-1.5">
+          {isLoading && <span className="text-[11px] text-slate-400">Loading photos…</span>}
+          {photoUrls.map((url, i) => (
+            <div key={url} className="w-14 h-14 rounded-md overflow-hidden border bg-slate-100">
+              <MediaLightbox
+                url={url}
+                mediaType="image"
+                label={`Sample photo ${i + 1}`}
+                trigger={
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={url} alt={`Sample photo ${i + 1}`} className="w-full h-full object-cover" />
+                }
+              />
+            </div>
+          ))}
+        </div>
+      )}
+      {canReplace && (
+        <Button size="sm" variant="outline" className="h-7 text-xs" onClick={onReplace}>
+          Replace with product
+        </Button>
+      )}
+    </div>
+  )
+}
 
 function formatPrice(amount: number) {
   return '₱' + Number(amount).toLocaleString('en-PH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
@@ -150,6 +190,9 @@ export default function OnlineOrderDetailPage({ params }: { params: Promise<{ id
 
   const [showAddProduct, setShowAddProduct] = useState(false)
   const [productQuery, setProductQuery] = useState('')
+  // Set while the add-product search is being used to replace a special request.
+  const [replacingLine, setReplacingLine] = useState<OnlineOrderLine | null>(null)
+  const replaceSpecial = useReplaceSpecialRequestLine()
   const { data: searchResults = [], isLoading: isSearching } = usePOSProductSearch(productQuery, branchId ?? '')
 
   const [showDiscountPanel, setShowDiscountPanel] = useState(false)
@@ -167,6 +210,12 @@ export default function OnlineOrderDetailPage({ params }: { params: Promise<{ id
     return line.quantity > onHand
   })
   const hasShortages = shortages.length > 0
+  // Special requests have no product (no unit/cost) and can't go into a
+  // POS sale until staff replace them with a real product.
+  const specialRequestCount = (order?.lines ?? []).filter(l => l.is_special_request).length
+  const convertBlockedReason = specialRequestCount > 0
+    ? 'Replace the special request(s) with products before converting'
+    : hasShortages ? 'Adjust quantities to match available stock before converting' : undefined
 
   const { data: signedProofUrl, isLoading: proofLoading } = useSignedPaymentProofUrl(order?.payment_proof_url ?? null)
 
@@ -328,7 +377,38 @@ export default function OnlineOrderDetailPage({ params }: { params: Promise<{ id
     )
   }
 
+  function startReplaceSpecial(line: OnlineOrderLine) {
+    setReplacingLine(line)
+    setShowAddProduct(true)
+    setProductQuery(line.product_name.slice(0, 40))
+  }
+
   function handleAddProduct(product: { id: string; code: string; name: string; unit_price: number; selling_uom_abbreviation: string }) {
+    if (replacingLine) {
+      replaceSpecial.mutate(
+        {
+          lineId: replacingLine.id,
+          quantity: Number(replacingLine.quantity),
+          product: {
+            id: product.id,
+            code: product.code,
+            name: product.name,
+            unit_price: product.unit_price,
+            unit_label: product.selling_uom_abbreviation,
+          },
+        },
+        {
+          onSuccess: () => {
+            toast.success(`Special request replaced with ${product.name}`)
+            setReplacingLine(null)
+            setShowAddProduct(false)
+            setProductQuery('')
+          },
+          onError: (e) => toast.error(e.message),
+        }
+      )
+      return
+    }
     addLine.mutate(
       {
         order_id: id,
@@ -472,8 +552,8 @@ export default function OnlineOrderDetailPage({ params }: { params: Promise<{ id
               {!order.transaction_id && order.status !== 'cancelled' && (
                 <Button
                   onClick={handleConvertToSale}
-                  disabled={hasShortages}
-                  title={hasShortages ? 'Adjust quantities to match available stock before converting' : undefined}
+                  disabled={!!convertBlockedReason}
+                  title={convertBlockedReason}
                   className="bg-green-600 hover:bg-green-700 text-white gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <ShoppingCart className="w-4 h-4" />
@@ -594,6 +674,17 @@ export default function OnlineOrderDetailPage({ params }: { params: Promise<{ id
 
               {showAddProduct && (
                 <div className="mt-2 border rounded-lg p-3 bg-muted/30 space-y-2">
+                  {replacingLine && (
+                    <div className="flex items-start justify-between gap-2 rounded-md bg-blue-50 border border-blue-200 px-3 py-2">
+                      <p className="text-xs text-blue-900">
+                        <span className="font-semibold">Replacing special request:</span> {replacingLine.product_name} × {replacingLine.quantity} {replacingLine.unit_label}.
+                        Pick the matching product. Not in the system yet? Create it in Inventory first.
+                      </p>
+                      <Button size="sm" variant="ghost" className="h-6 text-[11px] px-2" onClick={() => { setReplacingLine(null); setShowAddProduct(false); setProductQuery('') }}>
+                        Cancel
+                      </Button>
+                    </div>
+                  )}
                   <div className="relative">
                     <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
                     <Input
@@ -616,7 +707,7 @@ export default function OnlineOrderDetailPage({ params }: { params: Promise<{ id
                             key={product.id}
                             type="button"
                             onClick={() => handleAddProduct(product)}
-                            disabled={addLine.isPending}
+                            disabled={addLine.isPending || replaceSpecial.isPending}
                             className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left hover:bg-slate-50 disabled:opacity-50"
                           >
                             <div className="min-w-0">
@@ -680,10 +771,20 @@ export default function OnlineOrderDetailPage({ params }: { params: Promise<{ id
                     <tr key={line.id} className="border-b border-slate-50">
                       <td className="px-4 py-2">
                         <p className="font-medium leading-snug">{line.product_name}</p>
-                        <p className="text-xs text-slate-400">{line.product_code}</p>
+                        {line.is_special_request ? (
+                          <SpecialRequestDetails
+                            line={line}
+                            canReplace={order.status !== 'cancelled' && !order.transaction_id && !order.deleted_at}
+                            onReplace={() => startReplaceSpecial(line)}
+                          />
+                        ) : (
+                          <p className="text-xs text-slate-400">{line.product_code}</p>
+                        )}
                       </td>
                       <td className="px-4 py-2 text-right text-slate-600">
-                        {formatPrice(line.unit_price)}/{line.unit_label}
+                        {line.is_special_request
+                          ? <span className="text-xs text-blue-700">To quote</span>
+                          : <>{formatPrice(line.unit_price)}/{line.unit_label}</>}
                       </td>
                       <td className="px-4 py-2 text-right">
                         {editingLineId === line.id ? (
@@ -727,7 +828,7 @@ export default function OnlineOrderDetailPage({ params }: { params: Promise<{ id
                         )}
                       </td>
                       <td className="px-4 py-2 text-right font-medium">
-                        {formatPrice(line.line_total)}
+                        {line.is_special_request ? <span className="text-xs font-normal text-blue-700">—</span> : formatPrice(line.line_total)}
                         {line.discount_amount > 0 && (
                           <p className="text-[11px] text-green-600 font-normal">-{formatPrice(line.discount_amount)} off</p>
                         )}
@@ -1108,13 +1209,15 @@ export default function OnlineOrderDetailPage({ params }: { params: Promise<{ id
             <div className="bg-green-50 border border-green-200 rounded-xl p-4">
               <p className="text-sm text-green-800 font-medium mb-1">Ready to process?</p>
               <p className="text-xs text-green-700 mb-3">
-                {hasShortages
-                  ? 'Adjust the line items above to match available stock, then convert.'
-                  : 'Click "Convert to Sale" to open the sale screen with this order\'s items and customer pre-filled.'}
+                {specialRequestCount > 0
+                  ? `This order has ${specialRequestCount} special request${specialRequestCount > 1 ? 's' : ''}. Use "Replace with product" on each one (create the product in Inventory first if it's new), then convert.`
+                  : hasShortages
+                    ? 'Adjust the line items above to match available stock, then convert.'
+                    : 'Click "Convert to Sale" to open the sale screen with this order\'s items and customer pre-filled.'}
               </p>
               <Button
                 onClick={handleConvertToSale}
-                disabled={hasShortages}
+                disabled={!!convertBlockedReason}
                 className="w-full bg-green-600 hover:bg-green-700 text-white gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <ShoppingCart className="w-4 h-4" />

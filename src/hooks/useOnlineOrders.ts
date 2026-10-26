@@ -19,6 +19,11 @@ export interface OnlineOrderLine {
   quantity: number
   line_total: number
   discount_amount: number
+  /** An item the customer asked for that isn't in the catalog (migration 00101). */
+  is_special_request?: boolean
+  request_description?: string | null
+  /** Paths in the private special-request-photos bucket. */
+  request_photos?: string[] | null
 }
 
 export interface OnlineOrder {
@@ -53,6 +58,8 @@ export interface OnlineOrder {
   updated_at: string
   deleted_at: string | null
   lines?: OnlineOrderLine[]
+  /** List view only: ids of special-request lines (empty when none). */
+  special_lines?: { id: string }[]
   // joined
   customer?: { id: string; name: string; created_at: string } | null
 }
@@ -79,7 +86,10 @@ export function useOnlineOrders(statusFilter?: OnlineOrderStatus) {
       const supabase = getClient()
       let q = supabase
         .from('online_orders')
-        .select('*, customer:customers(id, name, created_at)')
+        .select('*, customer:customers(id, name, created_at), special_lines:online_order_lines(id)')
+        // Filters the embedded lines (not the orders): special_lines ends up
+        // empty for orders without a special request.
+        .eq('special_lines.is_special_request', true)
         .is('deleted_at', null)
         .order('created_at', { ascending: false })
         .limit(100)
@@ -191,6 +201,74 @@ export function useSignedPaymentProofUrl(path: string | null) {
     },
     enabled: !!path,
     staleTime: 1000 * 60 * 4,
+  })
+}
+
+/** Short-lived signed URLs for a special request's sample photos (private bucket). */
+export function useSignedRequestPhotoUrls(paths: string[] | null | undefined) {
+  const list = paths ?? []
+  return useQuery({
+    queryKey: ['special_request_photo_urls', list],
+    queryFn: async () => {
+      const supabase = getClient()
+      const { data, error } = await supabase.storage
+        .from('special-request-photos')
+        .createSignedUrls(list, 600)
+      if (error) throw new Error(error.message)
+      return (data ?? []).map((d) => d.signedUrl).filter((u): u is string => !!u)
+    },
+    enabled: list.length > 0,
+    staleTime: 1000 * 60 * 8,
+  })
+}
+
+/**
+ * Replaces a special-request line with a real catalog product (same
+ * quantity unless changed), as one logged change — after this the order
+ * can be converted to a sale.
+ */
+export function useReplaceSpecialRequestLine() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ lineId, product, quantity }: {
+      lineId: string
+      product: { id: string; code: string; name: string; unit_price: number; unit_label: string }
+      quantity: number
+    }) => {
+      const supabase = getClient()
+      const { data: line, error: fetchErr } = await supabase
+        .from('online_order_lines')
+        .select('order_id, product_name')
+        .eq('id', lineId)
+        .single()
+      if (fetchErr) throw new Error(fetchErr.message)
+
+      const { error: insertErr } = await supabase.from('online_order_lines').insert({
+        order_id: line.order_id,
+        product_id: product.id,
+        product_code: product.code,
+        product_name: product.name,
+        unit_label: product.unit_label,
+        unit_price: product.unit_price,
+        quantity,
+        line_total: product.unit_price * quantity,
+      })
+      if (insertErr) throw new Error(insertErr.message)
+
+      const { error: deleteErr } = await supabase.from('online_order_lines').delete().eq('id', lineId)
+      if (deleteErr) throw new Error(deleteErr.message)
+
+      await recalcOrderTotals(
+        supabase,
+        line.order_id,
+        `Staff replaced special request "${line.product_name}" with ${product.name} × ${quantity} ${product.unit_label}`
+      )
+      return line.order_id
+    },
+    onSuccess: (orderId) => {
+      qc.invalidateQueries({ queryKey: keys.detail(orderId) })
+      qc.invalidateQueries({ queryKey: keys.list() })
+    },
   })
 }
 
