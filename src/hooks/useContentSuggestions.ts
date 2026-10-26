@@ -53,6 +53,7 @@ export interface ContentSuggestion {
     tags: string | null
     best_time: string | null
     purpose: string | null
+    planned_for: string | null
   } | null
   creative_media?: { id: string; media_type: string; storage_key: string; original_filename: string } | null
   voice_media?: { id: string; media_type: string; storage_key: string } | null
@@ -74,7 +75,7 @@ export function useContentSuggestions(statusFilter?: SuggestionStatus) {
           *,
           source_product:products(id, name),
           source_media:content_media!content_suggestions_source_media_id_fkey(id, media_type, storage_key, original_filename),
-          source_idea:content_ideas(id, title, creative_prompt, stock_keywords, hashtags, tags, best_time, purpose),
+          source_idea:content_ideas(id, title, creative_prompt, stock_keywords, hashtags, tags, best_time, purpose, planned_for),
           creative_media:content_media!content_suggestions_creative_media_id_fkey(id, media_type, storage_key, original_filename),
           voice_media:content_media!content_suggestions_voice_media_id_fkey(id, media_type, storage_key)
         `)

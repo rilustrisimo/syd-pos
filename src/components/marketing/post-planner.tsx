@@ -75,11 +75,11 @@ export function PostPlanner() {
             className="text-sm flex-1 min-w-[240px]"
             disabled={plan.isPending}
           />
-          <Button onClick={() => run('today')} disabled={plan.isPending} className="gap-1.5">
-            <Sparkles className="w-4 h-4" /> {plan.isPending ? 'Planning…' : "Plan today's post"}
+          <Button onClick={() => run('week')} disabled={plan.isPending} className="gap-1.5">
+            <CalendarDays className="w-4 h-4" /> {plan.isPending ? 'Planning…' : 'Plan this week'}
           </Button>
-          <Button variant="outline" onClick={() => run('week')} disabled={plan.isPending} className="gap-1.5">
-            <CalendarDays className="w-4 h-4" /> Plan this week
+          <Button variant="outline" onClick={() => run('today')} disabled={plan.isPending} className="gap-1.5">
+            <Sparkles className="w-4 h-4" /> Just today
           </Button>
         </div>
         <p className="text-[11px] text-slate-500">

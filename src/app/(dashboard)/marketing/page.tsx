@@ -49,6 +49,7 @@ import { MediaLightbox } from '@/components/marketing/media-lightbox'
 import { ReelBuilderDialog } from '@/components/marketing/reel-builder-dialog'
 import { PostPlanner } from '@/components/marketing/post-planner'
 import { CreativeStyleBadge } from '@/components/marketing/creative-style-badge'
+import { CalendarReminders } from '@/components/marketing/calendar-reminders'
 import {
   FORMAT_LABELS,
   FORMAT_COLORS,
@@ -241,7 +242,7 @@ function PostingDetails({ suggestion }: { suggestion: ContentSuggestion }) {
   return (
     <div className="rounded-md border bg-slate-50 px-3 py-2 text-xs space-y-1.5">
       {idea?.best_time && (
-        <p><span className="font-medium text-slate-600">Post at:</span> {idea.best_time}</p>
+        <p><span className="font-medium text-slate-600">Post at:</span> {idea.planned_for ? `${idea.planned_for}, ` : ''}{idea.best_time}</p>
       )}
       {idea?.tags && (
         <p><span className="font-medium text-slate-600">Tag:</span> {idea.tags}</p>
@@ -612,6 +613,8 @@ function MarketingFeedPage() {
       </div>
 
       <PostPlanner />
+
+      <CalendarReminders />
 
       <NewSuggestionForm onCreated={() => refetch()} />
 
