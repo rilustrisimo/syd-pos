@@ -18,6 +18,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import type { ContentAudience, ContentFormat } from '@/hooks/useContentIdeas'
 import { AUDIENCE_BRIEFS } from '@/lib/marketing/brand'
+import { composeCaption, loadStoreContact } from '@/lib/marketing/store-contact'
 import { CREATIVE_STYLES, isCreativeStyle, type CreativeStyle } from '@/lib/marketing/creative-styles'
 
 const GEMINI_MODEL = 'gemini-3.6-flash'
@@ -38,6 +39,8 @@ purposes and should not just be copies of each other:
 2. "caption": a short written caption for the Facebook/Instagram post itself
    (2-4 short sentences), ending with a light call-to-action (visit the
    store, message to order, or check the online shop at sydconstruct.com).
+   Do not include a phone number or street address — the store's real
+   contact details are appended automatically.
 3. "hashtags": up to 5 relevant hashtags (each including the leading #).`
 
 // Reels are narrated by an English TTS voice that mispronounces Tagalog
@@ -230,7 +233,8 @@ export async function POST(request: Request) {
       script = parsed.script?.trim() || null
       const caption = parsed.caption?.trim() || ''
       const hashtags = parsed.hashtags?.filter(Boolean) ?? []
-      caption_draft = (caption + (hashtags.length ? '\n\n' + hashtags.join(' ') : '')).trim()
+      // Store address/phone come from shop settings, appended as-is.
+      caption_draft = caption ? composeCaption(caption, await loadStoreContact(supabase as any), hashtags) : ''
     } catch (parseErr) {
       console.error('[generate-suggestion] Failed to parse Gemini JSON output', parseErr, rawText)
     }

@@ -13,6 +13,7 @@ import { createClient } from '@/lib/supabase/server'
 import { requireMarketingStaff } from '@/lib/marketing/staff-auth'
 import { toConceptCode } from '@/lib/marketing/concept-code'
 import { isCreativeStyle } from '@/lib/marketing/creative-styles'
+import { composeCaption, loadStoreContact } from '@/lib/marketing/store-contact'
 import type { PlannedPost } from '@/lib/marketing/planner-prompts'
 
 export async function POST(request: Request) {
@@ -27,6 +28,7 @@ export async function POST(request: Request) {
     }
 
     const db = supabase as any
+    const contact = await loadStoreContact(db)
     let saved = 0
     for (const p of posts.slice(0, 14)) {
       const isReel = p.format === 'reel'
@@ -64,7 +66,7 @@ export async function POST(request: Request) {
         platform: 'both',
         script: isReel ? p.voice_script : p.angle,
         voice_script: isReel ? p.voice_script : null,
-        caption_draft: `${p.caption.trim()}\n\n${hashtags}`.trim(),
+        caption_draft: composeCaption(p.caption, contact, hashtags),
         format: p.format,
         audience: p.audience,
         concept_code: conceptCode,

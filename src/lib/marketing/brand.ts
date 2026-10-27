@@ -19,7 +19,9 @@ times, or technical/engineering claims. Captions may be taglish (natural
 English + Filipino). Reel voiceover scripts must be plain English only (an
 English text-to-speech voice reads them). Brand colors: dark slate #0F172A,
 yellow #FFC107, white. Every post points people to sydconstruct.com to
-request a quote, or to message the page.`
+request a quote, or to message the page. Never write a phone number or
+street address in captions — the store's real contact block is appended
+automatically.`
 
 export const AUDIENCE_BRIEFS: Record<ContentAudience, string> = {
   contractor:
