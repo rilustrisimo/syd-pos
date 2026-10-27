@@ -1,7 +1,7 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import { Images, Upload, Trash2, Film, FileImage, Search, Download } from 'lucide-react'
+import { Images, Upload, Trash2, Film, FileImage, Search, Download, Play } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -121,8 +121,32 @@ function StockSearchTab() {
             return (
               <div key={key} className="border rounded-lg overflow-hidden">
                 <div className="aspect-square bg-slate-100">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={result.thumbnailUrl} alt={result.attribution} className="w-full h-full object-cover" />
+                  <MediaLightbox
+                    url={result.fullUrl}
+                    mediaType={result.type}
+                    label={result.attribution}
+                    trigger={
+                      <span className="relative block w-full h-full">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={result.thumbnailUrl} alt={result.attribution} className="w-full h-full object-cover" />
+                        {result.type === 'video' && (
+                          <span className="absolute inset-0 flex items-center justify-center">
+                            <span className="rounded-full bg-black/55 p-2.5"><Play className="w-5 h-5 text-white fill-white" /></span>
+                          </span>
+                        )}
+                      </span>
+                    }
+                    action={
+                      <button
+                        type="button"
+                        onClick={() => handleImport(result)}
+                        disabled={importingKey === key}
+                        className="inline-flex items-center gap-1.5 rounded-md bg-white/10 hover:bg-white/20 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-60"
+                      >
+                        <Download className="w-3.5 h-3.5" /> {importingKey === key ? 'Adding…' : 'Add to Library'}
+                      </button>
+                    }
+                  />
                 </div>
                 <div className="p-2 space-y-1">
                   <div className="flex gap-1 flex-wrap">
