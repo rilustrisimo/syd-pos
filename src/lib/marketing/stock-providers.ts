@@ -30,22 +30,30 @@ export interface StockSearchResult {
   downloadLocation?: string
 }
 
-export async function searchPexels(query: string): Promise<StockSearchResult[]> {
+/** Which media to search for; a single type gets a bigger page of it. */
+export type StockKind = 'all' | 'image' | 'video'
+
+const perPage = (kind: StockKind, type: 'image' | 'video') =>
+  kind === 'all' ? (type === 'image' ? 12 : 8) : 24
+
+const skip = () => Promise.resolve(null)
+
+export async function searchPexels(query: string, kind: StockKind = 'all'): Promise<StockSearchResult[]> {
   const apiKey = process.env.PEXELS_API_KEY
   if (!apiKey) return []
   try {
     const [photosRes, videosRes] = await Promise.all([
-      fetch(`https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=12`, {
+      kind === 'video' ? skip() : fetch(`https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=${perPage(kind, 'image')}`, {
         headers: { Authorization: apiKey },
       }),
-      fetch(`https://api.pexels.com/videos/search?query=${encodeURIComponent(query)}&per_page=8`, {
+      kind === 'image' ? skip() : fetch(`https://api.pexels.com/videos/search?query=${encodeURIComponent(query)}&per_page=${perPage(kind, 'video')}`, {
         headers: { Authorization: apiKey },
       }),
     ])
 
     const results: StockSearchResult[] = []
 
-    if (photosRes.ok) {
+    if (photosRes?.ok) {
       const data = await photosRes.json()
       for (const p of data.photos ?? []) {
         results.push({
@@ -57,7 +65,7 @@ export async function searchPexels(query: string): Promise<StockSearchResult[]> 
       }
     }
 
-    if (videosRes.ok) {
+    if (videosRes?.ok) {
       const data = await videosRes.json()
       for (const v of data.videos ?? []) {
         const file = v.video_files?.find((f: any) => f.quality === 'hd') ?? v.video_files?.find((f: any) => f.quality === 'sd')
@@ -78,18 +86,18 @@ export async function searchPexels(query: string): Promise<StockSearchResult[]> 
   }
 }
 
-export async function searchPixabay(query: string): Promise<StockSearchResult[]> {
+export async function searchPixabay(query: string, kind: StockKind = 'all'): Promise<StockSearchResult[]> {
   const apiKey = process.env.PIXABAY_API_KEY
   if (!apiKey) return []
   try {
     const [imagesRes, videosRes] = await Promise.all([
-      fetch(`https://pixabay.com/api/?key=${apiKey}&q=${encodeURIComponent(query)}&image_type=photo&per_page=12`),
-      fetch(`https://pixabay.com/api/videos/?key=${apiKey}&q=${encodeURIComponent(query)}&per_page=8`),
+      kind === 'video' ? skip() : fetch(`https://pixabay.com/api/?key=${apiKey}&q=${encodeURIComponent(query)}&image_type=photo&per_page=${perPage(kind, 'image')}`),
+      kind === 'image' ? skip() : fetch(`https://pixabay.com/api/videos/?key=${apiKey}&q=${encodeURIComponent(query)}&per_page=${perPage(kind, 'video')}`),
     ])
 
     const results: StockSearchResult[] = []
 
-    if (imagesRes.ok) {
+    if (imagesRes?.ok) {
       const data = await imagesRes.json()
       for (const hit of data.hits ?? []) {
         results.push({
@@ -101,7 +109,7 @@ export async function searchPixabay(query: string): Promise<StockSearchResult[]>
       }
     }
 
-    if (videosRes.ok) {
+    if (videosRes?.ok) {
       const data = await videosRes.json()
       for (const hit of data.hits ?? []) {
         const file = hit.videos?.medium ?? hit.videos?.small
@@ -122,11 +130,12 @@ export async function searchPixabay(query: string): Promise<StockSearchResult[]>
   }
 }
 
-export async function searchUnsplash(query: string): Promise<StockSearchResult[]> {
+// Unsplash is photos only — the route skips it for video searches.
+export async function searchUnsplash(query: string, kind: StockKind = 'all'): Promise<StockSearchResult[]> {
   const accessKey = process.env.UNSPLASH_ACCESS_KEY
-  if (!accessKey) return []
+  if (!accessKey || kind === 'video') return []
   try {
-    const res = await fetch(`https://api.unsplash.com/search/photos?query=${encodeURIComponent(query)}&per_page=12`, {
+    const res = await fetch(`https://api.unsplash.com/search/photos?query=${encodeURIComponent(query)}&per_page=${perPage(kind, 'image')}`, {
       headers: { Authorization: `Client-ID ${accessKey}` },
     })
     if (!res.ok) return []

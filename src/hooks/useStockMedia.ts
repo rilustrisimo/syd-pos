@@ -1,16 +1,16 @@
 'use client'
 
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import type { StockSearchResult } from '@/lib/marketing/stock-providers'
+import type { StockKind, StockSearchResult } from '@/lib/marketing/stock-providers'
 
-export type { StockSearchResult }
+export type { StockKind, StockSearchResult }
 
 // Mutations only, not a useQuery — search results aren't cached like a
 // normal library listing, they're a fresh query-per-search.
 export function useSearchStockMedia() {
   return useMutation({
-    mutationFn: async (q: string) => {
-      const res = await fetch(`/api/media/search-stock?q=${encodeURIComponent(q)}`)
+    mutationFn: async ({ q, kind = 'all' }: { q: string; kind?: StockKind }) => {
+      const res = await fetch(`/api/media/search-stock?q=${encodeURIComponent(q)}&type=${kind}`)
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Failed to search stock media')
       return data.results as StockSearchResult[]

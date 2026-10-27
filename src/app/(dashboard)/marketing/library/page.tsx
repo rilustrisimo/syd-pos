@@ -25,7 +25,7 @@ import {
   getContentMediaUrl,
   type ContentMedia,
 } from '@/hooks/useContentMedia'
-import { useSearchStockMedia, useImportStockMedia, type StockSearchResult } from '@/hooks/useStockMedia'
+import { useSearchStockMedia, useImportStockMedia, type StockKind, type StockSearchResult } from '@/hooks/useStockMedia'
 import { MediaLightbox } from '@/components/marketing/media-lightbox'
 import { uploadMediaFile } from '@/lib/marketing/upload'
 import { downloadMediaFile } from '@/lib/marketing/download'
@@ -36,16 +36,29 @@ const SOURCE_LABELS: Record<StockSearchResult['source'], string> = {
   unsplash: 'Unsplash',
 }
 
+const STOCK_KINDS: { value: StockKind; label: string }[] = [
+  { value: 'all', label: 'All' },
+  { value: 'image', label: 'Images' },
+  { value: 'video', label: 'Videos' },
+]
+
 function StockSearchTab() {
   const [query, setQuery] = useState('')
+  const [kind, setKind] = useState<StockKind>('all')
   const search = useSearchStockMedia()
   const importMedia = useImportStockMedia()
   const [importingKey, setImportingKey] = useState<string | null>(null)
   const results = search.data ?? []
 
-  function handleSearch() {
+  function handleSearch(nextKind: StockKind = kind) {
     if (!query.trim()) return
-    search.mutate(query.trim())
+    search.mutate({ q: query.trim(), kind: nextKind })
+  }
+
+  // Switching the filter re-runs the current search.
+  function handleKind(next: StockKind) {
+    setKind(next)
+    handleSearch(next)
   }
 
   async function handleImport(result: StockSearchResult) {
@@ -74,7 +87,22 @@ function StockSearchTab() {
             className="pl-8 text-sm"
           />
         </div>
-        <Button onClick={handleSearch} disabled={search.isPending || !query.trim()}>
+        <div className="flex rounded-md border p-0.5" role="group" aria-label="Media type">
+          {STOCK_KINDS.map((k) => (
+            <Button
+              key={k.value}
+              size="sm"
+              variant={kind === k.value ? 'secondary' : 'ghost'}
+              className="h-8 px-3 text-xs"
+              aria-pressed={kind === k.value}
+              onClick={() => handleKind(k.value)}
+              disabled={search.isPending}
+            >
+              {k.label}
+            </Button>
+          ))}
+        </div>
+        <Button onClick={() => handleSearch()} disabled={search.isPending || !query.trim()}>
           {search.isPending ? 'Searching...' : 'Search'}
         </Button>
       </div>
@@ -84,7 +112,7 @@ function StockSearchTab() {
       ) : results.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 text-slate-400 gap-2">
           <Search className="w-10 h-10 opacity-30" />
-          <p className="text-sm">{query ? 'No results — try a different search' : 'Search for free stock photos and video'}</p>
+          <p className="text-sm">{query ? 'No results — try a different search' : `Search for free stock ${kind === 'image' ? 'photos' : kind === 'video' ? 'videos' : 'photos and video'}`}</p>
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
@@ -97,7 +125,14 @@ function StockSearchTab() {
                   <img src={result.thumbnailUrl} alt={result.attribution} className="w-full h-full object-cover" />
                 </div>
                 <div className="p-2 space-y-1">
-                  <Badge variant="outline" className="text-[10px]">{SOURCE_LABELS[result.source]}</Badge>
+                  <div className="flex gap-1 flex-wrap">
+                    <Badge variant="outline" className="text-[10px]">{SOURCE_LABELS[result.source]}</Badge>
+                    {result.type === 'video' && (
+                      <Badge variant="outline" className="text-[10px]">
+                        Video{result.durationSeconds ? ` · ${Math.floor(result.durationSeconds / 60)}:${String(Math.round(result.durationSeconds % 60)).padStart(2, '0')}` : ''}
+                      </Badge>
+                    )}
+                  </div>
                   <p className="text-[11px] text-slate-400 truncate" title={result.attribution}>{result.attribution}</p>
                   <Button
                     size="sm"

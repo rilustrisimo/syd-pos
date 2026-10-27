@@ -1,5 +1,5 @@
 /**
- * GET /api/media/search-stock?q=...
+ * GET /api/media/search-stock?q=...&type=all|image|video
  *
  * Searches Pexels, Pixabay, and Unsplash in parallel and returns a
  * combined, normalized result list for the Marketing > Library
@@ -9,7 +9,7 @@
 
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { searchPexels, searchPixabay, searchUnsplash } from '@/lib/marketing/stock-providers'
+import { searchPexels, searchPixabay, searchUnsplash, type StockKind } from '@/lib/marketing/stock-providers'
 
 export async function GET(request: Request) {
   try {
@@ -29,15 +29,18 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Not authorized' }, { status: 403 })
     }
 
-    const q = new URL(request.url).searchParams.get('q')?.trim()
+    const params = new URL(request.url).searchParams
+    const q = params.get('q')?.trim()
+    const type = params.get('type')
+    const kind: StockKind = type === 'image' || type === 'video' ? type : 'all'
     if (!q) {
       return NextResponse.json({ error: 'q is required' }, { status: 400 })
     }
 
     const [pexels, pixabay, unsplash] = await Promise.all([
-      searchPexels(q),
-      searchPixabay(q),
-      searchUnsplash(q),
+      searchPexels(q, kind),
+      searchPixabay(q, kind),
+      searchUnsplash(q, kind),
     ])
 
     return NextResponse.json({ results: [...pexels, ...pixabay, ...unsplash] })
