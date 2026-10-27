@@ -10,6 +10,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { requireMarketingStaff } from '@/lib/marketing/staff-auth'
 import { buildDigest, loadInsights } from '@/lib/marketing/insights-data'
+import { loadProductDigest, productIdsByCode } from '@/lib/marketing/product-signals'
 import { geminiJson, GeminiError } from '@/lib/marketing/gemini'
 import { toConceptCode } from '@/lib/marketing/concept-code'
 import { PLANNER_SYSTEM, CONCEPTS_SCHEMA, conceptsPrompt, type AdConcept } from '@/lib/marketing/planner-prompts'
@@ -34,21 +35,28 @@ export async function POST(request: Request) {
       productName = product?.name ?? null
     }
 
-    const data = await loadInsights(supabase as any)
+    // With a product picked, the concepts are about it; otherwise the
+    // planner picks products from the store signals.
+    const [data, productDigest] = await Promise.all([
+      loadInsights(supabase as any),
+      body.source_product_id ? Promise.resolve('') : loadProductDigest(supabase as any),
+    ])
     const result = await geminiJson<{ concepts: AdConcept[] }>({
       system: PLANNER_SYSTEM,
-      prompt: conceptsPrompt(buildDigest(data), { topic: body.topic?.trim().slice(0, 200) ?? '', productName, audiences, count }),
+      prompt: conceptsPrompt(buildDigest(data) + productDigest, { topic: body.topic?.trim().slice(0, 200) ?? '', productName, audiences, count }),
       schema: CONCEPTS_SCHEMA,
       maxOutputTokens: 9000,
     })
 
     // Make codes unique against each other and against existing ideas.
     const taken = new Set(data.ideas.map((i) => i.concept_code).filter(Boolean))
+    const productIds = body.source_product_id ? null : await productIdsByCode(supabase as any, (result.concepts ?? []).map((c) => c.product_code ?? ''))
     const concepts = (result.concepts ?? []).map((c) => {
       let code = toConceptCode(c.concept_code || c.title)
       for (let n = 2; taken.has(code); n++) code = `${toConceptCode(c.concept_code || c.title).slice(0, 36)}-${n}`
       taken.add(code)
-      return { ...c, concept_code: code }
+      const source_product_id = body.source_product_id ?? productIds?.get(c.product_code?.trim() ?? '') ?? null
+      return { ...c, concept_code: code, source_product_id }
     })
 
     return NextResponse.json({ concepts })

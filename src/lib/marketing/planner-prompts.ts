@@ -49,6 +49,7 @@ export interface PlannedPost {
   audience: ContentAudience
   creative_style: CreativeStyle
   title: string
+  product_code: string
   angle: string
   best_time: string
   caption: string
@@ -75,6 +76,7 @@ export const PLAN_SCHEMA = {
           audience: { type: 'STRING', enum: AUDIENCE_ENUM },
           creative_style: { type: 'STRING', enum: STYLE_ENUM, description: 'How the post is made; its recipe shapes the creative prompt / shot list.' },
           title: { type: 'STRING', description: 'Short internal title.' },
+          product_code: { type: 'STRING', description: 'Code of the featured product from PRODUCT SIGNALS (the text in [brackets]), or empty if the post is not about one product.' },
           angle: { type: 'STRING', description: 'The hook / problem / proof this post is built on, one line.' },
           best_time: { type: 'STRING', description: 'Posting time copied from the BEST TIMES list for that weekday, e.g. "Tue 8:00 PM".' },
           caption: { type: 'STRING', description: 'Ready-to-post caption, taglish allowed, 2-5 short sentences, ends with a call to action. No hashtags inside.' },
@@ -87,8 +89,8 @@ export const PLAN_SCHEMA = {
           stock_keywords: { type: 'STRING', description: 'Reel only: stock video search terms separated by semicolons. Empty otherwise.' },
           why: { type: 'STRING', description: 'One sentence: why this post, today, at this time — cite the data when there is some.' },
         },
-        required: ['date', 'format', 'audience', 'creative_style', 'title', 'angle', 'best_time', 'caption', 'hashtags', 'tags', 'creative_prompt', 'shot_list', 'stickers', 'voice_script', 'stock_keywords', 'why'],
-        propertyOrdering: ['date', 'format', 'audience', 'creative_style', 'title', 'angle', 'best_time', 'caption', 'hashtags', 'tags', 'creative_prompt', 'shot_list', 'stickers', 'voice_script', 'stock_keywords', 'why'],
+        required: ['date', 'format', 'audience', 'creative_style', 'title', 'product_code', 'angle', 'best_time', 'caption', 'hashtags', 'tags', 'creative_prompt', 'shot_list', 'stickers', 'voice_script', 'stock_keywords', 'why'],
+        propertyOrdering: ['date', 'format', 'audience', 'creative_style', 'title', 'product_code', 'angle', 'best_time', 'caption', 'hashtags', 'tags', 'creative_prompt', 'shot_list', 'stickers', 'voice_script', 'stock_keywords', 'why'],
       },
     },
   },
@@ -104,6 +106,7 @@ export function planPrompt(digest: string, dates: string[], note?: string): stri
     week
       ? `Plan one organic post for each of these dates: ${dates.join(', ')}. Balance the week: about 2-3 reels, 2 carousels, 2-3 single images; rotate audiences (contractor, business_farm, family_build) with at most 1 general post; no two posts on the same topic or hook. Creative styles: use at least 4 different styles across the week, no style more than twice, and never the same style on two consecutive days.`
       : `Plan today's single best organic post for ${dates[0]}. Pick the format and audience that the data (and this week's plan, if any) suggests is most needed now, and a creative style different from the last 2 posts listed in the data.`,
+    'Choose products from PRODUCT SIGNALS when there are some: favour trending, in-season and asked-for items, spread posts across different products and categories, and never feature the same product twice in one plan. A product featured before is fine with a new angle, creative style and audience.',
     'Each post must be ready to produce: a creative prompt for images/carousels, or a shot list + voice script for reels.',
     'Its best_time must be one of the listed BEST TIMES for that weekday.',
     note ? `Owner's note for this plan: ${note}` : '',
@@ -114,6 +117,7 @@ export function planPrompt(digest: string, dates: string[], note?: string): stri
 
 export interface AdConcept {
   title: string
+  product_code: string
   audience: ContentAudience
   angle: string
   proof_type: string
@@ -125,6 +129,8 @@ export interface AdConcept {
   creative_prompt: string
   stock_keywords: string
   concept_code: string
+  /** Set by the concepts route from product_code (not part of the schema). */
+  source_product_id?: string | null
 }
 
 export const CONCEPTS_SCHEMA = {
@@ -136,6 +142,7 @@ export const CONCEPTS_SCHEMA = {
         type: 'OBJECT',
         properties: {
           title: { type: 'STRING' },
+          product_code: { type: 'STRING', description: 'Code of the featured product from PRODUCT SIGNALS (the text in [brackets]), or empty if the concept is not about one product.' },
           audience: { type: 'STRING', enum: AUDIENCE_ENUM },
           angle: { type: 'STRING', description: 'The single hook this concept is built on.' },
           proof_type: { type: 'STRING', description: 'The argument that convinces (separate from the creative style): convenience (one quote for everything), delivery to site/farm, completeness (full materials list), local trust (real store in Talakag), clarity (no hidden costs, COD), durability, speed.' },
@@ -148,8 +155,8 @@ export const CONCEPTS_SCHEMA = {
           stock_keywords: { type: 'STRING', description: 'Reel: stock video search terms separated by semicolons. Empty otherwise.' },
           concept_code: { type: 'STRING', description: 'Unique lowercase slug: audience prefix (ctr / biz / fam / gen) + 2-3 word topic + format, e.g. "ctr-one-quote-reel".' },
         },
-        required: ['title', 'audience', 'angle', 'proof_type', 'format', 'creative_style', 'stickers', 'description', 'image_concept', 'creative_prompt', 'stock_keywords', 'concept_code'],
-        propertyOrdering: ['title', 'audience', 'angle', 'proof_type', 'format', 'creative_style', 'stickers', 'description', 'image_concept', 'creative_prompt', 'stock_keywords', 'concept_code'],
+        required: ['title', 'product_code', 'audience', 'angle', 'proof_type', 'format', 'creative_style', 'stickers', 'description', 'image_concept', 'creative_prompt', 'stock_keywords', 'concept_code'],
+        propertyOrdering: ['title', 'product_code', 'audience', 'angle', 'proof_type', 'format', 'creative_style', 'stickers', 'description', 'image_concept', 'creative_prompt', 'stock_keywords', 'concept_code'],
       },
     },
   },
@@ -167,9 +174,10 @@ export function conceptsPrompt(
     `Create ${opts.count} DISTINCT Meta ad concepts${opts.topic ? ` about: ${opts.topic}` : ''}${opts.productName ? ` (product: ${opts.productName})` : ''}.`,
     `Spread them across these audiences as evenly as possible: ${opts.audiences.join(', ')}.`,
     'Diversity rules (this is what lets Meta find different people): every concept must differ from the others in audience OR proof type, no two share the same hook, mix formats (include at least one reel and one non-reel when count >= 3), and give every concept a DIFFERENT creative_style so they look visibly different, not just read differently.',
+    opts.productName ? '' : 'Unless a topic is given, build concepts around products from PRODUCT SIGNALS (best sellers and trending items suit ads best), with no product used twice.',
     'Lean toward the concepts and formats that performed well in the data; avoid repeating ones that did poorly.',
     'Every concept_code must be unique.',
-  ].join('\n')
+  ].filter(Boolean).join('\n')
 }
 
 // ── Insights analysis ───────────────────────────────────────────

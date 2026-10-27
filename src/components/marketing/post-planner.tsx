@@ -149,6 +149,7 @@ function PlannedPostCard({ post, picked, onToggle }: { post: PlannedPost; picked
           ) : (
             <p><span className="font-medium">Canva prompt:</span> <span className="whitespace-pre-wrap">{post.creative_prompt}</span></p>
           )}
+          {post.product_code && <p className="text-slate-500"><span className="font-medium">Product:</span> <span className="font-mono">{post.product_code}</span></p>}
           <p className="text-slate-500"><span className="font-medium">Angle:</span> {post.angle}</p>
         </div>
       )}

@@ -61,6 +61,7 @@ export function ConceptGenerator({ onAdded }: { onAdded: () => void }) {
         const description = `${c.description} (Proof: ${c.proof_type})`
         await createIdea.mutateAsync({
           title: c.title,
+          source_product_id: c.source_product_id ?? undefined,
           // For reels the generator's "creative_prompt" is the voiceover, so
           // it goes in the description and the Canva prompt slot stays empty.
           description: isReel ? `${description}\n\nVoiceover: ${c.creative_prompt}` : description,
@@ -143,6 +144,7 @@ export function ConceptGenerator({ onAdded }: { onAdded: () => void }) {
                     <CreativeStyleBadge style={c.creative_style} />
                     <span className="text-[11px] text-slate-400">{c.proof_type}</span>
                   </div>
+                  {c.product_code && <p className="text-xs text-slate-600"><span className="font-medium">Product:</span> <span className="font-mono">{c.product_code}</span></p>}
                   <p className="text-xs text-slate-600"><span className="font-medium">Hook:</span> {c.angle}</p>
                   <p className="text-xs text-slate-500">{c.description}</p>
                   <p className="text-[11px] font-mono text-slate-400">{c.concept_code}</p>

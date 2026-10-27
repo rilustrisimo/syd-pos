@@ -70,7 +70,7 @@ export async function POST(request: Request) {
     }
 
     const {
-      source_product_id,
+      source_product_id: requestedProductId,
       source_media_id,
       source_idea_id,
       notes,
@@ -83,11 +83,22 @@ export async function POST(request: Request) {
       platform?: 'facebook' | 'instagram' | 'both'
     }
 
-    if (!source_product_id && !source_media_id && !source_idea_id && !notes?.trim()) {
+    if (!requestedProductId && !source_media_id && !source_idea_id && !notes?.trim()) {
       return NextResponse.json(
         { error: 'Pick a product, media item, or idea, or write a brief, before generating.' },
         { status: 400 }
       )
+    }
+
+    // An idea the planner tied to a product brings that product along.
+    let source_product_id = requestedProductId
+    if (!source_product_id && source_idea_id) {
+      const { data: ideaProduct } = await (supabase as any)
+        .from('content_ideas')
+        .select('source_product_id')
+        .eq('id', source_idea_id)
+        .single() as { data: { source_product_id: string | null } | null }
+      source_product_id = ideaProduct?.source_product_id ?? undefined
     }
 
     const briefParts: string[] = []

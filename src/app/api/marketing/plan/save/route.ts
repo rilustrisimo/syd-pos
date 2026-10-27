@@ -14,6 +14,7 @@ import { requireMarketingStaff } from '@/lib/marketing/staff-auth'
 import { toConceptCode } from '@/lib/marketing/concept-code'
 import { isCreativeStyle } from '@/lib/marketing/creative-styles'
 import { composeCaption, loadStoreContact } from '@/lib/marketing/store-contact'
+import { productIdsByCode } from '@/lib/marketing/product-signals'
 import type { PlannedPost } from '@/lib/marketing/planner-prompts'
 
 export async function POST(request: Request) {
@@ -29,11 +30,13 @@ export async function POST(request: Request) {
 
     const db = supabase as any
     const contact = await loadStoreContact(db)
+    const productIds = await productIdsByCode(db, posts.map((p) => p.product_code ?? ''))
     let saved = 0
     for (const p of posts.slice(0, 14)) {
       const isReel = p.format === 'reel'
       const hashtags = p.hashtags.join(' ')
       const conceptCode = toConceptCode(`${p.audience.slice(0, 3)}-${p.title}-${p.format}`)
+      const productId = productIds.get(p.product_code?.trim() ?? '') ?? null
 
       const { data: idea, error: ideaError } = await db
         .from('content_ideas')
@@ -41,6 +44,7 @@ export async function POST(request: Request) {
           title: p.title,
           description: p.why,
           image_concept: isReel ? p.shot_list : null,
+          source_product_id: productId,
           format: p.format,
           creative_prompt: isReel ? null : p.creative_prompt,
           stock_keywords: isReel ? p.stock_keywords : null,
@@ -63,6 +67,7 @@ export async function POST(request: Request) {
 
       const { error: suggestionError } = await db.from('content_suggestions').insert({
         source_idea_id: idea.id,
+        source_product_id: productId,
         platform: 'both',
         script: isReel ? p.voice_script : p.angle,
         voice_script: isReel ? p.voice_script : null,
