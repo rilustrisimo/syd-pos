@@ -52,6 +52,8 @@ import { CreativeStyleBadge } from '@/components/marketing/creative-style-badge'
 import { CalendarReminders } from '@/components/marketing/calendar-reminders'
 import { VoiceSelect } from '@/components/marketing/voice-select'
 import { DEFAULT_NARRATION_VOICE } from '@/lib/marketing/voices'
+import { NarrationLanguageSelect } from '@/components/marketing/narration-language-select'
+import { DEFAULT_NARRATION_LANGUAGE, type NarrationLanguage } from '@/lib/marketing/narration-language'
 import {
   FORMAT_LABELS,
   FORMAT_COLORS,
@@ -272,6 +274,7 @@ function SuggestionCard({ suggestion }: { suggestion: ContentSuggestion }) {
   const saveVoiceScript = useSaveVoiceScript()
   const synthesizeVoice = useSynthesizeVoice()
   const [voice, setVoice] = useState(DEFAULT_NARRATION_VOICE)
+  const [scriptLanguage, setScriptLanguage] = useState<NarrationLanguage>(DEFAULT_NARRATION_LANGUAGE)
   const attachCreative = useAttachCreativeMedia()
   const generateCreative = useGenerateCreative()
   const review = useReviewContentSuggestion()
@@ -320,7 +323,7 @@ function SuggestionCard({ suggestion }: { suggestion: ContentSuggestion }) {
   }
 
   function handleGenerateVoiceScript() {
-    generateVoiceScript.mutate(suggestion.id, {
+    generateVoiceScript.mutate({ id: suggestion.id, language: scriptLanguage }, {
       onSuccess: (newVoiceScript) => { setVoiceScript(newVoiceScript); toast.success('Voice script generated') },
       onError: (e) => toast.error(e.message),
     })
@@ -437,6 +440,7 @@ function SuggestionCard({ suggestion }: { suggestion: ContentSuggestion }) {
             placeholder="Generate a spoken-style version of the script, or write your own."
           />
           <div className="flex items-center gap-2 pt-1 flex-wrap">
+            <NarrationLanguageSelect value={scriptLanguage} onChange={setScriptLanguage} disabled={generateVoiceScript.isPending} />
             <Button
               size="sm"
               variant="outline"

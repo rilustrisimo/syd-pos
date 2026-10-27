@@ -152,11 +152,11 @@ export function useUpdateContentSuggestionScript() {
 export function useGenerateVoiceScript() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (id: string) => {
+    mutationFn: async ({ id, language }: { id: string; language?: string }) => {
       const res = await fetch('/api/content/generate-voice-script', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ suggestion_id: id }),
+        body: JSON.stringify({ suggestion_id: id, language }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Failed to generate voice script')

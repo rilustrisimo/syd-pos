@@ -43,13 +43,12 @@ purposes and should not just be copies of each other:
    contact details are appended automatically.
 3. "hashtags": up to 5 relevant hashtags (each including the leading #).`
 
-// Reels are narrated by an English TTS voice that mispronounces Tagalog
-// and Bisaya, so the spoken script stays in plain English; the written
-// caption can still be taglish.
+// Reels are narrated by a Chirp 3 HD voice (Kore by default), which reads
+// Taglish well but mispronounces Bisaya, so the spoken script is Taglish.
 const REEL_INSTRUCTIONS = `This is a short vertical reel (15-30 seconds). The "script" is the
-voiceover: 5-7 short sentences, about 60-80 words, in simple, plain ENGLISH
-only (no Tagalog or Bisaya words — it is read by an English text-to-speech
-voice). Open with a hook in the first sentence, and end by pointing viewers
+voiceover: 5-7 short sentences, about 60-80 words, in natural, casual
+Taglish (no Bisaya — it is read by a text-to-speech voice), with product
+names, sizes and units in English. Open with a hook in the first sentence, and end by pointing viewers
 to sydconstruct.com to request a quote. The "caption" may still be taglish.`
 
 export async function POST(request: Request) {

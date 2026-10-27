@@ -12,6 +12,7 @@
 
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { NARRATION_LANGUAGE_RULES, parseNarrationLanguage } from '@/lib/marketing/narration-language'
 
 const GEMINI_MODEL = 'gemini-3.6-flash'
 
@@ -21,10 +22,8 @@ supplies store in Talakag, Bukidnon, Philippines. Spoken cadence: short
 sentences, natural contractions, no bullet points, no emoji, no hashtags —
 this will be read aloud by a text-to-speech voice over a 15-20 second
 video clip. Keep the same key facts and tone as the original script, just
-tighter and more natural to say out loud. Write it in plain English only —
-the voice is an English text-to-speech voice that mispronounces Tagalog and
-Bisaya words, so translate any taglish into simple English. Return only the
-rewritten script text, nothing else.`
+tighter and more natural to say out loud. Return only the rewritten script
+text, nothing else.`
 
 export async function POST(request: Request) {
   try {
@@ -44,7 +43,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Not authorized' }, { status: 403 })
     }
 
-    const { suggestion_id } = await request.json() as { suggestion_id?: string }
+    const { suggestion_id, language: rawLanguage } = await request.json() as { suggestion_id?: string; language?: string }
+    const language = parseNarrationLanguage(rawLanguage)
     if (!suggestion_id) {
       return NextResponse.json({ error: 'suggestion_id is required' }, { status: 400 })
     }
@@ -65,10 +65,11 @@ export async function POST(request: Request) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          system_instruction: { parts: [{ text: VOICE_BRIEF }] },
+          system_instruction: { parts: [{ text: `${VOICE_BRIEF}\n\nLanguage: ${NARRATION_LANGUAGE_RULES[language]}` }] },
           contents: [{ role: 'user', parts: [{ text: suggestion.script }] }],
           generationConfig: {
-            maxOutputTokens: 300,
+            // Bisaya runs longer than English for the same message.
+            maxOutputTokens: 600,
             thinkingConfig: { thinkingBudget: 0 },
           },
         }),

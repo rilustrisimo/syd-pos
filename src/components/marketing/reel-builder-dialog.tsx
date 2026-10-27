@@ -36,6 +36,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ReelClipRow } from '@/components/marketing/reel-clip-row'
 import { VoiceSelect } from '@/components/marketing/voice-select'
 import { DEFAULT_NARRATION_VOICE } from '@/lib/marketing/voices'
+import { NarrationLanguageSelect } from '@/components/marketing/narration-language-select'
+import { DEFAULT_NARRATION_LANGUAGE, type NarrationLanguage } from '@/lib/marketing/narration-language'
 import { ReelCaptionsEditor } from '@/components/marketing/reel-captions-editor'
 
 interface ReelBuilderDialogProps {
@@ -82,11 +84,12 @@ function NarrationStep({ suggestion }: { suggestion: ContentSuggestion }) {
   const save = useSaveVoiceScript()
   const synthesize = useSynthesizeVoice()
   const [voice, setVoice] = useState(DEFAULT_NARRATION_VOICE)
+  const [scriptLanguage, setScriptLanguage] = useState<NarrationLanguage>(DEFAULT_NARRATION_LANGUAGE)
   const [voiceScript, setVoiceScript] = useState(suggestion.voice_script ?? '')
   const busy = generate.isPending || save.isPending || synthesize.isPending
 
   function handleGenerate() {
-    generate.mutate(suggestion.id, {
+    generate.mutate({ id: suggestion.id, language: scriptLanguage }, {
       onSuccess: (text) => { setVoiceScript(text); toast.success('Voice script generated — edit it if you like') },
       onError: (e) => toast.error(e.message),
     })
@@ -121,6 +124,7 @@ function NarrationStep({ suggestion }: { suggestion: ContentSuggestion }) {
         disabled={busy}
       />
       <div className="flex gap-2 flex-wrap">
+        <NarrationLanguageSelect value={scriptLanguage} onChange={setScriptLanguage} disabled={busy} />
         <Button variant="outline" onClick={handleGenerate} disabled={busy || !suggestion.script?.trim()}>
           <Sparkles className="w-4 h-4 mr-1.5" /> {generate.isPending ? 'Generating...' : 'Generate Voice Script'}
         </Button>
