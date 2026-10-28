@@ -49,6 +49,7 @@ import { MediaLightbox } from '@/components/marketing/media-lightbox'
 import { ReelBuilderDialog } from '@/components/marketing/reel-builder-dialog'
 import { PostPlanner } from '@/components/marketing/post-planner'
 import { CreativeStyleBadge } from '@/components/marketing/creative-style-badge'
+import { CanvaPromptPanel } from '@/components/marketing/canva-prompt-panel'
 import { CalendarReminders } from '@/components/marketing/calendar-reminders'
 import { VoiceSelect } from '@/components/marketing/voice-select'
 import { DEFAULT_NARRATION_VOICE } from '@/lib/marketing/voices'
@@ -305,7 +306,7 @@ function SuggestionCard({ suggestion }: { suggestion: ContentSuggestion }) {
   const creativeUrl = suggestion.creative_media ? getContentMediaUrl(suggestion.creative_media.storage_key) : null
   const creativeIsVideo = suggestion.creative_media?.media_type === 'video'
   const isReel = suggestion.format === 'reel'
-  const creativePrompt = suggestion.source_idea?.creative_prompt
+  const creativePrompt = suggestion.creative_prompt ?? suggestion.source_idea?.creative_prompt
   const [showReelBuilder, setShowReelBuilder] = useState(false)
 
   function handleSaveCaption() {
@@ -478,6 +479,16 @@ function SuggestionCard({ suggestion }: { suggestion: ContentSuggestion }) {
 
         <PostingDetails suggestion={suggestion} />
 
+        {!isReel && (
+          <CanvaPromptPanel
+            prompt={creativePrompt}
+            ideaId={suggestion.source_idea_id ?? undefined}
+            suggestionId={suggestion.source_idea_id ? undefined : suggestion.id}
+            isCarousel={suggestion.format === 'carousel'}
+            subject={suggestion.source_product?.name ?? suggestion.source_idea?.title ?? 'hardware store'}
+          />
+        )}
+
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-2 flex-wrap">
             <Select value={template} onValueChange={(v) => setTemplate(v as CreativeTemplate)}>
@@ -518,16 +529,6 @@ function SuggestionCard({ suggestion }: { suggestion: ContentSuggestion }) {
                 Create in Canva <ExternalLink className="w-3 h-3" />
               </Button>
             </a>
-            {creativePrompt && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-8 text-xs gap-1"
-                onClick={() => copyToClipboard(creativePrompt)}
-              >
-                <Copy className="w-3 h-3" /> Copy Canva prompt
-              </Button>
-            )}
             {isReel && (
               <Button
                 size="sm"

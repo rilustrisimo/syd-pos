@@ -118,6 +118,32 @@ export function useUpdateContentIdea() {
   })
 }
 
+export interface CanvaPromptResult {
+  creative_prompt: string
+  pattern: string
+}
+
+/** (Re)generate the detailed Canva prompt for an idea, or a Feed post without one. */
+export function useRegenerateCanvaPrompt() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: { idea_id?: string; suggestion_id?: string; pattern?: string }) => {
+      const res = await fetch('/api/marketing/canva-prompt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to generate the Canva prompt')
+      return data as CanvaPromptResult
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: keys.all })
+      qc.invalidateQueries({ queryKey: ['content_suggestions'] })
+    },
+  })
+}
+
 export function useMarkContentIdeaStatus() {
   const qc = useQueryClient()
   return useMutation({

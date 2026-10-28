@@ -28,6 +28,8 @@ export interface ContentSuggestion {
   caption_draft: string
   caption_final: string | null
   voice_script: string | null
+  /** Canva prompt for a post made without an idea (else it's on the idea). */
+  creative_prompt: string | null
   voice_media_id: string | null
   format: ContentFormat | null
   audience: ContentAudience | null

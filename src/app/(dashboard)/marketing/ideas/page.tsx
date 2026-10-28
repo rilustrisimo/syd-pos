@@ -1,7 +1,7 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import { Lightbulb, Search, X, Sparkles, Trash2, Check, Upload, Download, Copy } from 'lucide-react'
+import { Lightbulb, Search, X, Sparkles, Trash2, Check, Upload, Download } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { downloadCSV } from '@/lib/utils/export'
 import { Button } from '@/components/ui/button'
@@ -37,7 +37,6 @@ import {
   FORMAT_COLORS,
   AUDIENCE_LABELS,
   AUDIENCE_COLORS,
-  copyToClipboard,
   parseContentFormat,
   parseContentAudience,
   toConceptCode,
@@ -45,6 +44,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ConceptGenerator } from '@/components/marketing/concept-generator'
 import { CreativeStyleBadge } from '@/components/marketing/creative-style-badge'
+import { CanvaPromptPanel } from '@/components/marketing/canva-prompt-panel'
 import { CREATIVE_STYLES, CREATIVE_STYLE_KEYS, parseCreativeStyle, type CreativeStyle } from '@/lib/marketing/creative-styles'
 import { usePOSProductSearch } from '@/hooks/useTransactions'
 import { useShopBranchId } from '@/hooks/useShopSettings'
@@ -365,23 +365,13 @@ function IdeaCard({ idea }: { idea: ContentIdea }) {
             <span className="font-medium">Stock search:</span> {idea.stock_keywords}
           </p>
         )}
-        {idea.creative_prompt && (
-          <details className="rounded-md border bg-slate-50 text-xs">
-            <summary className="cursor-pointer px-3 py-2 font-medium text-slate-600 select-none">
-              {idea.format === 'carousel' ? 'Canva prompt (slides)' : 'Canva prompt'}
-            </summary>
-            <div className="px-3 pb-3 space-y-2">
-              <p className="whitespace-pre-wrap text-slate-700">{idea.creative_prompt}</p>
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-7 text-xs gap-1"
-                onClick={() => copyToClipboard(idea.creative_prompt!)}
-              >
-                <Copy className="w-3 h-3" /> Copy prompt
-              </Button>
-            </div>
-          </details>
+        {idea.format !== 'reel' && (
+          <CanvaPromptPanel
+            prompt={idea.creative_prompt}
+            ideaId={idea.id}
+            isCarousel={idea.format === 'carousel'}
+            subject={idea.source_product?.name ?? idea.title}
+          />
         )}
         <div className="flex items-center justify-between gap-2 flex-wrap pt-1">
           <div className="flex items-center gap-1">
