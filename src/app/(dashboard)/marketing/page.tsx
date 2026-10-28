@@ -485,7 +485,6 @@ function SuggestionCard({ suggestion }: { suggestion: ContentSuggestion }) {
             ideaId={suggestion.source_idea_id ?? undefined}
             suggestionId={suggestion.source_idea_id ? undefined : suggestion.id}
             isCarousel={suggestion.format === 'carousel'}
-            subject={suggestion.source_product?.name ?? suggestion.source_idea?.title ?? 'hardware store'}
           />
         )}
 

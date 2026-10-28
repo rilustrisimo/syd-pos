@@ -59,7 +59,7 @@ export function useSavePlannedPosts() {
 
 export function useGenerateConcepts() {
   return useMutation({
-    mutationFn: (input: { topic: string; source_product_id?: string; audiences: ContentAudience[]; count: number }) =>
+    mutationFn: (input: { topic: string; source_product_id?: string; audiences: ContentAudience[]; count: number; kind?: 'ad' | 'post' }) =>
       postJson<{ concepts: AdConcept[] }>('/api/marketing/concepts', input),
   })
 }

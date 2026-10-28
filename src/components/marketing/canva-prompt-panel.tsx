@@ -20,14 +20,11 @@ export function CanvaPromptPanel({
   ideaId,
   suggestionId,
   isCarousel,
-  subject,
 }: {
   prompt: string | null | undefined
   ideaId?: string
   suggestionId?: string
   isCarousel: boolean
-  /** Product name or post title, for the inspiration searches. */
-  subject: string
 }) {
   const regenerate = useRegenerateCanvaPrompt()
   const [pattern, setPattern] = useState('auto')
@@ -80,7 +77,7 @@ export function CanvaPromptPanel({
         </div>
         <div className="flex items-center gap-x-3 gap-y-1 flex-wrap text-slate-500">
           <span className="font-medium">See similar designs:</span>
-          {inspirationLinks(current, subject).map((l) => (
+          {inspirationLinks(current).map((l) => (
             <a key={l.site} href={l.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-0.5 text-blue-700 hover:underline">
               {l.site} <ExternalLink className="w-3 h-3" />
             </a>

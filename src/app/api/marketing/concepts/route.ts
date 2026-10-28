@@ -1,5 +1,5 @@
 /**
- * POST /api/marketing/concepts  { topic, source_product_id?, audiences[], count? }
+ * POST /api/marketing/concepts  { topic, source_product_id?, audiences[], count?, kind? }
  *
  * Gemini (free tier) generates distinct Meta ad concepts — different
  * audience and/or proof type, mixed formats — informed by the insights
@@ -13,7 +13,7 @@ import { buildDigest, loadInsights } from '@/lib/marketing/insights-data'
 import { loadProductDigest, productIdsByCode } from '@/lib/marketing/product-signals'
 import { geminiJson, GeminiError } from '@/lib/marketing/gemini'
 import { toConceptCode } from '@/lib/marketing/concept-code'
-import { PLANNER_SYSTEM, CONCEPTS_SCHEMA, conceptsPrompt, type AdConcept } from '@/lib/marketing/planner-prompts'
+import { PLANNER_SYSTEM, conceptsSchema, conceptsPrompt, type AdConcept, type ConceptKind } from '@/lib/marketing/planner-prompts'
 import type { ContentAudience } from '@/hooks/useContentIdeas'
 
 const VALID_AUDIENCES: ContentAudience[] = ['contractor', 'business_farm', 'family_build', 'general']
@@ -24,7 +24,8 @@ export async function POST(request: Request) {
     const auth = await requireMarketingStaff(supabase as any)
     if (auth.error) return auth.error
 
-    const body = await request.json() as { topic?: string; source_product_id?: string; audiences?: string[]; count?: number }
+    const body = await request.json() as { topic?: string; source_product_id?: string; audiences?: string[]; count?: number; kind?: string }
+    const kind: ConceptKind = body.kind === 'post' ? 'post' : 'ad'
     const audiences = (body.audiences ?? []).filter((a): a is ContentAudience => VALID_AUDIENCES.includes(a as ContentAudience))
     if (!audiences.length) return NextResponse.json({ error: 'Pick at least one audience' }, { status: 400 })
     const count = Math.min(Math.max(Math.round(body.count ?? 6), 2), 10)
@@ -43,8 +44,8 @@ export async function POST(request: Request) {
     ])
     const result = await geminiJson<{ concepts: AdConcept[] }>({
       system: PLANNER_SYSTEM,
-      prompt: conceptsPrompt(buildDigest(data) + productDigest, { topic: body.topic?.trim().slice(0, 200) ?? '', productName, audiences, count }),
-      schema: CONCEPTS_SCHEMA,
+      prompt: conceptsPrompt(buildDigest(data) + productDigest, { topic: body.topic?.trim().slice(0, 200) ?? '', productName, audiences, count, kind }),
+      schema: conceptsSchema(kind),
       maxOutputTokens: 9000,
     })
 

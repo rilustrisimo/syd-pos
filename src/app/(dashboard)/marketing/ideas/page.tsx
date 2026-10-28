@@ -370,7 +370,6 @@ function IdeaCard({ idea }: { idea: ContentIdea }) {
             prompt={idea.creative_prompt}
             ideaId={idea.id}
             isCarousel={idea.format === 'carousel'}
-            subject={idea.source_product?.name ?? idea.title}
           />
         )}
         <div className="flex items-center justify-between gap-2 flex-wrap pt-1">

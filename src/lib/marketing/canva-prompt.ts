@@ -85,7 +85,7 @@ export type LayoutPattern =
 export const LAYOUT_PATTERNS: Record<LayoutPattern, {
   label: string
   recipe: string
-  /** Search words for the inspiration links. */
+  /** Short, general search for the inspiration links. */
   search: string
   styles: CreativeStyle[]
   carouselOnly?: boolean
@@ -93,68 +93,68 @@ export const LAYOUT_PATTERNS: Record<LayoutPattern, {
   type_led: {
     label: 'Big type on brand color',
     recipe: 'Solid dark slate (or yellow) background; an oversized 2-4 line headline fills the top two-thirds and IS the visual; one key word in yellow; a small product cutout or icon bottom-right. Reads in one second at thumbnail size.',
-    search: 'bold typography instagram post',
+    search: 'bold typography post',
     styles: ['listicle', 'qa', 'pov', 'how_to', 'product_demo'],
   },
   split_panel: {
     label: 'Split panel',
     recipe: 'Canvas split vertically about 55/45: a full-height real photo on one side, a solid slate panel on the other holding the headline, 1-2 short lines and an icon row. A thin yellow vertical rule where they meet.',
-    search: 'split layout product instagram post',
+    search: 'split layout social media',
     styles: ['product_demo', 'types_of', 'customer_story', 'behind_the_scenes'],
   },
   hero_cutout: {
     label: 'Product hero with callouts',
     recipe: 'Light gray background with a diagonal yellow hazard-stripe band behind a large background-removed product cutout in the center; headline above; 2-3 benefit callouts in small slate pills connected to the product by thin lines.',
-    search: 'product callout social media design',
+    search: 'product callout post',
     styles: ['product_demo', 'types_of', 'listicle'],
   },
   photo_overlay: {
     label: 'Real photo with dark overlay',
     recipe: 'Full-bleed real or realistic photo (store, yard, delivery, site); a slate overlay at about 60% over the bottom half only; white headline and one line bottom-left above the CTA strip. Raw, real-looking — not polished stock.',
-    search: 'construction company instagram post photo',
+    search: 'construction social media post',
     styles: ['behind_the_scenes', 'customer_story', 'pov', 'transition'],
   },
   highlight_boxes: {
     label: 'Editorial highlight boxes',
     recipe: 'White or slate background, brutalist/editorial: a huge condensed headline set left with 1-3 words sitting on yellow highlight boxes, lots of empty space, a small thin-line icon; optional tiny "SYD tip" label top-right.',
-    search: 'black yellow brutalist instagram carousel',
+    search: 'brutalist instagram post',
     styles: ['qa', 'pov', 'listicle', 'how_to'],
   },
   numbered_cards: {
     label: 'Numbered cards',
     recipe: 'Each slide is a rounded light gray card (24 px corners) on a slate background; a giant yellow number ("01", "02"…) top-left of the card, the point as a headline, one short body line, an icon bottom-left of the card. Cover slide states the list.',
-    search: 'numbered tips carousel instagram',
+    search: 'tips carousel',
     styles: ['listicle', 'how_to', 'types_of'],
     carouselOnly: true,
   },
   grid_2x2: {
     label: '2x2 grid',
     recipe: 'A 2x2 grid of photos (8 px white gutters) covering the middle of the canvas, each with a small yellow label tag naming the use/type; headline in a slate band above the grid.',
-    search: 'grid collage instagram post construction',
+    search: 'collage social media post',
     styles: ['types_of', 'behind_the_scenes', 'listicle'],
   },
   before_after_split: {
     label: 'Before / after split',
     recipe: 'Two photos stacked top/bottom (or one per slide) separated by a diagonal yellow divider; "BEFORE" and "AFTER" tags in slate pills; short headline on the divider or above.',
-    search: 'before after renovation instagram post',
+    search: 'before after post',
     styles: ['before_after', 'transition', 'customer_story'],
   },
   blueprint: {
     label: 'Blueprint',
     recipe: 'Dark slate background with a faint light grid (blueprint/graph paper) texture; technical-drawing feel: thin white outline illustration or cutout of the material, dimension-style labels and arrows in yellow, headline top-left.',
-    search: 'blueprint style social media design construction',
+    search: 'blueprint social media',
     styles: ['how_to', 'qa', 'types_of', 'product_demo'],
   },
   checklist_card: {
     label: 'Checklist card',
     recipe: 'Light gray background with a white "materials checklist" card (soft shadow, rounded) taking the center; 3-5 rows each with a yellow check-circle icon and a short item; headline above the card. Shows "everything in one quote".',
-    search: 'checklist instagram post design',
+    search: 'checklist instagram post',
     styles: ['listicle', 'how_to', 'qa', 'customer_story'],
   },
   connected_swipe: {
     label: 'Connected swipe',
     recipe: 'Carousel designed as one long panorama: a thick yellow line/arrow and shapes run across slide edges so each swipe continues the last; alternating slate and light gray backgrounds; one idea per slide.',
-    search: 'seamless carousel instagram design',
+    search: 'seamless carousel',
     styles: ['transition', 'how_to', 'before_after', 'listicle'],
     carouselOnly: true,
   },
@@ -180,9 +180,13 @@ export function pickLayoutPattern(format: ContentFormat, style: CreativeStyle | 
   return pool[Math.floor(Math.random() * pool.length)]
 }
 
-/** Search links for seeing real designs like this one (opened by staff). */
-export function inspirationLinks(pattern: LayoutPattern | null, subject: string): { site: string; url: string }[] {
-  const q = `${subject} ${pattern ? LAYOUT_PATTERNS[pattern].search : 'construction instagram post'}`.replace(/\s+/g, ' ').trim()
+/**
+ * Search links for seeing real designs like this one (opened by staff).
+ * Short, general queries (the layout type, not the post) find far more
+ * designs than a product-specific search.
+ */
+export function inspirationLinks(pattern: LayoutPattern | null): { site: string; url: string }[] {
+  const q = pattern ? LAYOUT_PATTERNS[pattern].search : 'construction social media post'
   const e = encodeURIComponent(q)
   return [
     { site: 'Behance', url: `https://www.behance.net/search/projects?search=${e}` },

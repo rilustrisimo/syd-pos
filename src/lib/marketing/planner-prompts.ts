@@ -115,8 +115,17 @@ export function planPrompt(digest: string, dates: string[], note?: string): stri
 
 // ── Ad concepts ─────────────────────────────────────────────────
 
+/** Ad concepts chase results; post concepts are everyday organic posts. */
+export type ConceptKind = 'ad' | 'post'
+
+export const CONCEPT_GOALS: Record<ConceptKind, string[]> = {
+  ad: ['leads', 'page_follows', 'interactions', 'sales'],
+  post: ['reach', 'saves', 'shares', 'comments', 'trust'],
+}
+
 export interface AdConcept {
   title: string
+  goal: string
   product_code: string
   audience: ContentAudience
   angle: string
@@ -133,6 +142,17 @@ export interface AdConcept {
   source_product_id?: string | null
 }
 
+export function conceptsSchema(kind: ConceptKind) {
+  const s = structuredClone(CONCEPTS_SCHEMA)
+  const item = s.properties.concepts.items
+  item.properties.goal.enum = CONCEPT_GOALS[kind]
+  if (kind === 'post') {
+    item.properties.proof_type.description = 'Why people will stop and engage: useful tip, local pride, real store/people, relatable situation, question to answer, quick how-to, product knowledge.'
+    item.properties.description.description = 'What the post shows and says, and its soft call to action (save this, comment, share with someone building, follow for more tips; sydconstruct.com when it fits).'
+  }
+  return s
+}
+
 export const CONCEPTS_SCHEMA = {
   type: 'OBJECT',
   properties: {
@@ -142,6 +162,7 @@ export const CONCEPTS_SCHEMA = {
         type: 'OBJECT',
         properties: {
           title: { type: 'STRING' },
+          goal: { type: 'STRING', enum: CONCEPT_GOALS.ad, description: 'The one result this concept is built to get.' },
           product_code: { type: 'STRING', description: 'Code of the featured product from PRODUCT SIGNALS (the text in [brackets]), or empty if the concept is not about one product.' },
           audience: { type: 'STRING', enum: AUDIENCE_ENUM },
           angle: { type: 'STRING', description: 'The single hook this concept is built on.' },
@@ -155,8 +176,8 @@ export const CONCEPTS_SCHEMA = {
           stock_keywords: { type: 'STRING', description: 'Reel: stock video search terms separated by semicolons. Empty otherwise.' },
           concept_code: { type: 'STRING', description: 'Unique lowercase slug: audience prefix (ctr / biz / fam / gen) + 2-3 word topic + format, e.g. "ctr-one-quote-reel".' },
         },
-        required: ['title', 'product_code', 'audience', 'angle', 'proof_type', 'format', 'creative_style', 'stickers', 'description', 'image_concept', 'creative_prompt', 'stock_keywords', 'concept_code'],
-        propertyOrdering: ['title', 'product_code', 'audience', 'angle', 'proof_type', 'format', 'creative_style', 'stickers', 'description', 'image_concept', 'creative_prompt', 'stock_keywords', 'concept_code'],
+        required: ['title', 'goal', 'product_code', 'audience', 'angle', 'proof_type', 'format', 'creative_style', 'stickers', 'description', 'image_concept', 'creative_prompt', 'stock_keywords', 'concept_code'],
+        propertyOrdering: ['title', 'goal', 'product_code', 'audience', 'angle', 'proof_type', 'format', 'creative_style', 'stickers', 'description', 'image_concept', 'creative_prompt', 'stock_keywords', 'concept_code'],
       },
     },
   },
@@ -165,18 +186,39 @@ export const CONCEPTS_SCHEMA = {
 
 export function conceptsPrompt(
   digest: string,
+  opts: { topic: string; productName?: string | null; audiences: ContentAudience[]; count: number; kind?: ConceptKind }
+): string {
+  if (opts.kind === 'post') return postConceptsPrompt(digest, opts)
+  return [
+    'PERFORMANCE DATA AND CONTEXT:',
+    digest,
+    '',
+    `Create ${opts.count} DISTINCT Meta ad concepts${opts.topic ? ` about: ${opts.topic}` : ''}${opts.productName ? ` (product: ${opts.productName})` : ''}.`,
+    'Ads exist to get results: each concept targets one goal — leads (quote requests on sydconstruct.com or messages), page_follows, interactions (comments, shares, reactions) or sales — with a clear, direct call to action for that goal. Spread the goals, with leads the most common.',
+    `Spread them across these audiences as evenly as possible: ${opts.audiences.join(', ')}.`,
+    'Diversity rules (this is what lets Meta find different people): every concept must differ from the others in audience OR proof type, no two share the same hook, mix formats (include at least one reel and one non-reel when count >= 3), and give every concept a DIFFERENT creative_style so they look visibly different, not just read differently.',
+    opts.productName ? '' : 'Unless a topic is given, build concepts around products from PRODUCT SIGNALS (best sellers and trending items suit ads best), with no product used twice.',
+    'Lean toward the concepts and formats that performed well in the data; avoid repeating ones that did poorly.',
+    'Every concept_code must be unique.',
+  ].filter(Boolean).join('\n')
+}
+
+// Everyday organic posts: build the audience and trust, not hard selling.
+function postConceptsPrompt(
+  digest: string,
   opts: { topic: string; productName?: string | null; audiences: ContentAudience[]; count: number }
 ): string {
   return [
     'PERFORMANCE DATA AND CONTEXT:',
     digest,
     '',
-    `Create ${opts.count} DISTINCT Meta ad concepts${opts.topic ? ` about: ${opts.topic}` : ''}${opts.productName ? ` (product: ${opts.productName})` : ''}.`,
-    `Spread them across these audiences as evenly as possible: ${opts.audiences.join(', ')}.`,
-    'Diversity rules (this is what lets Meta find different people): every concept must differ from the others in audience OR proof type, no two share the same hook, mix formats (include at least one reel and one non-reel when count >= 3), and give every concept a DIFFERENT creative_style so they look visibly different, not just read differently.',
-    opts.productName ? '' : 'Unless a topic is given, build concepts around products from PRODUCT SIGNALS (best sellers and trending items suit ads best), with no product used twice.',
-    'Lean toward the concepts and formats that performed well in the data; avoid repeating ones that did poorly.',
-    'Every concept_code must be unique.',
+    `Create ${opts.count} DISTINCT everyday (organic) post concepts for the Facebook Page and Instagram${opts.topic ? ` about: ${opts.topic}` : ''}${opts.productName ? ` (product: ${opts.productName})` : ''}.`,
+    'These are NOT ads. Their job is reach and engagement so people follow and remember SYD: each targets one goal — reach, saves, shares, comments or trust. Mix post types: useful tips and how-tos (how much cement/sand for a slab, choosing roofing), product knowledge (types and uses), behind the scenes at the store and yard, deliveries and finished projects, relatable situations (POV), questions that invite comments, local Talakag/Bukidnon pride. At most one in four can be product-focused; keep the call to action soft (save, share, comment, follow) and mention sydconstruct.com only when it fits naturally.',
+    `Spread them across these audiences: ${opts.audiences.join(', ')}.`,
+    'Diversity rules: no two share the same hook, mix formats (include at least one reel, one carousel and one single image when count >= 4), and give every concept a DIFFERENT creative_style.',
+    opts.productName ? '' : 'When a concept is about products, pick from PRODUCT SIGNALS (new arrivals, in-season and trending items suit everyday posts), no product used twice.',
+    'Lean toward the post types and formats that performed well in the data; avoid ones that did poorly.',
+    'Every concept_code must be unique and start with "post-" after the audience prefix, e.g. "fam-post-slab-sand-carousel".',
   ].filter(Boolean).join('\n')
 }
 
