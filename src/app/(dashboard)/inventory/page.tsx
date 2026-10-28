@@ -345,7 +345,7 @@ export default function InventoryPage() {
                       <TableHead>Category</TableHead>
                       <TableHead>Branch</TableHead>
                       <TableHead className="text-right">On Hand</TableHead>
-                      <TableHead className="text-right">Available</TableHead>
+                      <TableHead className="text-right">Selling Price</TableHead>
                       <TableHead className="text-right">Reorder Point</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead className="text-right">Value</TableHead>
@@ -354,7 +354,7 @@ export default function InventoryPage() {
                   <TableBody>
                     {inventory.map((item: any) => {
                       const status = getStockStatus(item)
-                      const available = Number(item.quantity_on_hand)
+                      const sellingPrice = Number(item.product?.current_selling_price || 0)
                       const value =
                         Number(item.quantity_on_hand) *
                         Number(item.product?.latest_cogs || 0)
@@ -380,8 +380,17 @@ export default function InventoryPage() {
                               {item.product?.base_uom?.code}
                             </span>
                           </TableCell>
-                          <TableCell className="text-right font-medium">
-                            {available.toLocaleString()}
+                          <TableCell className="text-right whitespace-nowrap">
+                            {sellingPrice > 0 ? (
+                              <>
+                                <span className="font-semibold text-emerald-700">{formatCurrency(sellingPrice)}</span>
+                                {item.product?.base_uom?.code && (
+                                  <span className="text-xs text-muted-foreground"> / {item.product.base_uom.code}</span>
+                                )}
+                              </>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">Not set</span>
+                            )}
                           </TableCell>
                           <TableCell className="text-right text-amber-600">
                             {Number(item.product?.reorder_point || 0).toLocaleString()}
