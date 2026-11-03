@@ -49,7 +49,7 @@ import { getClient } from '@/lib/supabase/client'
 import { useAuthStore, clearAllAuthData } from '@/lib/stores/auth'
 import { toast } from 'sonner'
 import { useQueryClient } from '@tanstack/react-query'
-import { usePendingOnlineOrdersBanner } from '@/hooks/useOnlineOrders'
+import { usePendingOnlineOrdersBanner, useOpenLeads } from '@/hooks/useOnlineOrders'
 
 const navigation = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
@@ -151,7 +151,9 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const queryClient = useQueryClient()
   const [isSigningOut, setIsSigningOut] = useState(false)
   const { data: pendingOnlineOrders = [] } = usePendingOnlineOrdersBanner()
-  const pendingOnlineOrderCount = pendingOnlineOrders.length
+  const { data: openLeads = [] } = useOpenLeads()
+  // Leads waiting for a call count too, not just pending orders.
+  const pendingOnlineOrderCount = pendingOnlineOrders.length + openLeads.length
 
   const handleSignOut = async () => {
     if (isSigningOut) return // Prevent double-click

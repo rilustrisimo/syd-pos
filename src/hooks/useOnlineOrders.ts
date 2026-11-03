@@ -73,7 +73,7 @@ const keys = {
   list: (status?: string) => [...keys.all, 'list', status ?? 'all'] as const,
   detail: (id: string) => [...keys.all, 'detail', id] as const,
   pendingBanner: () => [...keys.all, 'pending-banner'] as const,
-  recentLeads: () => [...keys.all, 'recent-leads'] as const,
+  openLeads: () => [...keys.all, 'open-leads'] as const,
 }
 
 export interface PendingOnlineOrderSummary {
@@ -140,31 +140,31 @@ export function usePendingOnlineOrdersBanner() {
   })
 }
 
-export interface RecentLeadSummary {
+export interface OpenLeadSummary {
   id: string
   customer_name: string
   customer_phone: string
 }
 
-// Same safety net as usePendingOnlineOrdersBanner, for leads from the
-// shop's welcome form (status 'lead'): if the realtime INSERT never
-// arrives, the notification listener still alerts on new ones from this
-// poll. Last 24h only — older leads aren't "new" anymore.
-export function useRecentLeads() {
+// Leads from the shop's welcome form (status 'lead') still waiting for
+// staff to follow up — they count in the banner and nav badge alongside
+// pending orders until staff move them on (Pending/Confirmed after the
+// call, or Cancelled). Polled like usePendingOnlineOrdersBanner, which
+// also lets the notification listener alert on new leads when the
+// realtime INSERT never arrives.
+export function useOpenLeads() {
   return useQuery({
-    queryKey: keys.recentLeads(),
+    queryKey: keys.openLeads(),
     queryFn: async () => {
       const supabase = getClient()
-      const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
       const { data, error } = await supabase
         .from('online_orders')
         .select('id, customer_name, customer_phone')
         .eq('status', 'lead')
         .is('deleted_at', null)
-        .gte('created_at', since)
         .order('created_at', { ascending: false })
       if (error) throw new Error(error.message)
-      return (data ?? []) as RecentLeadSummary[]
+      return (data ?? []) as OpenLeadSummary[]
     },
     refetchInterval: 1000 * 30,
     refetchIntervalInBackground: true,

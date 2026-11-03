@@ -4,7 +4,7 @@ import { useEffect, useRef } from 'react'
 import { toast } from 'sonner'
 import { useQueryClient } from '@tanstack/react-query'
 import { getClient } from '@/lib/supabase/client'
-import { usePendingOnlineOrdersBanner, useRecentLeads, type PendingOnlineOrderSummary } from '@/hooks/useOnlineOrders'
+import { usePendingOnlineOrdersBanner, useOpenLeads, type PendingOnlineOrderSummary } from '@/hooks/useOnlineOrders'
 
 function playBell() {
   try {
@@ -64,7 +64,7 @@ export function OrderNotificationListener() {
   // starts up.
   const seenOrderIds = useRef<Set<string> | null>(null)
   // Same idea for leads (status 'lead'), alerted on by realtime or the
-  // useRecentLeads poll.
+  // useOpenLeads poll.
   const seenLeadIds = useRef<Set<string> | null>(null)
 
   function notifyNewOrder(order: { id: string; order_number: string; customer_name: string; total_amount: number; fulfillment: string }) {
@@ -129,7 +129,7 @@ export function OrderNotificationListener() {
               if (seenLeadIds.current?.has(order.id)) return
               seenLeadIds.current?.add(order.id)
               notifyNewLead(order)
-              queryClient.invalidateQueries({ queryKey: ['online_orders', 'recent-leads'] })
+              queryClient.invalidateQueries({ queryKey: ['online_orders', 'open-leads'] })
               return
             }
             seenOrderIds.current?.add(order.id)
@@ -158,6 +158,7 @@ export function OrderNotificationListener() {
             // order's status away from (or into) "pending" — no toast/chime
             // needed for other updates, just refresh the banner's data.
             queryClient.invalidateQueries({ queryKey: ['online_orders', 'pending-banner'] })
+            queryClient.invalidateQueries({ queryKey: ['online_orders', 'open-leads'] })
           }
         )
         .subscribe()
@@ -182,6 +183,7 @@ export function OrderNotificationListener() {
       }
       subscribe()
       queryClient.invalidateQueries({ queryKey: ['online_orders', 'pending-banner'] })
+      queryClient.invalidateQueries({ queryKey: ['online_orders', 'open-leads'] })
     }
 
     document.addEventListener('visibilitychange', handleVisibilityChange)
@@ -229,22 +231,22 @@ export function OrderNotificationListener() {
   }, [pendingOrders])
 
   // Polling fallback for leads, same diffing as above.
-  const { data: recentLeads } = useRecentLeads()
+  const { data: openLeads } = useOpenLeads()
 
   useEffect(() => {
-    if (!recentLeads) return
+    if (!openLeads) return
     if (seenLeadIds.current === null) {
-      seenLeadIds.current = new Set(recentLeads.map(l => l.id))
+      seenLeadIds.current = new Set(openLeads.map(l => l.id))
       return
     }
-    for (const lead of recentLeads) {
+    for (const lead of openLeads) {
       if (!seenLeadIds.current.has(lead.id)) {
         seenLeadIds.current.add(lead.id)
         notifyNewLead(lead)
       }
     }
-    seenLeadIds.current = new Set(recentLeads.map(l => l.id))
-  }, [recentLeads])
+    seenLeadIds.current = new Set(openLeads.map(l => l.id))
+  }, [openLeads])
 
   return null
 }
