@@ -116,6 +116,7 @@ function formatDate(iso: string) {
 }
 
 const STATUS_OPTIONS: { value: OnlineOrderStatus; label: string }[] = [
+  { value: 'lead', label: 'Lead' },
   { value: 'pending', label: 'Pending' },
   { value: 'confirmed', label: 'Confirmed' },
   { value: 'preparing', label: 'Preparing' },
@@ -126,6 +127,7 @@ const STATUS_OPTIONS: { value: OnlineOrderStatus; label: string }[] = [
 ]
 
 const STATUS_COLORS: Record<OnlineOrderStatus, string> = {
+  lead: 'bg-sky-100 text-sky-800 border-sky-200',
   pending: 'bg-yellow-100 text-yellow-800 border-yellow-200',
   confirmed: 'bg-blue-100 text-blue-800 border-blue-200',
   preparing: 'bg-purple-100 text-purple-800 border-purple-200',
@@ -539,7 +541,8 @@ export default function OnlineOrderDetailPage({ params }: { params: Promise<{ id
             </Button>
           ) : (
             <>
-              {/* Copy Payment Link button */}
+              {/* Copy Payment Link button — nothing to pay for on a bare lead */}
+              {order.status !== 'lead' && (
               <Button
                 onClick={handleCopyPaymentLink}
                 variant="outline"
@@ -548,8 +551,9 @@ export default function OnlineOrderDetailPage({ params }: { params: Promise<{ id
                 <Link2 className="w-4 h-4" />
                 Copy Payment Link
               </Button>
+              )}
               {/* Convert to Sale button */}
-              {!order.transaction_id && order.status !== 'cancelled' && (
+              {!order.transaction_id && order.status !== 'cancelled' && order.status !== 'lead' && (
                 <Button
                   onClick={handleConvertToSale}
                   disabled={!!convertBlockedReason}
@@ -582,6 +586,22 @@ export default function OnlineOrderDetailPage({ params }: { params: Promise<{ id
         <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-lg px-4 py-2.5 text-sm text-red-700">
           <AlertCircle className="w-4 h-4 flex-shrink-0" />
           This order was deleted on {formatDate(order.deleted_at)}. It&apos;s hidden from the orders list but not permanently removed — click Restore Order to bring it back.
+        </div>
+      )}
+
+      {order.status === 'lead' && !order.deleted_at && (
+        <div className="flex items-start gap-2 bg-sky-50 border border-sky-200 rounded-lg px-4 py-3 text-sm text-sky-800">
+          <Phone className="w-4 h-4 flex-shrink-0 mt-0.5" />
+          <div>
+            <p>
+              <span className="font-semibold">Lead from the shop&apos;s welcome form.</span>{' '}
+              They left their contact details but haven&apos;t submitted a list yet. Give them a call:{' '}
+              <a href={`tel:${order.customer_phone}`} className="font-semibold underline">{order.customer_phone}</a>
+            </p>
+            <p className="text-xs text-sky-600 mt-1">
+              If they submit a list from the shop, it fills in this same order. You can also add items here and move it to Pending or Confirmed after the call.
+            </p>
+          </div>
         </div>
       )}
 

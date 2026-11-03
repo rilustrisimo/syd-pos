@@ -79,6 +79,38 @@ export function OrderNotificationListener() {
     )
   }
 
+  // The shop's welcome form: a visitor left their name and number before
+  // adding anything (status 'lead', no lines yet).
+  function notifyNewLead(order: { id: string; customer_name: string; customer_phone: string }) {
+    playBell()
+    toast.info(
+      `New Lead — ${order.customer_name}`,
+      {
+        description: `${order.customer_phone} · left their number on the shop, no list yet`,
+        duration: 0,
+        action: {
+          label: 'View',
+          onClick: () => openOrder(`/orders/online/${order.id}`),
+        },
+      }
+    )
+  }
+
+  function notifyLeadSubmittedList(order: { id: string; order_number: string; customer_name: string; total_amount: number; fulfillment: string }) {
+    playBell()
+    toast.info(
+      `Lead submitted a list — ${order.order_number}`,
+      {
+        description: `${order.customer_name} · ${formatPrice(order.total_amount)} · ${order.fulfillment}`,
+        duration: 0,
+        action: {
+          label: 'View',
+          onClick: () => openOrder(`/orders/online/${order.id}`),
+        },
+      }
+    )
+  }
+
   useEffect(() => {
     const supabase = getClient()
 
@@ -90,6 +122,10 @@ export function OrderNotificationListener() {
           { event: 'INSERT', schema: 'public', table: 'online_orders' },
           (payload) => {
             const order = payload.new as any
+            if (order.status === 'lead') {
+              notifyNewLead(order)
+              return
+            }
             seenOrderIds.current?.add(order.id)
             notifyNewOrder(order)
             queryClient.invalidateQueries({ queryKey: ['online_orders', 'pending-banner'] })
@@ -98,10 +134,23 @@ export function OrderNotificationListener() {
         .on(
           'postgres_changes',
           { event: 'UPDATE', schema: 'public', table: 'online_orders' },
-          () => {
+          (payload) => {
+            // A lead submitting their list from the shop is the one update
+            // that deserves a chime. Realtime doesn't send old values for
+            // RLS tables, so it's recognised by the shop stamping
+            // lead_converted_at in the same write (updated_at ≈ converted).
+            const order = payload.new as any
+            const convertedAt = order.lead_converted_at ? Date.parse(order.lead_converted_at) : NaN
+            const justConverted = order.status === 'pending'
+              && Math.abs(Date.parse(order.updated_at) - convertedAt) < 10_000
+              && !seenOrderIds.current?.has(order.id)
+            if (justConverted) {
+              seenOrderIds.current?.add(order.id)
+              notifyLeadSubmittedList(order)
+            }
             // Keeps the pending-orders banner live when staff change an
             // order's status away from (or into) "pending" — no toast/chime
-            // needed for updates, just refresh the banner's data.
+            // needed for other updates, just refresh the banner's data.
             queryClient.invalidateQueries({ queryKey: ['online_orders', 'pending-banner'] })
           }
         )

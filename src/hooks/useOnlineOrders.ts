@@ -3,7 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { getClient } from '@/lib/supabase/client'
 
-export type OnlineOrderStatus = 'pending' | 'confirmed' | 'preparing' | 'out_for_delivery' | 'delivered' | 'picked_up' | 'cancelled'
+export type OnlineOrderStatus = 'lead' | 'pending' | 'confirmed' | 'preparing' | 'out_for_delivery' | 'delivered' | 'picked_up' | 'cancelled'
 export type OnlineOrderFulfillment = 'delivery' | 'pickup'
 export type OnlineOrderPaymentMethod = 'cod' | 'gcash' | 'bank_transfer' | 'qr'
 export type OnlineOrderPaymentStatus = 'unpaid' | 'submitted' | 'verified' | 'refunded'
@@ -57,6 +57,10 @@ export interface OnlineOrder {
   created_at: string
   updated_at: string
   deleted_at: string | null
+  /** Set when the shop's welcome form created this row as a lead (migration 00104). */
+  lead_captured_at?: string | null
+  /** Set when that lead submitted their list (status went lead → pending). */
+  lead_converted_at?: string | null
   lines?: OnlineOrderLine[]
   /** List view only: ids of special-request lines (empty when none). */
   special_lines?: { id: string }[]

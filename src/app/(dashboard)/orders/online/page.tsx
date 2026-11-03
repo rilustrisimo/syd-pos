@@ -36,6 +36,7 @@ import {
 import { toast } from 'sonner'
 
 const STATUS_LABELS: Record<OnlineOrderStatus, string> = {
+  lead: 'Lead',
   pending: 'Pending',
   confirmed: 'Confirmed',
   preparing: 'Preparing',
@@ -46,6 +47,8 @@ const STATUS_LABELS: Record<OnlineOrderStatus, string> = {
 }
 
 const STATUS_COLORS: Record<OnlineOrderStatus, string> = {
+  // Contact left on the shop's welcome form, no list submitted yet.
+  lead: 'bg-sky-100 text-sky-800 border-sky-200',
   pending: 'bg-yellow-100 text-yellow-800 border-yellow-200',
   confirmed: 'bg-blue-100 text-blue-800 border-blue-200',
   preparing: 'bg-purple-100 text-purple-800 border-purple-200',
@@ -198,6 +201,13 @@ export default function OnlineOrdersPage() {
                         <p className="text-xs text-slate-400">{order.customer_phone}</p>
                       </div>
                     </TableCell>
+                    {order.status === 'lead' ? (
+                      // Nothing chosen yet: the lead only left a name and number.
+                      <TableCell colSpan={2} className="text-xs text-slate-400 italic">
+                        No list yet — call to follow up
+                      </TableCell>
+                    ) : (
+                    <>
                     <TableCell>
                       <span className="text-sm capitalize">{order.fulfillment}</span>
                       {order.distance_km && (
@@ -218,8 +228,10 @@ export default function OnlineOrdersPage() {
                         </Badge>
                       </div>
                     </TableCell>
+                    </>
+                    )}
                     <TableCell className="text-right font-semibold text-sm">
-                      {formatPrice(order.total_amount)}
+                      {order.status === 'lead' ? <span className="text-slate-300">—</span> : formatPrice(order.total_amount)}
                     </TableCell>
                     <TableCell>
                       <Badge
