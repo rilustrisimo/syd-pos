@@ -4,7 +4,7 @@ import { useEffect, useRef } from 'react'
 import { toast } from 'sonner'
 import { useQueryClient } from '@tanstack/react-query'
 import { getClient } from '@/lib/supabase/client'
-import { usePendingOnlineOrdersBanner, type PendingOnlineOrderSummary } from '@/hooks/useOnlineOrders'
+import { usePendingOnlineOrdersBanner, useRecentLeads, type PendingOnlineOrderSummary } from '@/hooks/useOnlineOrders'
 
 function playBell() {
   try {
@@ -63,6 +63,9 @@ export function OrderNotificationListener() {
   // firing toasts for every already-pending order the moment the app
   // starts up.
   const seenOrderIds = useRef<Set<string> | null>(null)
+  // Same idea for leads (status 'lead'), alerted on by realtime or the
+  // useRecentLeads poll.
+  const seenLeadIds = useRef<Set<string> | null>(null)
 
   function notifyNewOrder(order: { id: string; order_number: string; customer_name: string; total_amount: number; fulfillment: string }) {
     playBell()
@@ -123,7 +126,10 @@ export function OrderNotificationListener() {
           (payload) => {
             const order = payload.new as any
             if (order.status === 'lead') {
+              if (seenLeadIds.current?.has(order.id)) return
+              seenLeadIds.current?.add(order.id)
               notifyNewLead(order)
+              queryClient.invalidateQueries({ queryKey: ['online_orders', 'recent-leads'] })
               return
             }
             seenOrderIds.current?.add(order.id)
@@ -221,6 +227,24 @@ export function OrderNotificationListener() {
     // the session.
     seenOrderIds.current = new Set(pendingOrders.map(o => o.id))
   }, [pendingOrders])
+
+  // Polling fallback for leads, same diffing as above.
+  const { data: recentLeads } = useRecentLeads()
+
+  useEffect(() => {
+    if (!recentLeads) return
+    if (seenLeadIds.current === null) {
+      seenLeadIds.current = new Set(recentLeads.map(l => l.id))
+      return
+    }
+    for (const lead of recentLeads) {
+      if (!seenLeadIds.current.has(lead.id)) {
+        seenLeadIds.current.add(lead.id)
+        notifyNewLead(lead)
+      }
+    }
+    seenLeadIds.current = new Set(recentLeads.map(l => l.id))
+  }, [recentLeads])
 
   return null
 }

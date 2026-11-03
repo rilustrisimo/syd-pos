@@ -73,6 +73,7 @@ const keys = {
   list: (status?: string) => [...keys.all, 'list', status ?? 'all'] as const,
   detail: (id: string) => [...keys.all, 'detail', id] as const,
   pendingBanner: () => [...keys.all, 'pending-banner'] as const,
+  recentLeads: () => [...keys.all, 'recent-leads'] as const,
 }
 
 export interface PendingOnlineOrderSummary {
@@ -132,6 +133,38 @@ export function usePendingOnlineOrdersBanner() {
         .order('created_at', { ascending: false })
       if (error) throw new Error(error.message)
       return (data ?? []) as PendingOnlineOrderSummary[]
+    },
+    refetchInterval: 1000 * 30,
+    refetchIntervalInBackground: true,
+    staleTime: 1000 * 60,
+  })
+}
+
+export interface RecentLeadSummary {
+  id: string
+  customer_name: string
+  customer_phone: string
+}
+
+// Same safety net as usePendingOnlineOrdersBanner, for leads from the
+// shop's welcome form (status 'lead'): if the realtime INSERT never
+// arrives, the notification listener still alerts on new ones from this
+// poll. Last 24h only — older leads aren't "new" anymore.
+export function useRecentLeads() {
+  return useQuery({
+    queryKey: keys.recentLeads(),
+    queryFn: async () => {
+      const supabase = getClient()
+      const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+      const { data, error } = await supabase
+        .from('online_orders')
+        .select('id, customer_name, customer_phone')
+        .eq('status', 'lead')
+        .is('deleted_at', null)
+        .gte('created_at', since)
+        .order('created_at', { ascending: false })
+      if (error) throw new Error(error.message)
+      return (data ?? []) as RecentLeadSummary[]
     },
     refetchInterval: 1000 * 30,
     refetchIntervalInBackground: true,
