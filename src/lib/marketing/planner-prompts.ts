@@ -3,7 +3,7 @@
 // place (and free of server-only imports) so they can be exercised directly
 // against the API when tuning.
 
-import { AUDIENCE_BRIEFS, BUSINESS_CONTEXT, CONTENT_RULES } from '@/lib/marketing/brand'
+import { AUDIENCE_BRIEFS, BUSINESS_CONTEXT, CALL_CTA, CALL_MENTION, CONTENT_RULES } from '@/lib/marketing/brand'
 import { CREATIVE_STYLE_KEYS, creativeStylesBrief, type CreativeStyle } from '@/lib/marketing/creative-styles'
 import type { ContentAudience } from '@/hooks/useContentIdeas'
 
@@ -79,13 +79,13 @@ export const PLAN_SCHEMA = {
           product_code: { type: 'STRING', description: 'Code of the featured product from PRODUCT SIGNALS (the text in [brackets]), or empty if the post is not about one product.' },
           angle: { type: 'STRING', description: 'The hook / problem / proof this post is built on, one line.' },
           best_time: { type: 'STRING', description: 'Posting time copied from the BEST TIMES list for that weekday, e.g. "Tue 8:00 PM".' },
-          caption: { type: 'STRING', description: 'Ready-to-post caption, taglish allowed, 2-5 short sentences, ends with a call to action. No hashtags inside.' },
+          caption: { type: 'STRING', description: 'Ready-to-post caption, taglish allowed, 2-5 short sentences, ends with a call to action (request a quote on sydconstruct.com, or ' + CALL_MENTION + '). No phone number, no hashtags inside.' },
           hashtags: { type: 'ARRAY', items: { type: 'STRING' }, description: '5-8 hashtags incl. local ones (e.g. #TalakagBukidnon), each with #.' },
           tags: { type: 'ARRAY', items: { type: 'STRING' }, description: 'Tagging suggestions: location tag, product tags, collaborator/supplier accounts to tag if relevant.' },
-          creative_prompt: { type: 'STRING', description: 'Image/carousel only: paste-ready Canva prompt (1080x1350; carousel = slide by slide; brand colors; logo top-left; on-screen text; CTA strip). Empty for reels.' },
+          creative_prompt: { type: 'STRING', description: 'Image/carousel only: paste-ready Canva prompt (1080x1350; carousel = slide by slide; brand colors; logo top-left; on-screen text; CTA strip with "Request a quote at sydconstruct.com" and "' + CALL_CTA + '" — the only phone number allowed on a creative). Empty for reels.' },
           shot_list: { type: 'STRING', description: 'Reel only: numbered shots following the creative style recipe (transition = 8-12 quick shots, others 4-6). Empty otherwise.' },
           stickers: { type: 'ARRAY', items: { type: 'STRING' }, description: 'Reel only: short on-screen text sticker per shot (max 6 words each, taglish ok), same count and order as the shot list; empty strings for shots without text. Empty array for non-reels.' },
-          voice_script: { type: 'STRING', description: 'Reel only: casual Taglish voiceover (no Bisaya), 50-80 words. Empty otherwise.' },
+          voice_script: { type: 'STRING', description: 'Reel only: casual Taglish voiceover (no Bisaya), 50-80 words, ending with sydconstruct.com or a call ("the number\'s on screen" — never say the digits). Empty otherwise.' },
           stock_keywords: { type: 'STRING', description: 'Reel only: stock video search terms separated by semicolons. Empty otherwise.' },
           why: { type: 'STRING', description: 'One sentence: why this post, today, at this time — cite the data when there is some.' },
         },
@@ -148,7 +148,7 @@ export function conceptsSchema(kind: ConceptKind) {
   item.properties.goal.enum = CONCEPT_GOALS[kind]
   if (kind === 'post') {
     item.properties.proof_type.description = 'Why people will stop and engage: useful tip, local pride, real store/people, relatable situation, question to answer, quick how-to, product knowledge.'
-    item.properties.description.description = 'What the post shows and says, and its soft call to action (save this, comment, share with someone building, follow for more tips; sydconstruct.com when it fits).'
+    item.properties.description.description = 'What the post shows and says, and its soft call to action (save this, comment, share with someone building, follow for more tips; sydconstruct.com or calling the store when it fits).'
   }
   return s
 }
@@ -170,9 +170,9 @@ export const CONCEPTS_SCHEMA = {
           format: { type: 'STRING', enum: FORMAT_ENUM },
           creative_style: { type: 'STRING', enum: STYLE_ENUM, description: 'How the ad is made; its recipe shapes the visual.' },
           stickers: { type: 'ARRAY', items: { type: 'STRING' }, description: 'Reel only: short on-screen text per shot (max 6 words), in shot order. Empty array otherwise.' },
-          description: { type: 'STRING', description: 'What the ad shows and says, and its call to action (request a quote on sydconstruct.com).' },
+          description: { type: 'STRING', description: 'What the ad shows and says, and its call to action (request a quote on sydconstruct.com, or call the store — the number is on the creative).' },
           image_concept: { type: 'STRING', description: 'The visual in one line; for reels a numbered shot list.' },
-          creative_prompt: { type: 'STRING', description: 'Image/carousel: paste-ready Canva prompt (1080x1350, brand colors, logo top-left, on-screen taglish text, CTA strip). Reel: a casual Taglish voiceover script (no Bisaya) of 50-80 words.' },
+          creative_prompt: { type: 'STRING', description: 'Image/carousel: paste-ready Canva prompt (1080x1350, brand colors, logo top-left, on-screen taglish text, CTA strip with "Request a quote at sydconstruct.com" and "' + CALL_CTA + '" — the only phone number allowed on a creative). Reel: a casual Taglish voiceover script (no Bisaya) of 50-80 words, ending with sydconstruct.com or a call ("the number\'s on screen" — never say the digits).' },
           stock_keywords: { type: 'STRING', description: 'Reel: stock video search terms separated by semicolons. Empty otherwise.' },
           concept_code: { type: 'STRING', description: 'Unique lowercase slug: audience prefix (ctr / biz / fam / gen) + 2-3 word topic + format, e.g. "ctr-one-quote-reel".' },
         },
@@ -194,7 +194,7 @@ export function conceptsPrompt(
     digest,
     '',
     `Create ${opts.count} DISTINCT Meta ad concepts${opts.topic ? ` about: ${opts.topic}` : ''}${opts.productName ? ` (product: ${opts.productName})` : ''}.`,
-    'Ads exist to get results: each concept targets one goal — leads (quote requests on sydconstruct.com or messages), page_follows, interactions (comments, shares, reactions) or sales — with a clear, direct call to action for that goal. Spread the goals, with leads the most common.',
+    'Ads exist to get results: each concept targets one goal — leads (quote requests on sydconstruct.com, calls or texts to the store, or messages), page_follows, interactions (comments, shares, reactions) or sales — with a clear, direct call to action for that goal. Spread the goals, with leads the most common.',
     `Spread them across these audiences as evenly as possible: ${opts.audiences.join(', ')}.`,
     'Diversity rules (this is what lets Meta find different people): every concept must differ from the others in audience OR proof type, no two share the same hook, mix formats (include at least one reel and one non-reel when count >= 3), and give every concept a DIFFERENT creative_style so they look visibly different, not just read differently.',
     opts.productName ? '' : 'Unless a topic is given, build concepts around products from PRODUCT SIGNALS (best sellers and trending items suit ads best), with no product used twice.',
@@ -213,7 +213,7 @@ function postConceptsPrompt(
     digest,
     '',
     `Create ${opts.count} DISTINCT everyday (organic) post concepts for the Facebook Page and Instagram${opts.topic ? ` about: ${opts.topic}` : ''}${opts.productName ? ` (product: ${opts.productName})` : ''}.`,
-    'These are NOT ads. Their job is reach and engagement so people follow and remember SYD: each targets one goal — reach, saves, shares, comments or trust. Mix post types: useful tips and how-tos (how much cement/sand for a slab, choosing roofing), product knowledge (types and uses), behind the scenes at the store and yard, deliveries and finished projects, relatable situations (POV), questions that invite comments, local Talakag/Bukidnon pride. At most one in four can be product-focused; keep the call to action soft (save, share, comment, follow) and mention sydconstruct.com only when it fits naturally.',
+    'These are NOT ads. Their job is reach and engagement so people follow and remember SYD: each targets one goal — reach, saves, shares, comments or trust. Mix post types: useful tips and how-tos (how much cement/sand for a slab, choosing roofing), product knowledge (types and uses), behind the scenes at the store and yard, deliveries and finished projects, relatable situations (POV), questions that invite comments, local Talakag/Bukidnon pride. At most one in four can be product-focused; keep the call to action soft (save, share, comment, follow) and mention sydconstruct.com or calling the store only when it fits naturally.',
     `Spread them across these audiences: ${opts.audiences.join(', ')}.`,
     'Diversity rules: no two share the same hook, mix formats (include at least one reel, one carousel and one single image when count >= 4), and give every concept a DIFFERENT creative_style.',
     opts.productName ? '' : 'When a concept is about products, pick from PRODUCT SIGNALS (new arrivals, in-season and trending items suit everyday posts), no product used twice.',

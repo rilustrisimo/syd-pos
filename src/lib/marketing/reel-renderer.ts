@@ -17,6 +17,7 @@ import {
   totalLength,
   type ReelTimeline,
 } from '@/lib/marketing/reel-timeline'
+import { STORE_CALL_NUMBER } from '@/lib/marketing/brand'
 
 export const REEL_WIDTH = 1080
 export const REEL_HEIGHT = 1920
@@ -218,9 +219,12 @@ function drawEndCard(ctx: CanvasRenderingContext2D, logo: HTMLImageElement) {
   ctx.fillStyle = '#ffffff'
   ctx.font = `800 84px ${FONT}`
   ctx.fillText('sydconstruct.com', REEL_WIDTH / 2, 1000)
+  ctx.fillStyle = BRAND_YELLOW
+  ctx.font = `700 50px ${FONT}`
+  ctx.fillText(`Or call us: ${STORE_CALL_NUMBER}`, REEL_WIDTH / 2, 1140)
   ctx.fillStyle = '#94a3b8'
   ctx.font = `600 44px ${FONT}`
-  ctx.fillText('COD within 5km · Talakag, Bukidnon', REEL_WIDTH / 2, 1140)
+  ctx.fillText('COD within 5km · Talakag, Bukidnon', REEL_WIDTH / 2, 1250)
 }
 
 function drawPlaceholder(ctx: CanvasRenderingContext2D) {

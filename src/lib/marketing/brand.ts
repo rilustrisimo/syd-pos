@@ -5,6 +5,14 @@
 
 import type { ContentAudience } from '@/hooks/useContentIdeas'
 
+// The number shown on creatives (Canva CTA strip, reel end card) — the
+// only phone number a creative may carry, so it's fixed here, never AI-written.
+export const STORE_CALL_NUMBER = '+63 945 801 3640'
+export const CALL_CTA = `or call us directly: ${STORE_CALL_NUMBER}`
+// How the AI may refer to the number in text it writes (ideas, captions,
+// voiceovers) — pointing to it, never typing it, so it can't come out wrong.
+export const CALL_MENTION = 'call or text us (number below)'
+
 export const BUSINESS_CONTEXT = `SYD Construction Supplies Trading is a hardware / construction supplies
 store in Talakag, Bukidnon, Philippines. Customers order on sydconstruct.com
 by adding items and quantities and submitting a quote request — prices are
@@ -19,9 +27,12 @@ times, or technical/engineering claims. Captions may be taglish (natural
 English + Filipino). Reel voiceover scripts are casual Taglish (no Bisaya —
 the text-to-speech voice mispronounces it). Brand colors: dark slate #0F172A,
 yellow #FFC107, white. Every post points people to sydconstruct.com to
-request a quote, or to message the page. Never write a phone number or
-street address in captions — the store's real contact block is appended
-automatically.`
+request a quote, or to call or text the store — calling is the quickest
+way to reach SYD, so mention it in every call to action that asks people
+to get in touch. Never write the phone number or a street address
+yourself — say "${CALL_MENTION}" in captions and "the number's on screen"
+in voiceovers; the store's real number is added to every caption and
+creative automatically.`
 
 export const AUDIENCE_BRIEFS: Record<ContentAudience, string> = {
   contractor:

@@ -37,10 +37,11 @@ purposes and should not just be copies of each other:
    aloud as the voiceover for a video or reel. Natural spoken cadence, short
    sentences, no hashtags, no emoji.
 2. "caption": a short written caption for the Facebook/Instagram post itself
-   (2-4 short sentences), ending with a light call-to-action (visit the
-   store, message to order, or check the online shop at sydconstruct.com).
-   Do not include a phone number or street address — the store's real
-   contact details are appended automatically.
+   (2-4 short sentences), ending with a light call-to-action (call or
+   text us — the number is below —, visit the store, message to order, or
+   check the online shop at sydconstruct.com). Do not write the phone
+   number or a street address yourself — the store's real contact details
+   are appended automatically.
 3. "hashtags": up to 5 relevant hashtags (each including the leading #).`
 
 // Reels are narrated by a Chirp 3 HD voice (Kore by default), which reads
@@ -49,7 +50,8 @@ const REEL_INSTRUCTIONS = `This is a short vertical reel (15-30 seconds). The "s
 voiceover: 5-7 short sentences, about 60-80 words, in natural, casual
 Taglish (no Bisaya — it is read by a text-to-speech voice), with product
 names, sizes and units in English. Open with a hook in the first sentence, and end by pointing viewers
-to sydconstruct.com to request a quote. The "caption" may still be taglish.`
+to sydconstruct.com to request a quote or to call us ("the number's on
+screen" — never say the digits). The "caption" may still be taglish.`
 
 export async function POST(request: Request) {
   try {

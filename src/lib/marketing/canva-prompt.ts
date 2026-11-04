@@ -7,7 +7,7 @@
 // and nothing off-brand can be invented. Plain constants — safe to import
 // from server routes and the client.
 
-import { BUSINESS_CONTEXT, CONTENT_RULES, AUDIENCE_BRIEFS } from '@/lib/marketing/brand'
+import { BUSINESS_CONTEXT, CONTENT_RULES, AUDIENCE_BRIEFS, CALL_CTA } from '@/lib/marketing/brand'
 import { CREATIVE_STYLES, type CreativeStyle } from '@/lib/marketing/creative-styles'
 import type { ContentAudience, ContentFormat } from '@/hooks/useContentIdeas'
 
@@ -45,7 +45,7 @@ const BRAND_KIT = [
   `- Colors (use ONLY these): ${Object.values(BRAND_PALETTE).map((p) => `${p.name} ${p.hex}`).join(', ')}. Yellow is for accents, highlights and the CTA strip — never more than about a third of the design.`,
   '- Fonts (both free in Canva): Montserrat (ExtraBold/Bold) for headlines, numbers and labels; Open Sans (SemiBold) for body text. No other fonts, no script or decorative fonts.',
   '- Logo: the SYD Construction Supplies logo from my Canva uploads/Brand Kit, top-left inside the safe margin, about 200 px wide, on a white rounded rectangle (12 px corners) when the background behind it is dark or busy. Do not redraw, recolor or generate a logo.',
-  `- Footer CTA strip on every slide: full-width bar along the bottom, 150 px tall, ${color('yellow')} background, centered text "Request a quote at sydconstruct.com" in Montserrat Bold 40 px, ${color('slate')}.`,
+  `- Footer CTA strip on every slide: full-width bar along the bottom, 170 px tall, ${color('yellow')} background, ${color('slate')} text centered on two lines: "Request a quote at sydconstruct.com" in Montserrat Bold 40 px, then "${CALL_CTA}" in Montserrat Bold 32 px. Type the number exactly as written.`,
   '- Style: clean, bold, high contrast, construction-industry feel (flat shapes, subtle diagonal stripes or a thin hazard-stripe accent are fine). Generous spacing, strong left alignment unless a slide says otherwise.',
 ].join('\n')
 
@@ -53,7 +53,7 @@ const ALWAYS_AVOID = [
   'any price, peso amount, discount, "sale" or promo percentage',
   'promises about delivery speed or dates ("agad", "same day", "by Saturday")',
   'invented customer names, quotes or reviews',
-  'phone numbers, street addresses or opening hours',
+  'any phone number other than the one in the CTA strip; street addresses or opening hours',
   'text, letters or logos inside AI-generated images (they come out garbled) — all text is added as Canva text boxes',
   'other companies\' logos or watermarks',
   'extra fonts, gradients or colors outside the brand kit',
@@ -307,7 +307,7 @@ Brand kit (fixed — the logo and CTA strip are added for you):
 ${BRAND_KIT}
 
 Coordinates: x 0-1080 left to right, y 0-1350 top to bottom. The logo
-takes about x 64-264, y 64-150; the CTA strip takes y 1200-1350 — keep
+takes about x 64-264, y 64-150; the CTA strip takes y 1180-1350 — keep
 other elements clear of both. Stack text without overlaps: an element's
 y must be at least the previous element's y + max_lines x size_px x 1.2 +
 24 px. Headlines are 7 words or fewer.`
@@ -395,7 +395,7 @@ export function formatCanvaPrompt(spec: CanvaSpec, ctx: Pick<CanvaPostContext, '
       for (const ic of s.icons.slice(0, 4)) out.push(`  - "${ic.icon}", ${color(ic.color)}, ${clamp(ic.size_px, 32, 200)} px, ${ic.placement}`)
     }
     if (s.accents.trim()) out.push(`Accents: ${s.accents.trim()}`)
-    out.push('Footer: yellow CTA strip — "Request a quote at sydconstruct.com" (brand kit).')
+    out.push(`Footer: yellow CTA strip — "Request a quote at sydconstruct.com" / "${CALL_CTA}" (brand kit).`)
   })
   out.push('', 'AVOID:')
   for (const a of [...spec.avoid, ...ALWAYS_AVOID]) out.push(`- ${a}`)
