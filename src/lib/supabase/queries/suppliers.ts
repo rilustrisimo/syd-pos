@@ -290,6 +290,7 @@ export interface SupplierProductInventoryRow {
   last_purchased_at: string | null   // most recent po_date for this product from THIS supplier
   is_stale_supplier_purchase: boolean // qty === 0 && last_purchased_at is 3+ months old
   own_best_unit_cost: number | null
+  own_last_unit_cost: number | null   // unit cost on the most recent received PO from THIS supplier
   cheapest_unit_cost: number | null
   cheapest_supplier_id: string | null
   cheapest_supplier_name: string | null
@@ -413,6 +414,8 @@ export async function getSupplierProductInventory(supplierId: string): Promise<S
   )
 
   const supplierMap: Record<string, Record<string, { best_unit_cost: number; last_po_date: string; supplier_name: string }>> = {}
+  // product_id -> this supplier's most recent received cost (restock estimates)
+  const ownLastCost = new Map<string, { unit_cost: number; po_date: string }>()
 
   for (const line of validPriceLines) {
     const pid = line.product_id
@@ -424,6 +427,11 @@ export async function getSupplierProductInventory(supplierId: string): Promise<S
     const sid = supplier.id
     const cost = Number(line.unit_cost)
     const date = po?.po_date ?? ''
+
+    if (sid === supplierId) {
+      const last = ownLastCost.get(pid)
+      if (!last || date > last.po_date) ownLastCost.set(pid, { unit_cost: cost, po_date: date })
+    }
 
     if (!supplierMap[pid]) supplierMap[pid] = {}
 
@@ -495,6 +503,7 @@ export async function getSupplierProductInventory(supplierId: string): Promise<S
       last_purchased_at,
       is_stale_supplier_purchase,
       own_best_unit_cost,
+      own_last_unit_cost: ownLastCost.get(product_id)?.unit_cost ?? null,
       cheapest_unit_cost,
       cheapest_supplier_id,
       cheapest_supplier_name,

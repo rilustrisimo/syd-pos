@@ -251,6 +251,8 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
   const [isEditOpen, setIsEditOpen] = useState(false)
   const [poPage, setPoPage] = useState(1)
   const [checkedRows, setCheckedRows] = useState<Set<string>>(new Set())
+  // Restock quantity per checked row, kept as text so the input can be cleared while typing.
+  const [restockQty, setRestockQty] = useState<Record<string, string>>({})
 
   const { data: supplier, isLoading: supplierLoading } = useSupplier(id)
   const { data: stats } = useSupplierStats(id)
@@ -279,9 +281,30 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
 
   const totalPages = poHistory?.totalPages || 1
 
-  // ── Inventory tab: checkbox selection + copy-names-to-clipboard ──────────
+  // ── Inventory tab: check items + restock qty → estimate, copy name & qty ──
   const rowKey = (row: { product_id: string; branch_id: string }) => `${row.product_id}|${row.branch_id}`
   const allInventoryChecked = productInventory.length > 0 && productInventory.every(r => checkedRows.has(rowKey(r)))
+
+  const qtyOf = (key: string) => {
+    const n = Number(restockQty[key] ?? '1')
+    return Number.isFinite(n) && n > 0 ? n : 0
+  }
+
+  const restockLines = productInventory
+    .filter(r => checkedRows.has(rowKey(r)))
+    .map(r => {
+      const qty = qtyOf(rowKey(r))
+      const price = r.own_last_unit_cost
+      return { row: r, qty, price, subtotal: price === null ? null : price * qty }
+    })
+  const restockTotal = restockLines.reduce((sum, l) => sum + (l.subtotal ?? 0), 0)
+  const restockUnpriced = restockLines.filter(l => l.price === null).length
+
+  const setQty = (key: string, value: string) => {
+    setRestockQty(prev => ({ ...prev, [key]: value }))
+    // Typing a quantity on an unchecked row means "I want this one".
+    if (!checkedRows.has(key) && Number(value) > 0) toggleRow(key, true)
+  }
 
   const toggleRow = (key: string, value: boolean) => {
     setCheckedRows(prev => {
@@ -297,17 +320,20 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
   }
 
   const handleCopyNames = async () => {
-    const checked = productInventory.filter(r => checkedRows.has(rowKey(r)))
-    if (checked.length === 0) {
+    if (restockLines.length === 0) {
       toast.error('No items selected')
       return
     }
-    // Dedupe — the same product can appear once per branch, but the paste
-    // target only cares about the product, not which branch row it came from.
-    const names = Array.from(new Set(checked.map(r => r.product_name)))
+    // The same product can appear once per branch; the supplier only cares
+    // about the product, so merge those rows and add up their quantities.
+    const merged = new Map<string, number>()
+    for (const l of restockLines) {
+      merged.set(l.row.product_name, (merged.get(l.row.product_name) ?? 0) + l.qty)
+    }
+    const text = [...merged].map(([name, qty]) => `${name} - ${qty.toLocaleString()}`).join('\n')
     try {
-      await navigator.clipboard.writeText(names.join('\n'))
-      toast.success(`Copied ${names.length} product name${names.length !== 1 ? 's' : ''} to clipboard`)
+      await navigator.clipboard.writeText(text)
+      toast.success(`Copied ${merged.size} item${merged.size !== 1 ? 's' : ''} with quantities to clipboard`)
     } catch {
       toast.error('Failed to copy to clipboard')
     }
@@ -574,7 +600,7 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
                 <CardDescription>
                   Sorted lowest quantity first — what needs replenishing. Items at zero for 30+ days,
                   or not bought from this supplier in 3+ months, are greyed out at the bottom. Check
-                  items to copy their names for a restock request.
+                  items and enter a quantity to estimate the restock cost from the last price paid.
                 </CardDescription>
               </div>
               <Button
@@ -585,7 +611,7 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
                 disabled={checkedRows.size === 0}
               >
                 <Copy className="mr-2 h-4 w-4" />
-                Copy Names ({checkedRows.size})
+                Copy Items &amp; Qty ({checkedRows.size})
               </Button>
             </CardHeader>
             <CardContent>
@@ -611,11 +637,15 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
                         <TableHead>Last Movement</TableHead>
                         <TableHead>Last Purchased</TableHead>
                         <TableHead>Price</TableHead>
+                        <TableHead className="text-right">Last Price</TableHead>
+                        <TableHead className="w-28 text-right">Restock Qty</TableHead>
+                        <TableHead className="text-right">Subtotal</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {productInventory.map((row, i) => {
                         const key = rowKey(row)
+                        const isChecked = checkedRows.has(key)
                         return (
                         <TableRow
                           key={key}
@@ -623,7 +653,7 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
                         >
                           <TableCell>
                             <Checkbox
-                              checked={checkedRows.has(key)}
+                              checked={isChecked}
                               onCheckedChange={v => toggleRow(key, !!v)}
                               aria-label={`Select ${row.product_name}`}
                             />
@@ -659,6 +689,30 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
                               </Badge>
                             )}
                           </TableCell>
+                          <TableCell className="text-right font-mono text-sm">
+                            {row.own_last_unit_cost === null ? '—' : formatCurrency(row.own_last_unit_cost)}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Input
+                              type="number"
+                              inputMode="decimal"
+                              min={0}
+                              step="any"
+                              value={restockQty[key] ?? (isChecked ? '1' : '')}
+                              onChange={e => setQty(key, e.target.value)}
+                              onFocus={e => e.target.select()}
+                              placeholder="0"
+                              className="h-8 w-24 ml-auto text-right"
+                              aria-label={`Restock quantity for ${row.product_name}`}
+                            />
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-sm">
+                            {!isChecked
+                              ? ''
+                              : row.own_last_unit_cost === null
+                                ? <span className="text-xs text-muted-foreground">No price</span>
+                                : formatCurrency(row.own_last_unit_cost * qtyOf(key))}
+                          </TableCell>
                         </TableRow>
                         )
                       })}
@@ -668,6 +722,71 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
               )}
             </CardContent>
           </Card>
+
+          {restockLines.length > 0 && (
+            <Card className="mt-4">
+              <CardHeader className="flex flex-row items-start justify-between gap-4">
+                <div>
+                  <CardTitle>Restock Summary</CardTitle>
+                  <CardDescription>
+                    Estimated cost to buy these again from {supplier.name}, based on the last price paid.
+                  </CardDescription>
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  <Button size="sm" variant="ghost" onClick={() => { setCheckedRows(new Set()); setRestockQty({}) }}>
+                    Clear
+                  </Button>
+                  <Button size="sm" onClick={handleCopyNames}>
+                    <Copy className="mr-2 h-4 w-4" />
+                    Copy Items &amp; Qty
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="border rounded-lg overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Product</TableHead>
+                        <TableHead>Branch</TableHead>
+                        <TableHead className="text-right">Qty</TableHead>
+                        <TableHead className="text-right">Last Price</TableHead>
+                        <TableHead className="text-right">Subtotal</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {restockLines.map(({ row, qty, price, subtotal }) => (
+                        <TableRow key={rowKey(row)}>
+                          <TableCell className="font-medium">{row.product_name}</TableCell>
+                          <TableCell className="text-sm">{row.branch_name}</TableCell>
+                          <TableCell className="text-right font-mono">
+                            {qty.toLocaleString()} <span className="text-xs text-muted-foreground">{row.uom}</span>
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-sm">
+                            {price === null ? '—' : formatCurrency(price)}
+                          </TableCell>
+                          <TableCell className="text-right font-mono">
+                            {subtotal === null
+                              ? <span className="text-xs text-muted-foreground">No price</span>
+                              : formatCurrency(subtotal)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <span className="text-sm text-muted-foreground">
+                    {restockLines.length} item{restockLines.length !== 1 ? 's' : ''}
+                    {restockUnpriced > 0 && ` · ${restockUnpriced} without a price, not included in the total`}
+                  </span>
+                  <span className="text-lg font-bold">
+                    Estimated Total: <span className="text-primary">{formatCurrency(restockTotal)}</span>
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
       </Tabs>
 
