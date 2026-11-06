@@ -302,8 +302,6 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
 
   const setQty = (key: string, value: string) => {
     setRestockQty(prev => ({ ...prev, [key]: value }))
-    // Typing a quantity on an unchecked row means "I want this one".
-    if (!checkedRows.has(key) && Number(value) > 0) toggleRow(key, true)
   }
 
   const toggleRow = (key: string, value: boolean) => {
@@ -313,10 +311,18 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
       else next.delete(key)
       return next
     })
+    // Unchecking drops the quantity, so re-checking starts fresh at 1.
+    if (!value) {
+      setRestockQty(prev => {
+        const { [key]: _removed, ...rest } = prev
+        return rest
+      })
+    }
   }
 
   const toggleAllRows = (value: boolean) => {
     setCheckedRows(value ? new Set(productInventory.map(rowKey)) : new Set())
+    if (!value) setRestockQty({})
   }
 
   const handleCopyNames = async () => {
@@ -630,9 +636,7 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
                           />
                         </TableHead>
                         <TableHead className="w-8">#</TableHead>
-                        <TableHead>Code</TableHead>
                         <TableHead>Product</TableHead>
-                        <TableHead>Branch</TableHead>
                         <TableHead className="text-right">On Hand</TableHead>
                         <TableHead>Last Movement</TableHead>
                         <TableHead>Last Purchased</TableHead>
@@ -659,14 +663,12 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
                             />
                           </TableCell>
                           <TableCell className="text-muted-foreground text-sm">{i + 1}</TableCell>
-                          <TableCell className="font-mono text-sm">{row.product_code}</TableCell>
                           <TableCell className="font-medium">
                             <Link href={`/products/${row.product_id}`} className="hover:underline hover:text-primary flex items-center gap-1">
                               {row.product_name}
                               <ExternalLink className="h-3 w-3 opacity-40" />
                             </Link>
                           </TableCell>
-                          <TableCell className="text-sm">{row.branch_name}</TableCell>
                           <TableCell className={`text-right font-mono ${row.quantity_on_hand === 0 ? 'text-red-600' : ''}`}>
                             {row.quantity_on_hand.toLocaleString()} <span className="text-xs text-muted-foreground">{row.uom}</span>
                           </TableCell>
@@ -698,7 +700,8 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
                               inputMode="decimal"
                               min={0}
                               step="any"
-                              value={restockQty[key] ?? (isChecked ? '1' : '')}
+                              value={isChecked ? (restockQty[key] ?? '1') : ''}
+                              disabled={!isChecked}
                               onChange={e => setQty(key, e.target.value)}
                               onFocus={e => e.target.select()}
                               placeholder="0"
@@ -748,7 +751,6 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
                     <TableHeader>
                       <TableRow>
                         <TableHead>Product</TableHead>
-                        <TableHead>Branch</TableHead>
                         <TableHead className="text-right">Qty</TableHead>
                         <TableHead className="text-right">Last Price</TableHead>
                         <TableHead className="text-right">Subtotal</TableHead>
@@ -758,7 +760,6 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
                       {restockLines.map(({ row, qty, price, subtotal }) => (
                         <TableRow key={rowKey(row)}>
                           <TableCell className="font-medium">{row.product_name}</TableCell>
-                          <TableCell className="text-sm">{row.branch_name}</TableCell>
                           <TableCell className="text-right font-mono">
                             {qty.toLocaleString()} <span className="text-xs text-muted-foreground">{row.uom}</span>
                           </TableCell>
