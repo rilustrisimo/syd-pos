@@ -21,6 +21,7 @@ export async function POST() {
 
     const data = await loadInsights(supabase as any)
     const analysis = await geminiJson<InsightsAnalysis>({
+      feature: 'analyze',
       system: PLANNER_SYSTEM,
       prompt: analysisPrompt(buildDigest(data)),
       schema: ANALYSIS_SCHEMA,

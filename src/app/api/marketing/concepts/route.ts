@@ -43,6 +43,7 @@ export async function POST(request: Request) {
       body.source_product_id ? Promise.resolve('') : loadProductDigest(supabase as any),
     ])
     const result = await geminiJson<{ concepts: AdConcept[] }>({
+      feature: 'concepts',
       system: PLANNER_SYSTEM,
       prompt: conceptsPrompt(buildDigest(data) + productDigest, { topic: body.topic?.trim().slice(0, 200) ?? '', productName, audiences, count, kind }),
       schema: conceptsSchema(kind),

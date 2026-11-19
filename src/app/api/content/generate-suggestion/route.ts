@@ -20,8 +20,7 @@ import type { ContentAudience, ContentFormat } from '@/hooks/useContentIdeas'
 import { AUDIENCE_BRIEFS } from '@/lib/marketing/brand'
 import { composeCaption, loadStoreContact } from '@/lib/marketing/store-contact'
 import { CREATIVE_STYLES, isCreativeStyle, type CreativeStyle } from '@/lib/marketing/creative-styles'
-
-const GEMINI_MODEL = 'gemini-3.6-flash'
+import { geminiGenerate, GeminiError } from '@/lib/marketing/gemini'
 
 const BRAND_BRIEF = `You write social media content for SYD Construction Supplies Trading, a
 hardware/construction supplies store in Talakag, Bukidnon, Philippines. The
@@ -198,45 +197,32 @@ export async function POST(request: Request) {
 
     briefParts.push(`Target platform: ${platform}`)
 
-    const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${process.env.GEMINI_API_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          system_instruction: { parts: [{ text: BRAND_BRIEF }] },
-          contents: [{ role: 'user', parts: [{ text: briefParts.join('\n') }] }],
-          generationConfig: {
-            maxOutputTokens: 500,
-            // Without this, gemini-3.6-flash burns most/all of
-            // maxOutputTokens on invisible "thinking" tokens before ever
-            // producing the actual JSON, truncating the response —
-            // confirmed directly against the live API before shipping.
-            thinkingConfig: { thinkingBudget: 0 },
-            responseMimeType: 'application/json',
-            responseSchema: {
-              type: 'OBJECT',
-              properties: {
-                script: { type: 'STRING', description: 'A short spoken-style script (3-6 sentences) for a video/reel voiceover.' },
-                caption: { type: 'STRING', description: 'A short written caption for the FB/IG post itself (2-4 sentences).' },
-                hashtags: { type: 'ARRAY', items: { type: 'STRING' }, description: 'Up to 5 relevant hashtags, each including the leading #.' },
-              },
-              required: ['script', 'caption', 'hashtags'],
-              propertyOrdering: ['script', 'caption', 'hashtags'],
+    let rawText: string
+    try {
+      // Falls back to lighter models when one hits its free-tier limit.
+      ;({ text: rawText } = await geminiGenerate({
+        feature: 'generate-suggestion',
+        system: BRAND_BRIEF,
+        prompt: briefParts.join('\n'),
+        generationConfig: {
+          maxOutputTokens: 500,
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: 'OBJECT',
+            properties: {
+              script: { type: 'STRING', description: 'A short spoken-style script (3-6 sentences) for a video/reel voiceover.' },
+              caption: { type: 'STRING', description: 'A short written caption for the FB/IG post itself (2-4 sentences).' },
+              hashtags: { type: 'ARRAY', items: { type: 'STRING' }, description: 'Up to 5 relevant hashtags, each including the leading #.' },
             },
+            required: ['script', 'caption', 'hashtags'],
+            propertyOrdering: ['script', 'caption', 'hashtags'],
           },
-        }),
-      }
-    )
-
-    if (!geminiRes.ok) {
-      const errBody = await geminiRes.text()
-      console.error('[generate-suggestion] Gemini error', geminiRes.status, errBody)
-      return NextResponse.json({ error: 'Failed to generate a draft — try again' }, { status: 502 })
+        },
+      }))
+    } catch (err) {
+      const message = err instanceof GeminiError ? err.message : 'Failed to generate a draft — try again'
+      return NextResponse.json({ error: message }, { status: 502 })
     }
-
-    const geminiData = await geminiRes.json()
-    const rawText: string = geminiData.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
 
     let script: string | null = null
     let caption_draft = ''

@@ -107,6 +107,7 @@ export async function POST(request: Request) {
       : pickLayoutPattern(ctx.format, ctx.creative_style, layoutPatternOf(ctx.previous_prompt))
 
     const spec = await geminiJson<CanvaSpec>({
+      feature: 'canva-prompt',
       system: CANVA_DESIGNER_SYSTEM,
       prompt: canvaSpecPrompt(ctx),
       schema: CANVA_SPEC_SCHEMA,

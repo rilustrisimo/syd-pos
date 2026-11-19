@@ -13,8 +13,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { NARRATION_LANGUAGE_RULES, parseNarrationLanguage } from '@/lib/marketing/narration-language'
-
-const GEMINI_MODEL = 'gemini-3.6-flash'
+import { geminiGenerate, GeminiError } from '@/lib/marketing/gemini'
 
 const VOICE_BRIEF = `You rewrite a social media post's script into a short voiceover
 script for SYD Construction Supplies Trading, a hardware/construction
@@ -61,31 +60,21 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'This suggestion has no script to rewrite yet.' }, { status: 400 })
     }
 
-    const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${process.env.GEMINI_API_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          system_instruction: { parts: [{ text: `${VOICE_BRIEF}\n\nLanguage: ${NARRATION_LANGUAGE_RULES[language]}` }] },
-          contents: [{ role: 'user', parts: [{ text: suggestion.script }] }],
-          generationConfig: {
-            // Bisaya runs longer than English for the same message.
-            maxOutputTokens: 600,
-            thinkingConfig: { thinkingBudget: 0 },
-          },
-        }),
-      }
-    )
-
-    if (!geminiRes.ok) {
-      const errBody = await geminiRes.text()
-      console.error('[generate-voice-script] Gemini error', geminiRes.status, errBody)
-      return NextResponse.json({ error: 'Failed to generate a voice script — try again' }, { status: 502 })
+    let voice_script: string
+    try {
+      // Falls back to lighter models when one hits its free-tier limit.
+      const { text } = await geminiGenerate({
+        feature: 'generate-voice-script',
+        system: `${VOICE_BRIEF}\n\nLanguage: ${NARRATION_LANGUAGE_RULES[language]}`,
+        prompt: suggestion.script,
+        // Bisaya runs longer than English for the same message.
+        generationConfig: { maxOutputTokens: 600 },
+      })
+      voice_script = text.trim()
+    } catch (err) {
+      const message = err instanceof GeminiError ? err.message : 'Failed to generate a voice script — try again'
+      return NextResponse.json({ error: message }, { status: 502 })
     }
-
-    const geminiData = await geminiRes.json()
-    const voice_script: string = (geminiData.candidates?.[0]?.content?.parts?.[0]?.text ?? '').trim()
 
     if (!voice_script) {
       return NextResponse.json({ error: 'Gemini returned an empty voice script — try again' }, { status: 502 })

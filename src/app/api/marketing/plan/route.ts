@@ -31,6 +31,7 @@ export async function POST(request: Request) {
     const dates = Array.from({ length: mode === 'week' ? 7 : 1 }, (_, i) => new Date(start + i * 86400000).toISOString().slice(0, 10))
 
     const plan = await geminiJson<{ posts: PlannedPost[] }>({
+      feature: 'plan',
       system: PLANNER_SYSTEM,
       prompt: planPrompt(digest, dates, note?.trim().slice(0, 300)),
       schema: PLAN_SCHEMA,

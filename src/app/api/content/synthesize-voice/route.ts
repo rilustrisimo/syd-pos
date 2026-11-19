@@ -24,6 +24,7 @@ import { AwsClient } from 'aws4fetch'
 import { GoogleAuth } from 'google-auth-library'
 import { createClient } from '@/lib/supabase/server'
 import { splitIntoCaptionChunks, splitIntoSentences, captionChunksToSsml } from '@/lib/marketing/captions'
+import { logAiUsage } from '@/lib/ai-usage-log'
 import { getNarrationVoice } from '@/lib/marketing/voices'
 import { joinWav, parseWav, pcmSeconds } from '@/lib/marketing/wav'
 
@@ -202,8 +203,23 @@ export async function POST(request: Request) {
         : await synthesizeWithMarks(accessToken, voice.id, suggestion.voice_script)
     } catch (ttsErr: any) {
       console.error('[synthesize-voice] Google TTS error', ttsErr?.message)
+      await logAiUsage({
+        feature: 'synthesize-voice',
+        provider: 'google-tts',
+        model: voice.id,
+        status: /TTS 429/.test(ttsErr?.message ?? '') ? 'rate_limited' : 'error',
+        characters: suggestion.voice_script.length,
+        error: String(ttsErr?.message ?? '').slice(0, 500),
+      })
       return NextResponse.json({ error: 'Failed to synthesize narration — try again' }, { status: 502 })
     }
+    await logAiUsage({
+      feature: 'synthesize-voice',
+      provider: 'google-tts',
+      model: voice.id,
+      status: 'ok',
+      characters: suggestion.voice_script.length,
+    })
     const { audio: mp3Buffer, voiceTimepoints } = narration
 
     const r2AccessKeyId = process.env.CLOUDFLARE_R2_ACCESS_KEY_ID
