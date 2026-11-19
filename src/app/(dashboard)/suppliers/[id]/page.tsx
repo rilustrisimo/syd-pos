@@ -32,6 +32,7 @@ import {
   Clock,
   XCircle,
   Copy,
+  Search,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -62,7 +63,15 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import type { UpdateTables } from '@/types/database'
+import type { SupplierProductInventoryRow } from '@/lib/supabase/queries/suppliers'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -243,6 +252,31 @@ function EditSupplierDialog({ supplier, open, onClose }: {
   )
 }
 
+// ── Inventory tab filters ─────────────────────────────────────────────────────
+
+type InventoryFilter = 'all' | 'out' | 'in_stock' | 'pricier' | 'active' | 'stale'
+
+const INVENTORY_FILTERS: { value: InventoryFilter; label: string }[] = [
+  { value: 'all', label: 'All items' },
+  { value: 'out', label: 'Out of stock' },
+  { value: 'in_stock', label: 'In stock' },
+  { value: 'pricier', label: 'Cheaper elsewhere' },
+  { value: 'active', label: 'Active only (hide greyed out)' },
+  { value: 'stale', label: 'Greyed out only' },
+]
+
+function matchesInventoryFilter(row: SupplierProductInventoryRow, filter: InventoryFilter) {
+  const stale = row.is_stale_zero || row.is_stale_supplier_purchase
+  switch (filter) {
+    case 'out': return row.quantity_on_hand <= 0
+    case 'in_stock': return row.quantity_on_hand > 0
+    case 'pricier': return row.supplier_count > 1 && !row.is_cheapest_supplier && row.own_best_unit_cost !== null
+    case 'active': return !stale
+    case 'stale': return stale
+    default: return true
+  }
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function SupplierDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -253,6 +287,8 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
   const [checkedRows, setCheckedRows] = useState<Set<string>>(new Set())
   // Restock quantity per checked row, kept as text so the input can be cleared while typing.
   const [restockQty, setRestockQty] = useState<Record<string, string>>({})
+  const [invSearch, setInvSearch] = useState('')
+  const [invFilter, setInvFilter] = useState<InventoryFilter>('all')
 
   const { data: supplier, isLoading: supplierLoading } = useSupplier(id)
   const { data: stats } = useSupplierStats(id)
@@ -283,7 +319,15 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
 
   // ── Inventory tab: check items + restock qty → estimate, copy name & qty ──
   const rowKey = (row: { product_id: string; branch_id: string }) => `${row.product_id}|${row.branch_id}`
-  const allInventoryChecked = productInventory.length > 0 && productInventory.every(r => checkedRows.has(rowKey(r)))
+  // Search matches product name or code; checked items stay checked when hidden by a filter.
+  const searchTerm = invSearch.trim().toLowerCase()
+  const visibleInventory = productInventory.filter(r =>
+    matchesInventoryFilter(r, invFilter) &&
+    (!searchTerm ||
+      r.product_name.toLowerCase().includes(searchTerm) ||
+      (r.product_code ?? '').toLowerCase().includes(searchTerm))
+  )
+  const allInventoryChecked = visibleInventory.length > 0 && visibleInventory.every(r => checkedRows.has(rowKey(r)))
 
   const qtyOf = (key: string) => {
     const n = Number(restockQty[key] ?? '1')
@@ -320,9 +364,24 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
     }
   }
 
+  // Select-all only touches the rows currently shown by the search/filter.
   const toggleAllRows = (value: boolean) => {
-    setCheckedRows(value ? new Set(productInventory.map(rowKey)) : new Set())
-    if (!value) setRestockQty({})
+    const keys = visibleInventory.map(rowKey)
+    setCheckedRows(prev => {
+      const next = new Set(prev)
+      for (const k of keys) {
+        if (value) next.add(k)
+        else next.delete(k)
+      }
+      return next
+    })
+    if (!value) {
+      setRestockQty(prev => {
+        const rest = { ...prev }
+        for (const k of keys) delete rest[k]
+        return rest
+      })
+    }
   }
 
   const handleCopyNames = async () => {
@@ -621,8 +680,36 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
               </Button>
             </CardHeader>
             <CardContent>
+              {productInventory.length > 0 && (
+                <div className="flex flex-col sm:flex-row gap-2 mb-4">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      value={invSearch}
+                      onChange={e => setInvSearch(e.target.value)}
+                      placeholder="Search product name or code…"
+                      className="pl-8"
+                      aria-label="Search products"
+                    />
+                  </div>
+                  <Select value={invFilter} onValueChange={v => setInvFilter(v as InventoryFilter)}>
+                    <SelectTrigger className="sm:w-64" aria-label="Filter items">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {INVENTORY_FILTERS.map(f => (
+                        <SelectItem key={f.value} value={f.value}>
+                          {f.label} ({productInventory.filter(r => matchesInventoryFilter(r, f.value)).length})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               {productInventory.length === 0 ? (
                 <p className="text-center text-muted-foreground py-8">No product data yet.</p>
+              ) : visibleInventory.length === 0 ? (
+                <p className="text-center text-muted-foreground py-8">No items match your search or filter.</p>
               ) : (
                 <div className="border rounded-lg overflow-x-auto">
                   <Table>
@@ -647,7 +734,7 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {productInventory.map((row, i) => {
+                      {visibleInventory.map((row, i) => {
                         const key = rowKey(row)
                         const isChecked = checkedRows.has(key)
                         return (
