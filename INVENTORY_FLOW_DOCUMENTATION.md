@@ -1,871 +1,291 @@
-# Inventory Management Flow Documentation
+# Inventory, Sales & P&L Flow
 
-## Table of Contents
-1. [Purchase Order (PO) Process](#purchase-order-po-process)
-2. [Sales Transaction Process](#sales-transaction-process)
-3. [Deleting Sales Records](#deleting-sales-records)
-4. [Product Returns Process](#product-returns-process)
-5. [Inventory Adjustment Process](#inventory-adjustment-process)
-6. [Unit Conversion System](#unit-conversion-system)
-7. [Critical Rules & Safeguards](#critical-rules--safeguards)
+How products, purchase orders, stock, sales, returns and the P&L actually work in syd-pos. Every rule here was taken from the code that runs today. Where the code behaves in a way that looks wrong, it is described as-is and listed under [Known gaps](#9-known-gaps); nothing in this document is aspirational.
 
----
+**Last updated:** November 23, 2026. Verified against migrations up to `00109` and the production schema.
 
-## Purchase Order (PO) Process
-
-### Flow Overview
-```
-Create PO → Review/Approve → Receive Items → Update Inventory
-```
-
-### Detailed Steps
-
-#### 1. Create Purchase Order
-**Tables Affected:**
-- `purchase_orders` (insert)
-- `purchase_order_lines` (insert)
-
-**Data Captured:**
-```sql
-purchase_orders:
-  - id (UUID)
-  - po_number (unique)
-  - supplier_id
-  - branch_id
-  - order_date
-  - expected_date
-  - status ('draft', 'pending', 'approved', 'received', 'cancelled')
-  - total_amount
-  - is_deleted (false)
-
-purchase_order_lines:
-  - id (UUID)
-  - po_id
-  - product_id
-  - variant_id (optional)
-  - quantity_ordered (DECIMAL to support conversions)
-  - quantity_received (DECIMAL, initially 0)
-  - uom_id (unit of measure ordered in)
-  - unit_cost
-  - line_total
-```
-
-**Inventory Impact:** NONE (inventory not affected until items are received)
+## Contents
+1. [Overview](#1-overview)
+2. [Units and cost](#2-units-and-cost)
+3. [Purchase orders](#3-purchase-orders)
+4. [Sales](#4-sales)
+5. [Returns](#5-returns)
+6. [Deleting a sale or return](#6-deleting-a-sale-or-return)
+7. [Inventory adjustments](#7-inventory-adjustments)
+8. [P&L report](#8-pl-report)
+9. [Known gaps](#9-known-gaps)
+10. [Function index](#10-function-index)
+11. [Stock lots](#11-stock-lots)
+12. [Investments](#12-investments)
 
 ---
 
-#### 2. Receive Purchase Order Items
-**Trigger:** User marks items as received (full or partial)
+## 1. Overview
 
-**Tables Affected:**
-- `purchase_order_lines` (update quantity_received)
-- `purchase_orders` (update status if fully received)
-- `branch_inventory` (update or insert)
-- `inventory_movements` (insert audit trail)
+```
+ Purchase order ──receive──▶ stock +   (purchase movement)
+                             product cost = latest PO price (+ delivery share)
 
-**Process:**
-```javascript
-FOR EACH line in PO:
-  1. Get ordered unit (uom_id) and received quantity
-  2. Convert to BASE UNIT:
-     
-     // Check if using multi-unit selling system
-     IF product_selling_units exists for (product_id, uom_id):
-       base_quantity = quantity_received / conversion_factor
-     
-     // Fallback to product-level conversion
-     ELSE IF uom_id == product.selling_uom_id:
-       base_quantity = quantity_received / product.conversion_factor
-     
-     // Already in base unit
-     ELSE IF uom_id == product.base_uom_id:
-       base_quantity = quantity_received
-     
-     // ERROR: Unknown conversion
-     ELSE:
-       THROW ERROR "Cannot convert from {uom} to base unit"
-  
-  3. Update or Create branch_inventory:
-     
-     SELECT * FROM branch_inventory 
-     WHERE branch_id = {branch_id}
-       AND product_id = {product_id}
-       AND variant_id = {variant_id}
-     
-     IF EXISTS:
-       UPDATE quantity_on_hand = quantity_on_hand + base_quantity
-       UPDATE last_movement_at = NOW()
-     ELSE:
-       INSERT new record with quantity_on_hand = base_quantity
-  
-  4. Record movement in inventory_movements:
-     
-     INSERT INTO inventory_movements (
-       branch_id,
-       product_id,
-       variant_id,
-       movement_type: 'purchase',
-       quantity_change: +base_quantity,
-       quantity_before: old_quantity,
-       quantity_after: new_quantity,
-       reference_type: 'purchase_order',
-       reference_id: po_id,
-       po_line_id: po_line_id,
-       uom_id: received_uom_id,
-       created_by: user_id
-     )
-  
-  5. Update PO line:
-     UPDATE purchase_order_lines
-     SET quantity_received = quantity_received + received_qty
+ Sale ────────────────────▶ stock −   (sale movement)
+                             each line stores its cost at that moment (cogs_per_unit)
+   └─ government sale ──deliver──▶ stock −   (only when marked delivered)
+
+ Return ──────────────────▶ stock +   (return movement), or no change if damaged
+ Delete sale / return ────▶ stock reversed (adjustment movement)
+ Manual adjustment ───────▶ stock ± (adjustment movement)
+
+ P&L = revenue − COGS (from the stored line costs) − expenses
 ```
 
-**Example:**
-```
-Product: "Cement"
-Base Unit: BOX (base_uom_id = uuid-box)
-Selling Unit: PC (selling_uom_id = uuid-pc)
-Conversion: 1 BOX = 44 PC (conversion_factor = 44)
+**Every stock change goes through one database function** (or one trigger, for deletes). It locks the `branch_inventory` row (`SELECT … FOR UPDATE`), changes `quantity_on_hand`, and writes an `inventory_movements` row with before/after quantities. The app (web POS, frontline, mobile package) only *reads* `branch_inventory`. It never writes it directly.
 
-PO receives: 88 PC
-Calculation: 88 / 44 = 2.0 BOX
-Inventory Update: +2.0 BOX
-```
-
-**Loophole Prevention:**
-- ✅ Always use transaction to prevent partial updates
-- ✅ Validate conversion_factor > 0 before division
-- ✅ Record original UOM in inventory_movements for audit
-- ✅ Check product.is_active before receiving
-- ✅ Prevent receiving more than ordered
+Stock is tracked **per product per branch** (`branch_inventory`, one row per branch + product + variant).
 
 ---
 
-## Sales Transaction Process
+## 2. Units and cost
 
-### Flow Overview
-```
-Create Sale → Select Products → Calculate Totals → Payment → Update Inventory
-```
+| Field | Meaning |
+|---|---|
+| `products.base_uom_id` | The unit stock is stored in. POs are always created in this unit. |
+| `products.selling_uom_id` | The product's main selling unit (often the same as base). |
+| `products.conversion_factor` | Selling units per base unit, for the main selling unit. Fallback only. |
+| `product_selling_units.conversion_factor` | Selling units per base unit, for each extra selling unit (e.g. 1 box = 44 PC → 44). Checked first. |
+| `products.latest_cogs` | **Cost of one base unit**: the price on the most recently received PO, including its share of the delivery charge. |
+| `products.base_unit_cost` | `latest_cogs × products.conversion_factor`. Shown only on the product form and in exports. |
+| `products.current_selling_price` | Main selling price. Never changed automatically. |
 
-### Detailed Steps
+**Converting a quantity to base units** (sales, PO receive, adjustments, delete reversal):
+1. Unit is the base unit → no conversion.
+2. Active `product_selling_units` row for that unit → `quantity ÷ its conversion_factor`.
+3. Unit is the product's `selling_uom_id` and `products.conversion_factor > 0` → `quantity ÷ conversion_factor`.
+4. Otherwise: PO receive and adjustments **raise an error**; sales and delete reversals **treat it as 1:1**. Returns use different logic (see [Returns](#5-returns)).
 
-#### 1. Create Sale Transaction
-**Tables Affected:**
-- `transactions` (insert)
-- `transaction_lines` (insert)
-- `transaction_payments` (insert)
-- `branch_inventory` (update - DECREASE)
-- `inventory_movements` (insert audit trail)
-
-**Process:**
-```javascript
-TRANSACTION START:
-
-1. Insert into transactions:
-   - transaction_number (auto-generated)
-   - branch_id
-   - customer_id
-   - transaction_type: 'sale'
-   - transaction_date
-   - subtotal (sum of line_totals)
-   - discount_amount (transaction-level)
-   - tax_amount
-   - delivery_fee
-   - other_fees
-   - total_amount
-   - payment_status
-   - is_deleted: false
-
-2. FOR EACH product sold:
-   
-   a. Insert transaction_line:
-      - transaction_id
-      - product_id
-      - variant_id
-      - quantity (in selling unit, DECIMAL)
-      - uom_id (unit sold in)
-      - unit_price
-      - cogs_per_unit (cost of goods sold)
-      - discount_amount (line-level)
-      - line_total (COMPUTED: quantity * unit_price - discount_amount)
-   
-   b. Convert quantity to BASE UNIT:
-      
-      // Multi-unit system
-      IF product_selling_units exists for (product_id, uom_id):
-        base_quantity = quantity / conversion_factor
-      
-      // Product-level conversion
-      ELSE IF uom_id == product.selling_uom_id:
-        base_quantity = quantity / product.conversion_factor
-      
-      // Already base unit
-      ELSE IF uom_id == product.base_uom_id:
-        base_quantity = quantity
-      
-      ELSE:
-        THROW ERROR "Invalid UOM for product"
-   
-   c. Decrease inventory:
-      
-      UPDATE branch_inventory
-      SET quantity_on_hand = quantity_on_hand - base_quantity,
-          last_movement_at = NOW()
-      WHERE branch_id = {branch_id}
-        AND product_id = {product_id}
-        AND variant_id = {variant_id}
-      
-      // CRITICAL: Check if enough stock
-      IF new_quantity_on_hand < 0:
-        ROLLBACK TRANSACTION
-        THROW ERROR "Insufficient stock"
-   
-   d. Record movement:
-      
-      INSERT INTO inventory_movements (
-        movement_type: 'sale',
-        quantity_change: -base_quantity,
-        reference_type: 'transaction',
-        reference_id: transaction_id,
-        transaction_line_id: line_id,
-        uom_id: sold_uom_id
-      )
-
-3. Record payments
-
-TRANSACTION COMMIT
-```
-
-**Example:**
-```
-Product: "Cement"
-Base Unit: BOX
-Conversion: 1 BOX = 44 PC
-
-Sale: 22 PC @ ₱15/PC
-Calculation: 22 / 44 = 0.5 BOX
-Inventory Update: -0.5 BOX
-
-Current Inventory: 10.5 BOX
-After Sale: 10.0 BOX
-```
-
-**Loophole Prevention:**
-- ✅ Use database transaction (atomic operation)
-- ✅ Check stock BEFORE committing sale
-- ✅ Validate uom_id is valid for product
-- ✅ Prevent negative inventory (configurable per product)
-- ✅ Lock inventory row during update (SELECT FOR UPDATE)
-- ✅ Record both sold quantity AND base quantity
+**Cost method: last cost.** There is no weighted average. Each received PO overwrites `latest_cogs`. All stock on hand is then valued at the new cost; sales already made keep the cost stored on their lines.
 
 ---
 
-## Deleting Sales Records
+## 3. Purchase orders
 
-### Flow Overview
-```
-Mark Transaction as Deleted → Restore Inventory → Create Reversal Movement
-```
+### Create
+`src/app/(dashboard)/purchases/new/page.tsx` (and the reorder page)
+- Each line is in the product's **base unit**; the unit cost is pre-filled from `latest_cogs` and can be edited.
+- An optional `delivery_charge` is set on the PO.
+- **No effect on stock or cost.**
 
-### Critical Rules
-**⚠️ NEVER physically delete transactions** - Use soft delete (is_deleted = true)
+### Receive: `receive_purchase_order_atomic` (migration 00056)
+Called with the PO, the lines and quantities received, and an optional delivery date. Full or partial. For each line:
+1. **Checks:**
+   - The PO exists, isn't deleted, and isn't cancelled.
+   - The quantity is > 0.
+   - Received so far + this delivery ≤ ordered. Otherwise the error "Cannot receive more than ordered".
+   - The product is active.
+2. Converts to base units (an unknown unit is an **error**).
+3. Adds `quantity_received` to the PO line.
+4. Adds the base quantity to `branch_inventory` (creates the row if missing) and writes a **`purchase`** movement.
+5. **Sets the product cost:**
+   ```
+   effective cost = unit_cost × (1 + delivery_charge ÷ PO merchandise total)
+   latest_cogs    = effective cost
+   base_unit_cost = effective cost × products.conversion_factor
+   ```
+   The merchandise total is Σ `quantity_ordered × unit_cost` over all PO lines.
 
-### Process
+After all lines:
+- If every line is fully received → status `received`, and `actual_delivery_date` = the date given (or today).
+- Otherwise → status `partially_received`.
 
-#### Soft Delete Implementation
-```javascript
-TRANSACTION START:
+**The selling price is not touched.** Staff review it in the price review dialog (see `PRICING_POLICY.md`). Because the cost changed, the markup triggers from migration 00036 recalculate `markup_percentage`, keeping the prices as they are:
+- `trg_recalculate_product_markup` on the product.
+- `trg_sync_psu_markup_on_cogs_change` on each of its selling units.
 
-1. Mark transaction as deleted:
-   
-   UPDATE transactions
-   SET is_deleted = true,
-       updated_at = NOW()
-   WHERE id = {transaction_id}
-
-2. FOR EACH line in transaction_lines:
-   
-   a. Get original sold quantity and convert to base unit:
-      
-      // Same conversion logic as sale
-      base_quantity = convert_to_base_unit(
-        quantity, 
-        uom_id, 
-        product_id
-      )
-   
-   b. RESTORE inventory (ADD BACK):
-      
-      UPDATE branch_inventory
-      SET quantity_on_hand = quantity_on_hand + base_quantity,
-          last_movement_at = NOW()
-      WHERE branch_id = {branch_id}
-        AND product_id = {product_id}
-        AND variant_id = {variant_id}
-   
-   c. Record reversal movement:
-      
-      INSERT INTO inventory_movements (
-        movement_type: 'sale_reversal',
-        quantity_change: +base_quantity,  // POSITIVE
-        reference_type: 'transaction_deletion',
-        reference_id: transaction_id,
-        notes: 'Inventory restored from deleted transaction {txn_number}'
-      )
-
-TRANSACTION COMMIT
-```
-
-**Why Soft Delete?**
-- ✅ Maintains audit trail
-- ✅ Can generate accurate historical reports
-- ✅ Prevents data integrity issues
-- ✅ Reversible if mistake
-- ✅ Helps with accounting reconciliation
-
-**Loophole Prevention:**
-- ✅ Require authorization for deletion
-- ✅ Must specify reason for deletion
-- ✅ Cannot delete transactions older than X days (configurable)
-- ✅ Log who deleted and when
-- ✅ Create offsetting inventory movement (not just UPDATE)
-- ✅ Check fiscal period not closed
-
-**Filtering in Reports:**
-```sql
--- All active transactions
-SELECT * FROM transactions 
-WHERE is_deleted = false
-
--- Include deleted for audit
-SELECT * FROM transactions 
--- no filter on is_deleted
-```
+Older triggers that also changed stock or cost on PO lines (`on_po_line_inventory_update`, `on_po_line_received`) were dropped in migrations 00034 and 00056, so receiving happens in exactly one place.
 
 ---
 
-## Product Returns Process
+## 4. Sales
 
-### Flow Overview
-```
-Customer Returns Item → Create Return Transaction → Add Back to Inventory
-```
+### Create: `create_transaction_atomic` (migration 00063)
+Used by the web POS, the frontline screen, government sales and the mobile package (`packages/api`). In one database transaction:
+1. Inserts the `transactions` header: subtotal, discount amount and percentage, tax, delivery fee, other fees, total, payment status, and government fields.
+2. Inserts each `transaction_lines` row with `quantity`, `uom_id`, `unit_price`, `cogs_per_unit` and `discount_amount`.
+3. For `sale` and `return` types, **unless it's a government sale**:
+   - Converts to base units (an unknown unit falls back to **1:1**, no error).
+   - Locks the stock row.
+   - **Sale:** if stock < quantity and the product doesn't allow negative stock (`allow_negative_inventory = false`) → error "Insufficient stock". Otherwise subtracts and writes a **`sale`** movement.
+   - **Return** (when created through this function): adds back and writes a `return` movement.
+4. Inserts `transaction_payments`.
 
-### Process
+### Item cost (`cogs_per_unit`)
+Set by the **client** when the item is added to the cart, then stored on the line and never recalculated:
+- `product.cogs` = `latest_cogs` (`searchProductsForPOS` in `src/lib/supabase/queries/transactions.ts`).
+- Sold in a unit from `product_selling_units` that isn't the base unit → `latest_cogs ÷ that unit's conversion_factor`.
+- Sold in the base unit, or in the product's main selling unit without a selling-unit row → `latest_cogs` as-is.
 
-#### Return Transaction Creation
-```javascript
-TRANSACTION START:
+See `src/app/(frontline)/frontline/page.tsx` (cart add logic) and `src/app/(dashboard)/government/sales/new/page.tsx`.
 
-1. Create return transaction:
-   
-   INSERT INTO transactions (
-     transaction_type: 'return',
-     branch_id,
-     customer_id,
-     original_transaction_id,  // Link to original sale
-     transaction_date,
-     is_deleted: false
-   )
+### Government sales
+- Created with `is_government_sale = true`: the lines and cost are saved, but **no stock moves**.
+- `deliver_government_sale` (00063) marks it delivered (`is_delivered`, `delivered_at`). It then deducts stock with the same conversion and stock check, writing `sale` movements. Delivering twice is blocked.
 
-2. FOR EACH returned item:
-   
-   a. Insert return line:
-      
-      INSERT INTO transaction_lines (
-        transaction_id: return_txn_id,
-        product_id,
-        variant_id,
-        quantity: returned_qty,  // In selling unit
-        uom_id,
-        unit_price,  // Original sale price
-        cogs_per_unit
-      )
-   
-   b. Convert to base unit:
-      
-      base_quantity = convert_to_base_unit(
-        quantity,
-        uom_id,
-        product_id
-      )
-   
-   c. ADD inventory back:
-      
-      UPDATE branch_inventory
-      SET quantity_on_hand = quantity_on_hand + base_quantity,
-          last_movement_at = NOW()
-      WHERE branch_id = {branch_id}
-        AND product_id = {product_id}
-        AND variant_id = {variant_id}
-   
-   d. Record movement:
-      
-      INSERT INTO inventory_movements (
-        movement_type: 'return',
-        quantity_change: +base_quantity,  // POSITIVE
-        reference_type: 'transaction',
-        reference_id: return_transaction_id,
-        notes: 'Product returned from {original_txn_number}'
-      )
-
-3. Update customer account if credit customer
-
-TRANSACTION COMMIT
-```
-
-**Return Types:**
-1. **Full Return** - All items returned
-2. **Partial Return** - Some items returned
-3. **Damaged Return** - Mark as damaged, may not restock
-4. **Exchange** - Return + New Sale (2 transactions)
-
-**Conditional Restocking:**
-```javascript
-// Option to NOT add back to inventory for damaged items
-IF return_reason == 'damaged':
-  // Still create return transaction
-  // But insert movement with movement_type: 'damaged_return'
-  // Do NOT update branch_inventory
-  
-  INSERT INTO inventory_movements (
-    movement_type: 'damaged_return',
-    quantity_change: 0,  // No inventory change
-    notes: 'Damaged return - not restocked'
-  )
-```
-
-**Loophole Prevention:**
-- ✅ Validate return quantity ≤ original quantity sold
-- ✅ Check return within allowed period
-- ✅ Link to original transaction (traceability)
-- ✅ Cannot return same item twice
-- ✅ Damaged items tracked separately
-- ✅ Require reason for return
+### The old sale trigger
+`on_transaction_inventory_update` (00029) is still installed. It runs after the header insert, before any lines exist, so it finds no lines and does nothing.
 
 ---
 
-## Inventory Adjustment Process
+## 5. Returns
 
-### Flow Overview
-```
-Stocktake/Audit → Identify Discrepancy → Create Adjustment → Update Inventory
-```
+### Create: `create_return_transaction_atomic` (migrations 00035/00036)
+1. **Checks** only that the original sale exists and isn't deleted.
+2. Creates a `return` transaction numbered `RTN-YYYYMMDD-…`, linked by `original_transaction_id`. Subtotal and refund come from the client.
+3. Each line keeps the client-sent `unit_price` and `cogs_per_unit` and gets a `return_reason`.
+4. **Restock rule:**
+   - Reason `damaged`, `expired`, `defective` or `quality_issue` → **not restocked**. A `damaged_return` movement with 0 change is written. The `set_restock_flag` trigger (00029) enforces the same rule.
+   - Otherwise: restocked unless the client sends `should_restock = false`.
+5. **Conversion for restocking:**
+   - Base unit → as-is.
+   - Selling-unit row → `quantity × conversion_factor`.
+   - Otherwise → `quantity × products.conversion_factor` (or × 1).
 
-### Process
-
-#### Manual Adjustment
-```javascript
-TRANSACTION START:
-
-1. User provides adjustment data:
-   - product_id
-   - variant_id
-   - branch_id
-   - adjustment_type: 'add' | 'subtract'
-   - quantity_change (in base unit OR specify uom_id)
-   - reason
-   - notes
-
-2. Convert to base unit if needed:
-   
-   IF uom_id provided AND uom_id != base_uom_id:
-     base_quantity = quantity / conversion_factor
-   ELSE:
-     base_quantity = quantity_change
-
-3. Apply adjustment:
-   
-   a. Get current inventory:
-      SELECT quantity_on_hand FROM branch_inventory
-      WHERE branch_id = {branch_id}
-        AND product_id = {product_id}
-        AND variant_id = {variant_id}
-   
-   b. Calculate new quantity:
-      IF adjustment_type == 'add':
-        new_quantity = quantity_on_hand + base_quantity
-      ELSE:
-        new_quantity = quantity_on_hand - base_quantity
-      
-      // Prevent negative inventory
-      IF new_quantity < 0:
-        THROW ERROR "Adjustment would result in negative inventory"
-   
-   c. Update inventory:
-      UPDATE branch_inventory
-      SET quantity_on_hand = new_quantity,
-          last_movement_at = NOW()
-   
-   d. Record movement:
-      INSERT INTO inventory_movements (
-        movement_type: 'adjustment',
-        quantity_change: adjustment_type == 'add' ? 
-                         +base_quantity : -base_quantity,
-        quantity_before: old_quantity,
-        quantity_after: new_quantity,
-        reference_type: 'inventory_adjustment',
-        created_by: user_id,
-        reason: reason,
-        notes: notes
-      )
-
-TRANSACTION COMMIT
-```
-
-**Adjustment Reasons:**
-- `stocktake` - Physical count differs from system
-- `damage` - Products damaged/expired
-- `theft` - Stock loss due to theft
-- `correction` - Fix data entry error
-- `transfer` - Moving between branches (2 adjustments)
-- `other` - Other reason (requires notes)
-
-**Authorization Levels:**
-```javascript
-// Require manager/admin approval for large adjustments
-IF ABS(base_quantity) > threshold:
-  adjustment_status = 'pending_approval'
-  // Require approval before applying
-ELSE:
-  adjustment_status = 'approved'
-  // Apply immediately
-```
-
-**Loophole Prevention:**
-- ✅ Require authorization (role check)
-- ✅ Mandatory reason selection
-- ✅ Large adjustments need approval
-- ✅ Cannot adjust negative beyond zero
-- ✅ Record who, when, why, how much
-- ✅ Separate movement type for audit trail
-- ✅ Consider enabling/disabling per product
+   This **multiplies**, the opposite of sales (see [Known gaps](#9-known-gaps)).
+6. Restocked lines add to stock and write a `return` movement.
 
 ---
 
-## Unit Conversion System
+## 6. Deleting a sale or return
 
-### Multi-Level Conversion Hierarchy
+Transactions are never hard-deleted. Deleting sets `is_deleted = true` (with `deleted_by`), and two triggers run:
 
-```
-Priority 1: product_selling_units (multi-unit system)
-  └─ Specific conversions per UOM
-  
-Priority 2: products.conversion_factor
-  └─ Single selling UOM conversion
-  
-Priority 3: No conversion (1:1)
-  └─ Assumes same unit
-```
+- **`check_sale_has_no_returns`** (00040): blocks deleting a sale that still has non-deleted returns. Delete the returns first.
+- **`reverse_transaction_inventory`** (00062):
+  - **Undelivered government sale** → nothing to reverse (stock never moved).
+  - **Sale** → adds each line's base quantity back. Writes an `adjustment` movement, reference type `transaction_reversal`.
+  - **Return** → subtracts each line's base quantity. Same `adjustment` movement.
+  - Converts using the sales rules (divide; unknown unit = 1:1).
 
-### Conversion Function (Universal)
-```javascript
-function convertToBaseUnit(quantity, uom_id, product_id) {
-  // 1. Get product details
-  const product = SELECT * FROM products WHERE id = product_id;
-  
-  // 2. Already in base unit?
-  if (uom_id === product.base_uom_id) {
-    return quantity;
-  }
-  
-  // 3. Check multi-unit selling system
-  const sellingUnit = SELECT * FROM product_selling_units
-                      WHERE product_id = product_id
-                        AND uom_id = uom_id
-                        AND is_active = true;
-  
-  if (sellingUnit && sellingUnit.conversion_factor > 0) {
-    return quantity / sellingUnit.conversion_factor;
-  }
-  
-  // 4. Check product-level conversion (legacy/simple products)
-  if (uom_id === product.selling_uom_id && 
-      product.conversion_factor > 0) {
-    return quantity / product.conversion_factor;
-  }
-  
-  // 5. Unknown conversion - ERROR
-  throw new Error(
-    `Cannot convert ${uom_id} to base unit for product ${product_id}. ` +
-    `No conversion factor defined.`
-  );
-}
-```
-
-### Decimal Precision
-
-**Database Schema:**
-```sql
--- All quantity columns use DECIMAL(12, 4)
--- Supports up to 99,999,999.9999
-
-branch_inventory.quantity_on_hand     DECIMAL(12, 4)
-transaction_lines.quantity            DECIMAL(12, 4)
-purchase_order_lines.quantity_ordered DECIMAL(12, 4)
-inventory_movements.quantity_change   DECIMAL(12, 4)
-```
-
-**Why 4 Decimal Places?**
-- Handles fine conversions: 1÷44 = 0.0227
-- Supports fractional units: 0.5 BOX
-- Prevents rounding errors in reports
-- Standard for inventory systems
-
-**Example Conversions:**
-```
-Cement: 1 BOX = 44 PC
-
-Sell 1 PC:
-  1 / 44 = 0.0227 BOX (stored exactly)
-
-Sell 22 PC:
-  22 / 44 = 0.5 BOX (stored exactly)
-
-Purchase 132 PC:
-  132 / 44 = 3.0 BOX (stored exactly)
-```
+Deleted transactions are excluded from every P&L query (`is_deleted = false`).
 
 ---
 
-## Critical Rules & Safeguards
+## 7. Inventory adjustments
 
-### 1. Transaction Atomicity
-**Rule:** All inventory operations MUST use database transactions
-```sql
-BEGIN;
-  -- Update inventory
-  -- Insert movement
-  -- Update related tables
-COMMIT;
--- If ANY step fails, ALL steps rollback
-```
+### `adjust_inventory_atomic` (migration 00028)
+- A **reason is required**; the product must be active.
+- The quantity change can be in any unit with a conversion. An unknown unit is an **error**.
+- Locks the row (creates it at 0 if missing). If the result would be negative and the product doesn't allow negative stock → error.
+- Writes an `adjustment` movement. If a conversion was used, it is noted in the movement notes.
+- There is no approval step and no size threshold.
 
-### 2. Never Skip Inventory Movements
-**Rule:** Every inventory change MUST have a corresponding movement record
-```sql
--- ❌ WRONG
-UPDATE branch_inventory SET quantity_on_hand = 100;
+### `bulk_adjust_inventory` (00028)
+Applies one reason to a list of adjustments by calling `adjust_inventory_atomic` for each.
 
--- ✅ CORRECT
-UPDATE branch_inventory SET quantity_on_hand = 100;
-INSERT INTO inventory_movements (...);
-```
-
-### 3. Always Convert to Base Unit
-**Rule:** Inventory is ALWAYS stored in base_uom_id
-```javascript
-// ❌ WRONG
-inventory.quantity += sold_quantity;  // What unit?
-
-// ✅ CORRECT
-base_qty = convertToBaseUnit(sold_qty, uom_id, product_id);
-inventory.quantity += base_qty;
-```
-
-### 4. Use Soft Deletes for Transactions
-**Rule:** NEVER physically delete financial/inventory transactions
-```sql
--- ❌ WRONG
-DELETE FROM transactions WHERE id = ?;
-
--- ✅ CORRECT
-UPDATE transactions SET is_deleted = true WHERE id = ?;
--- THEN reverse inventory
-```
-
-### 5. Validate Before Commit
-**Checklist before committing any inventory change:**
-- [ ] Conversion factor validated (> 0)
-- [ ] UOM exists and is valid for product
-- [ ] Sufficient stock for deductions
-- [ ] User has permission
-- [ ] Product is active
-- [ ] Inventory movement created
-- [ ] Quantities are positive (or negative for deductions)
-
-### 6. Prevent Race Conditions
-**Use row-level locking for concurrent updates:**
-```sql
--- Lock inventory row during update
-SELECT * FROM branch_inventory
-WHERE branch_id = ? AND product_id = ?
-FOR UPDATE;  -- Lock this row
-
--- Now safe to update
-UPDATE branch_inventory SET ...;
-```
-
-### 7. Audit Trail Requirements
-**Every operation must be traceable:**
-- Who: `created_by` (user_id)
-- When: `created_at` (timestamp)
-- What: `quantity_change`, `movement_type`
-- Why: `reason`, `notes`
-- Reference: `reference_type`, `reference_id`
-
-### 8. Reconciliation Process
-**Weekly/Monthly reconciliation:**
-```sql
--- Verify: Sum of movements = Current inventory
-WITH movement_sum AS (
-  SELECT 
-    branch_id, 
-    product_id,
-    SUM(quantity_change) as total_movements
-  FROM inventory_movements
-  WHERE movement_type NOT IN ('stocktake_correction')
-  GROUP BY branch_id, product_id
-)
-SELECT 
-  bi.product_id,
-  bi.quantity_on_hand as system_qty,
-  ms.total_movements as calculated_qty,
-  bi.quantity_on_hand - ms.total_movements as discrepancy
-FROM branch_inventory bi
-LEFT JOIN movement_sum ms USING (branch_id, product_id)
-WHERE ABS(bi.quantity_on_hand - ms.total_movements) > 0.01;
-```
+Both are called from `src/lib/supabase/queries/inventory.ts`.
 
 ---
 
-## Common Pitfalls & How to Avoid
+## 8. P&L report
 
-### ❌ Pitfall 1: Forgetting Unit Conversion
-**Problem:** Adding/subtracting quantities directly without conversion
-```javascript
-// WRONG
-inventory.quantity -= transaction_line.quantity;
-```
-**Solution:** Always use conversion function
-```javascript
-// CORRECT
-const baseQty = convertToBaseUnit(
-  transaction_line.quantity,
-  transaction_line.uom_id,
-  transaction_line.product_id
-);
-inventory.quantity -= baseQty;
-```
+Reports → P&L calls `getPLReport` (`src/lib/supabase/queries/dashboard.ts`), which combines four database functions plus loan interest. All dates are **Manila dates** (`AT TIME ZONE 'Asia/Manila'`), and deleted records are excluded.
 
-### ❌ Pitfall 2: Manual Inventory Updates
-**Problem:** Updating inventory without creating movement record
-```sql
--- WRONG - No audit trail
-UPDATE branch_inventory SET quantity_on_hand = 50;
-```
-**Solution:** Always create movement
-```sql
--- CORRECT
-INSERT INTO inventory_movements (...);
-UPDATE branch_inventory SET quantity_on_hand = 50;
-```
+| Line | Source | Formula |
+|---|---|---|
+| **Revenue** | `get_pl_revenue_cogs_daily` (00055) | Per transaction: `subtotal + delivery_fee + other_fees − discount_amount + Σ line discounts`. Sales count +, returns count −. By `transaction_date`. |
+| **COGS** | same function | Σ `quantity × cogs_per_unit` over the lines. Sales +, returns −. |
+| **Gross profit** | `getPLReport` | Revenue − COGS. Gross margin = gross profit ÷ revenue. |
+| **Expenses** | `get_pl_expenses` (00055) | Σ `expenses.amount` by `expense_date`, grouped by category. Includes the payroll expense (see below). |
+| **Interest expense** | `getPLReport` | For each `liability_loan_payments` row in range: `amount ÷ scheduled_amount × interest_portion`. Added to the expense total as "Interest Expense". |
+| **Net profit** | `getPLReport` | Gross profit − expenses (including interest). Net margin = net profit ÷ revenue. |
+| **Purchases** *(info only)* | `get_pl_purchases_daily` (00064) | Σ `quantity_received × unit_cost` for received and partially received POs, plus `delivery_charge` for fully received POs. Dated by `actual_delivery_date` (else `po_date`). **Doesn't affect profit.** |
+| **Collections** *(info only)* | `get_pl_collections` (00077) | Σ `min(amount_paid, total_amount)`. Sales +, returns −. **Doesn't affect profit.** |
 
-### ❌ Pitfall 3: Not Using Transactions
-**Problem:** Partial updates when error occurs
-```javascript
-// WRONG - Can leave inconsistent state
-updateInventory();  // Succeeds
-createMovement();   // Fails - inventory updated but no record!
-```
-**Solution:** Wrap in database transaction
-```javascript
-// CORRECT
-await db.transaction(async (trx) => {
-  await updateInventory(trx);
-  await createMovement(trx);
-});
-// Both succeed or both rollback
-```
+The P&L is **accrual-based**: profit uses the cost of what was sold (the stored line costs), not what was bought in the period.
 
-### ❌ Pitfall 4: Ignoring is_deleted Flag
-**Problem:** Counting deleted transactions in inventory calculations
-```sql
--- WRONG - Includes deleted sales
-SELECT SUM(quantity) FROM transaction_lines;
-```
-**Solution:** Always filter deleted
-```sql
--- CORRECT
-SELECT SUM(tl.quantity) 
-FROM transaction_lines tl
-JOIN transactions t ON t.id = tl.transaction_id
-WHERE t.is_deleted = false;
-```
+**Payroll:** paying a payroll run (`payPayrollRun`) creates one expense in the "Salaries & Wages" category. The amount is the run's **`total_net`**, dated at the period end (`src/lib/supabase/queries/employees.ts`).
 
-### ❌ Pitfall 5: Division by Zero
-**Problem:** conversion_factor set to 0 or NULL
-```javascript
-// WRONG - Can cause crash
-const base_qty = quantity / conversion_factor;
-```
-**Solution:** Validate before division
-```javascript
-// CORRECT
-if (!conversion_factor || conversion_factor <= 0) {
-  throw new Error('Invalid conversion factor');
-}
-const base_qty = quantity / conversion_factor;
-```
+**Inventory summary:** `get_inventory_summary` (00064), active products only.
+- **Value** = Σ `quantity_on_hand × latest_cogs`.
+- **Potential profit** = Σ `quantity_on_hand × (current_selling_price − latest_cogs)`, for stock > 0.
+- **Low stock**: quantity > 0 and ≤ `reorder_point`.
+- **Out of stock**: quantity ≤ 0.
 
 ---
 
-## Integration Checkpoints
+## 9. Known gaps
 
-### When Creating New Features
-Before implementing any feature that affects inventory:
+Current behaviour that can make stock or profit figures drift. None of these are fixed yet.
 
-1. **Identify All Inventory Touchpoints**
-   - Which tables are affected?
-   - Does it add, subtract, or adjust inventory?
-   - What unit is the user working in?
-
-2. **Design the Flow**
-   - Draw the complete process flow
-   - Identify all database operations
-   - List all validations needed
-
-3. **Implement with Safeguards**
-   - Use database transactions
-   - Add unit conversion
-   - Create inventory movements
-   - Add authorization checks
-   - Validate all inputs
-
-4. **Test Edge Cases**
-   - Try with different units
-   - Test with decimal quantities
-   - Try with 0 conversion factor
-   - Test concurrent updates
-   - Test rollback scenarios
-
-5. **Document**
-   - Add to this document
-   - Include in code comments
-   - Update API documentation
+| # | Gap | Effect | Where |
+|---|---|---|---|
+| 1 | A product whose main selling unit differs from its base unit, with only `products.conversion_factor` set (no selling-unit row), records `cogs_per_unit = latest_cogs` (a whole base unit's cost) on each selling unit sold. | COGS too high, profit too low for those products. | `frontline/page.tsx` cart add; `searchProductsForPOS` |
+| 2 | An unknown unit on a sale or delete reversal is treated as 1:1; on PO receive and adjustments it's an error. | Stock can change by the wrong amount without any warning. | 00063 `create_transaction_atomic`; 00062 |
+| 3 | ~~Returns convert by multiplying by the conversion factor; sales divide.~~ **Fixed in 00106**: returns now divide, like sales. Returns made before 00106 in a non-base unit may have over-restocked (diagnostic query at the end of 00106). | — | 00106 |
+| 4 | ~~Deleting a return reversed with a different conversion than the return used.~~ **Fixed in 00106** (both now divide). | — | 00106 |
+| 5 | ~~Deleting a damaged return subtracted stock that was never added.~~ **Fixed in 00106**: lines with `should_restock = false` are skipped. Also fixed: the `damaged_return` movement type was missing in production, so damaged/expired/defective returns failed outright. | — | 00106 |
+| 6 | Returns aren't checked against the quantity on the original sale. | More can be returned than was sold. | 00036 |
+| 7 | Damaged returns keep their `cogs_per_unit`, so they reduce COGS even though the item isn't back in stock. | The loss on damaged goods doesn't show in the P&L. | 00036; 00055 |
+| 8 | Government sales count in revenue and COGS on the sale date, but stock leaves on delivery. | Stock on hand looks higher than reality until delivery. | 00063 |
+| 9 | Payroll posts net pay, not gross pay plus employer contributions. | Labour cost understated unless SSS/PhilHealth/Pag-IBIG employer shares are entered as separate expenses. | `employees.ts` |
+| 10 | The daily trend's net profit is gross profit − daily expenses, without loan interest; the total includes interest. | Daily net profits don't add up to the total when there's interest. | `getPLReport` |
+| 11 | Last-cost valuation: each received PO revalues all stock on hand. | Inventory value swings with the latest price; past sales are unaffected. | 00056; 00064 |
+| 12 | `base_unit_cost = latest_cogs × conversion_factor`, though `latest_cogs` is already per base unit. | `base_unit_cost` is wrong for products with a conversion ≠ 1 (display and export only). | 00056 |
 
 ---
 
-## Summary Checklist
+## 10. Function index
 
-For EVERY inventory operation, verify:
+| Area | Function / code | Defined in (latest) |
+|---|---|---|
+| PO receive | `receive_purchase_order_atomic` | `supabase/migrations/00056_fix_po_receive_issues.sql` |
+| PO receiving status | `get_po_receiving_status` | `00030_create_receive_po_atomic_rpc.sql` |
+| Sale (all channels) | `create_transaction_atomic` | `00063_government_delivery_rpc.sql` |
+| Government delivery | `deliver_government_sale` | `00063_government_delivery_rpc.sql` |
+| Return | `create_return_transaction_atomic` | `00036_fix_return_reason_type_cast.sql` |
+| Return restock flag | `set_restock_flag_from_reason` (trigger `set_restock_flag`) | `00029_add_conditional_restocking.sql` |
+| Delete reversal | `reverse_transaction_inventory` (trigger `on_transaction_soft_delete_reverse_inventory`) | `00062_government_delivery_flow.sql` |
+| Delete guard | `check_sale_has_no_returns` (trigger `prevent_deleting_sales_with_returns`) | `00040_prevent_deleting_sales_with_returns.sql` |
+| Adjustments | `adjust_inventory_atomic`, `bulk_adjust_inventory` | `00028_create_adjust_inventory_rpc.sql` |
+| Inert sale trigger | `process_transaction_inventory` (trigger `on_transaction_inventory_update`) | `00029_add_conditional_restocking.sql` |
+| Markup recalculation | `recalculate_product_markup`, `sync_psu_markup_on_cogs_change`, `recalculate_psu_markup` | `00036_auto_recalculate_markup.sql` |
+| P&L revenue & COGS | `get_pl_revenue_cogs_daily` | `00055_fix_discount_double_subtraction.sql` |
+| P&L expenses | `get_pl_expenses` | `00055_fix_discount_double_subtraction.sql` |
+| P&L purchases | `get_pl_purchases_daily` | `00064_add_pl_purchases_and_inventory_summary_rpc.sql` |
+| P&L collections | `get_pl_collections` | `00077_fix_pl_collections_returns_sign.sql` |
+| Inventory summary | `get_inventory_summary` | `00064_add_pl_purchases_and_inventory_summary_rpc.sql` |
+| P&L assembly | `getPLReport` | `src/lib/supabase/queries/dashboard.ts` |
+| Item cost at sale | cart add logic; `searchProductsForPOS` | `src/app/(frontline)/frontline/page.tsx`; `src/lib/supabase/queries/transactions.ts` |
+| PO create | line defaults (base unit, cost = `latest_cogs`) | `src/app/(dashboard)/purchases/new/page.tsx` |
+| Payroll expense | `payPayrollRun` → "Salaries & Wages" expense | `src/lib/supabase/queries/employees.ts` |
 
-- [ ] ✅ Uses database transaction (BEGIN...COMMIT)
-- [ ] ✅ Converts quantity to base unit correctly
-- [ ] ✅ Validates conversion_factor > 0
-- [ ] ✅ Creates inventory_movements record
-- [ ] ✅ Checks sufficient stock (for deductions)
-- [ ] ✅ Uses soft delete (is_deleted flag)
-- [ ] ✅ Has authorization check
-- [ ] ✅ Supports DECIMAL quantities
-- [ ] ✅ Locks row during update (FOR UPDATE)
-- [ ] ✅ Has audit information (who/when/why)
-- [ ] ✅ Handles errors gracefully (rollback)
-- [ ] ✅ Filters deleted records in reports
+When an inventory or P&L function changes, update this document and the "Last updated" line.
 
 ---
 
-**Last Updated:** March 3, 2026  
-**Maintained By:** Development Team  
-**Review Frequency:** After any inventory-related changes
+## 11. Stock lots
+
+Migrations 00107–00109. Every delivery is a **lot** (`inventory_lots`): branch, product, base-unit cost including the delivery-charge share, quantity received and remaining. Stock that existed when lots were introduced became one `opening` lot per product (store-owned, at `latest_cogs`).
+
+Rule: Σ lot `qty_remaining` = on-hand stock (or 0 when stock is negative). The view `lot_stock_mismatch` lists any product/branch where that isn't true; it should always be empty.
+
+| Event | Lots |
+|---|---|
+| PO receive | New `po` lot. Cost per base unit = effective PO cost × received qty ÷ base qty. |
+| Sale / government delivery | `lots_private.consume`: oldest lot first. Within a lot, investor shares in tag order, then the store. Each piece is a `lot_consumptions` row. Selling below zero stock records a lot-less (store) consumption at `latest_cogs`. |
+| Return | `lots_private.return_restore`: matched to the original sale's latest consumptions. Restocked units go back to the same lot/owner; damaged ones don't. |
+| Deleted sale / return | `reverse_sale` / `reverse_return` undo the above. |
+| Adjustment + | New store-owned `adjustment` lot at `latest_cogs`. |
+| Adjustment − | `lots_private.trim`: store-owned units first (newest lot first), then investor units (recorded in `lot_writeoffs` as a buy-back at cost). |
+
+The `lots_private` schema isn't exposed through the API; only the stock functions call it.
+
+## 12. Investments
+
+Admin only (RLS + checks in each function). Screens: **Investments** (sidebar), the investment detail page (statement PDF), and **Tag to Investment** on a received PO.
+
+- An investment has a fixed **profit share %** and a fixed **reinvest / payout** mode (both apply to all its past sales, so they can't be changed later).
+- **Tagging** (`tag_investment`): part of a lot is assigned to an investment (`investment_lot_shares`). Only units still unsold and untagged can be tagged, so tagging later never claims past sales. The cost (qty × lot cost) must fit the investment's available amount. Untagging (`untag_investment`) works for unsold units only.
+- **What the investor earns** per unit sold = cost + % × (selling price − cost), times the share of the sale the customer has paid. Below-cost sales reduce it by the same %. Selling price = line total minus its share of the order discount; fees stay the store's.
+- **Losses**: damaged returns and stock losses are taken from store stock first; any investor unit lost is bought back at cost.
+- **Figures** (`get_investment_figures`, all computed, nothing stored):
+  - Available = capital + top-ups − withdrawals − tagged cost + capital returned + buy-backs (+ profit − payouts in reinvest mode).
+  - Owed to investor = profit earned − payouts (payout mode).
+- **P&L**: "Investor profit share (collected)" for sales in the period, then "Net Profit after Investors" (`get_investor_profit_share`).

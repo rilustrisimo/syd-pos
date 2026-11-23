@@ -906,6 +906,7 @@ export interface PLReport {
   // Cash flow additions
   total_purchases: number     // inventory cost from received POs in period
   total_collections: number   // cash actually collected from customers
+  investor_profit_share: number // investors' collected profit share on sales in the period (0 if none / not allowed)
 
   // Daily trend (for chart)
   daily_trend: DailyPLPoint[]
@@ -985,6 +986,13 @@ export async function getPLReport(dateFrom: string, dateTo: string): Promise<PLR
 
   const totalCollections = Number((collResult.data as any[])?.[0]?.total_collections) || 0
 
+  // Investors' share of profit on their stock sold in the period (migration
+  // 00108). Shown below Net Profit; a missing function or role → 0.
+  const { data: investorShare, error: investorShareError } = await (supabase as any).rpc(
+    'get_investor_profit_share', { p_date_from: dateFrom, p_date_to: dateTo }
+  )
+  const totalInvestorShare = investorShareError ? 0 : Number(investorShare) || 0
+
   // ── 2c. Loan interest expense ───────────────────────────────────────────────
   const { data: interestData } = await supabase
     .from('liability_loan_payments')
@@ -1047,6 +1055,7 @@ export async function getPLReport(dateFrom: string, dateTo: string): Promise<PLR
     net_margin:            totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0,
     total_purchases:       totalPurchases,
     total_collections:     totalCollections,
+    investor_profit_share: totalInvestorShare,
     daily_trend:           dailyTrend,
   }
 }

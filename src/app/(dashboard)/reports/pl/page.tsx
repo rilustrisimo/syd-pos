@@ -424,6 +424,20 @@ export default function PLReportPage() {
                     {formatCurrency(report?.net_profit ?? 0)}
                   </span>
                 </div>
+                {(report?.investor_profit_share ?? 0) !== 0 && (
+                  <>
+                    <div className="flex justify-between py-1 text-muted-foreground pl-4">
+                      <span title="Investors' % of the profit on their stock sold in this period, as far as customers have paid">
+                        − Investor profit share (collected)
+                      </span>
+                      <span>({formatCurrency(report?.investor_profit_share ?? 0)})</span>
+                    </div>
+                    <div className="flex justify-between py-1 border-t font-semibold">
+                      <span>= Net Profit after Investors</span>
+                      <span>{formatCurrency((report?.net_profit ?? 0) - (report?.investor_profit_share ?? 0))}</span>
+                    </div>
+                  </>
+                )}
               </div>
             </CardContent>
           </Card>

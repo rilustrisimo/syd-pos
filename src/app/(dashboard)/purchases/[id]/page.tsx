@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
@@ -77,7 +77,8 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Label } from '@/components/ui/label'
-import { TrendingUp, TrendingDown, Minus, CheckCheck, RotateCcw } from 'lucide-react'
+import { TrendingUp, TrendingDown, Minus, CheckCheck, RotateCcw, PiggyBank } from 'lucide-react'
+import { TagInvestmentDialog } from '@/components/investments/tag-investment-dialog'
 
 const statusConfig: Record<POStatus, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline'; icon: typeof FileText; color: string }> = {
   draft: { label: 'Draft', variant: 'outline', icon: FileText, color: 'text-gray-500' },
@@ -128,6 +129,17 @@ export default function PurchaseOrderDetailPage() {
   const [isPriceReviewOpen, setIsPriceReviewOpen] = useState(false)
   const [priceReviewItems, setPriceReviewItems] = useState<PriceReviewItem[]>([])
   const [isApplyingPriceReview, setIsApplyingPriceReview] = useState(false)
+  // Investments: admins are offered tagging after each receive, once the
+  // price review (if any) is closed. Tagging is optional.
+  const isAdmin = user?.role === 'admin'
+  const [isTagOpen, setIsTagOpen] = useState(false)
+  const [tagPromptPending, setTagPromptPending] = useState(false)
+  useEffect(() => {
+    if (tagPromptPending && !isPriceReviewOpen) {
+      setTagPromptPending(false)
+      setIsTagOpen(true)
+    }
+  }, [tagPromptPending, isPriceReviewOpen])
 
   if (isLoading) {
     return (
@@ -265,6 +277,7 @@ export default function PurchaseOrderDetailPage() {
       const receivedLine = receivingLine
       setReceivingLine(null)
       openPriceReview([receivedLine])
+      if (isAdmin) setTagPromptPending(true)
     } catch (err: any) {
       toast.error(err.message || 'Failed to receive items')
     }
@@ -281,6 +294,7 @@ export default function PurchaseOrderDetailPage() {
         (line) => Number(line.quantity_received) < Number(line.quantity_ordered)
       )
       openPriceReview(remainingLines)
+      if (isAdmin) setTagPromptPending(true)
     } catch (err: any) {
       toast.error(err.message || 'Failed to receive all items')
     }
@@ -443,6 +457,12 @@ export default function PurchaseOrderDetailPage() {
             <Printer className="mr-2 h-4 w-4" />
             Print PO
           </Button>
+          {isAdmin && hasReceivedItems && (
+            <Button variant="outline" onClick={() => setIsTagOpen(true)}>
+              <PiggyBank className="mr-2 h-4 w-4" />
+              Tag to Investment
+            </Button>
+          )}
           {canReceive && hasUnreceived && (
             <Button onClick={() => setIsReceiveAllDialogOpen(true)}>
               <PackagePlus className="mr-2 h-4 w-4" />
@@ -1142,6 +1162,10 @@ export default function PurchaseOrderDetailPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {isAdmin && (
+        <TagInvestmentDialog poId={poId} open={isTagOpen} onOpenChange={setIsTagOpen} />
+      )}
 
       {/* Hidden PO Print Template */}
       <div className="hidden">

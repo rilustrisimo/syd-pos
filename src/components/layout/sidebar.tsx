@@ -33,6 +33,7 @@ import {
   CalendarClock,
   FileCheck2,
   Handshake,
+  PiggyBank,
   UserCheck,
   Building2,
   FileText,
@@ -104,6 +105,8 @@ const navigation = [
   },
   { name: 'Employees', href: '/employees', icon: UserCheck },
   { name: 'Referrals', href: '/referrals', icon: Handshake },
+  // Admin only: investor money and figures (data is admin-only in the DB too).
+  { name: 'Investments', href: '/investments', icon: PiggyBank, adminOnly: true },
   { name: 'Suppliers', href: '/suppliers', icon: Truck },
   {
     name: 'Expenses',
@@ -154,6 +157,7 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const { data: openLeads = [] } = useOpenLeads()
   // Leads waiting for a call count too, not just pending orders.
   const pendingOnlineOrderCount = pendingOnlineOrders.length + openLeads.length
+  const userRole = useAuthStore((s) => s.user?.role)
 
   const handleSignOut = async () => {
     if (isSigningOut) return // Prevent double-click
@@ -205,7 +209,7 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
 
       {/* Navigation */}
       <nav className="flex-1 space-y-1 px-3 py-4 overflow-y-auto">
-        {navigation.map((item) => {
+        {navigation.filter((item) => !('adminOnly' in item && item.adminOnly) || userRole === 'admin').map((item) => {
           const hasChildren = 'children' in item && item.children
           const isActive = pathname === item.href ||
             (item.href !== '/' && pathname.startsWith(item.href))

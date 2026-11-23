@@ -116,18 +116,25 @@ Proposed price (requires approval):
 
 ## Technical Implementation
 
-**Database Trigger:** `update_product_pricing_on_receive()`
+**Database function:** `receive_purchase_order_atomic()`. The old `update_product_pricing_on_receive()` trigger was dropped in migration 00056.
 
-**Location:** 
-- `supabase/migrations/00019_update_pricing_trigger_upward_only.sql`
+**Location:**
+- `supabase/migrations/00056_fix_po_receive_issues.sql`
 
-**Logic:**
+**Logic** (per received PO line):
 ```sql
--- Update only COGS on receive
+-- Cost includes the line's share of the PO delivery charge
+effective_cost = unit_cost * (1 + delivery_charge / po_merchandise_total)
+
 UPDATE products
-SET latest_cogs = v_calculated_cogs
-WHERE id = NEW.product_id;
+SET latest_cogs    = effective_cost,
+    base_unit_cost = ROUND(effective_cost * COALESCE(NULLIF(conversion_factor, 0), 1), 4)
+WHERE id = product_id;
+-- current_selling_price is NOT changed. The markup triggers (00036)
+-- recalculate markup_percentage for the product and its selling units.
 ```
+
+See `INVENTORY_FLOW_DOCUMENTATION.md` for the full receive flow.
 
 ## Best Practices
 
@@ -157,5 +164,5 @@ Potential features to consider:
 
 ---
 
-**Last Updated:** February 19, 2026  
-**Migration:** 00019_update_pricing_trigger_upward_only.sql
+**Last Updated:** November 23, 2026  
+**Migration:** 00056_fix_po_receive_issues.sql
