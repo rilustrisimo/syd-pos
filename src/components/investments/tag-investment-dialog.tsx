@@ -25,6 +25,9 @@ import {
 
 type Row = { investmentId: string; qty: string }
 
+/** Up to 4 decimals, no trailing zeros (20 → "20", 0.5 → "0.5"). */
+const formatQty = (n: number) => n.toLocaleString('en-PH', { maximumFractionDigits: 4 })
+
 export function TagInvestmentDialog({
   poId,
   open,
@@ -67,7 +70,7 @@ export function TagInvestmentDialog({
 
     for (const { lot, row } of toTag) {
       if (Number(row!.qty) > lot.qty_taggable) {
-        return toast.error(`${lot.product_name}: only ${formatNumber(lot.qty_taggable, 4)} unit(s) can be tagged`)
+        return toast.error(`${lot.product_name}: only ${formatQty(lot.qty_taggable)} unit(s) can be tagged`)
       }
     }
     for (const [invId, planned] of plannedByInvestment) {

@@ -646,6 +646,7 @@ RETURNS TABLE (
   units_sold numeric, revenue_collected numeric, capital_returned numeric, profit_earned numeric,
   buybacks numeric, available numeric, owed_to_investor numeric
 ) LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
+#variable_conflict use_column
 BEGIN
   PERFORM lots_private.assert_admin();
   RETURN QUERY SELECT * FROM lots_private.investment_figures(p_investment_id);
@@ -658,11 +659,12 @@ RETURNS TABLE (
   product_id uuid, product_name text, lot_share_id uuid, qty_sold numeric, unit_cost numeric,
   unit_revenue numeric, paid_ratio numeric, investor_share numeric
 ) LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
+#variable_conflict use_column
 BEGIN
   PERFORM lots_private.assert_admin();
   RETURN QUERY
     SELECT r.consumption_id, r.transaction_id, r.transaction_number, r.transaction_date,
-           r.product_id, p.name, r.lot_share_id, r.qty_sold, r.unit_cost, r.unit_revenue, r.paid_ratio,
+           r.product_id, p.name::text, r.lot_share_id, r.qty_sold, r.unit_cost, r.unit_revenue, r.paid_ratio,
            ROUND(r.qty_sold * (r.unit_cost + (r.unit_revenue - r.unit_cost) * i.profit_share_pct / 100)
                  * r.paid_ratio, 2)
     FROM lots_private.investment_sale_rows(p_investment_id) r
@@ -680,18 +682,21 @@ RETURNS TABLE (
   branch_id uuid, received_at timestamptz, unit_cost numeric,
   qty_received numeric, qty_remaining numeric, qty_tagged_remaining numeric, qty_taggable numeric
 ) LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
+#variable_conflict use_column
 BEGIN
   PERFORM lots_private.assert_admin();
   RETURN QUERY
-    SELECT l.id, l.po_id, l.po_line_id, l.product_id, p.name, l.branch_id, l.received_at, l.unit_cost,
+    SELECT l.id, l.po_id, l.po_line_id, l.product_id, p.name::text, l.branch_id, l.received_at, l.unit_cost,
            l.qty_received, l.qty_remaining,
            COALESCE(s.tagged, 0),
            l.qty_remaining - COALESCE(s.tagged, 0)
     FROM inventory_lots l
     JOIN products p ON p.id = l.product_id
     LEFT JOIN (
-      SELECT lot_id, SUM(qty_remaining) AS tagged FROM investment_lot_shares GROUP BY lot_id
-    ) s ON s.lot_id = l.id
+      -- Qualified: lot_id is also an output column of this function.
+      SELECT sh.lot_id AS share_lot_id, SUM(sh.qty_remaining) AS tagged
+      FROM investment_lot_shares sh GROUP BY sh.lot_id
+    ) s ON s.share_lot_id = l.id
     WHERE (p_po_id IS NULL OR l.po_id = p_po_id)
       AND (p_product_id IS NULL OR l.product_id = p_product_id)
       AND (p_po_id IS NOT NULL OR p_product_id IS NOT NULL)

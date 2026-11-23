@@ -136,8 +136,12 @@ export default function PurchaseOrderDetailPage() {
   const [tagPromptPending, setTagPromptPending] = useState(false)
   useEffect(() => {
     if (tagPromptPending && !isPriceReviewOpen) {
-      setTagPromptPending(false)
-      setIsTagOpen(true)
+      // Wait for the price review's close animation so the dialogs don't overlap.
+      const t = setTimeout(() => {
+        setTagPromptPending(false)
+        setIsTagOpen(true)
+      }, 300)
+      return () => clearTimeout(t)
     }
   }, [tagPromptPending, isPriceReviewOpen])
 
