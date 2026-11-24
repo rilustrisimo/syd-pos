@@ -68,7 +68,8 @@ export function AnimatedReelDialog({
     if (!reelData) return
     const t = setTimeout(() => {
       setPlaying(false)
-      setPreviewSrc(`/reel-templates/${style}.html?data=${toBase64(JSON.stringify(reelData))}`)
+      // encodeURIComponent: base64 contains "+", which a query string reads as a space.
+      setPreviewSrc(`/reel-templates/${style}.html?data=${encodeURIComponent(toBase64(JSON.stringify(reelData)))}`)
     }, 500)
     return () => clearTimeout(t)
   }, [reelData, style])

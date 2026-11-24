@@ -29,7 +29,9 @@
   function readData() {
     if (window.REEL) return window.REEL
     if (params.get('data')) {
-      try { return JSON.parse(decodeURIComponent(escape(atob(params.get('data'))))) } catch (e) { console.error(e) }
+      // A raw "+" in the query string arrives as a space — put it back before decoding.
+      const b64 = params.get('data').replace(/ /g, '+')
+      try { return JSON.parse(decodeURIComponent(escape(atob(b64)))) } catch (e) { console.error(e) }
     }
     return SAMPLE
   }
