@@ -29,24 +29,38 @@ export async function renderReel({ reel, audioPath, outPath, onProgress = () => 
   const frames = path.join(work, 'frames')
   fs.mkdirSync(frames)
 
+  // Frames are independent (seek(t) positions every animation exactly), so
+  // several tabs can each capture a slice of the timeline in parallel.
+  const workers = Math.max(1, Math.min(Number(process.env.REEL_WORKERS) || os.cpus().length, 4))
+  const total = Math.ceil(reel.durationSeconds * FPS)
+  const t0 = Date.now()
+  let done = 0
   const browser = await chromium.launch(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {})
   try {
-    const page = await browser.newPage({ viewport: { width: 1080, height: 1920 } })
-    const pageErrors = []
-    page.on('pageerror', (e) => pageErrors.push(e.message))
-    await page.addInitScript((r) => { window.REEL = r }, reel)
-    await page.goto('file://' + template)
-    await page.waitForFunction(() => document.documentElement.dataset.ready === '1', null, { timeout: 60000 })
-    if (pageErrors.length) throw new Error('Template error: ' + pageErrors[0])
-    const total = Math.ceil(reel.durationSeconds * FPS)
-    for (let f = 0; f < total; f++) {
-      await page.evaluate((t) => window.seek(t), f / FPS)
-      await page.screenshot({ path: path.join(frames, String(f).padStart(5, '0') + '.jpg'), type: 'jpeg', quality: 90 })
-      if (f % 60 === 0) onProgress(f, total)
-    }
+    await Promise.all(Array.from({ length: workers }, async (_, w) => {
+      const page = await browser.newPage({ viewport: { width: 1080, height: 1920 } })
+      const pageErrors = []
+      page.on('pageerror', (e) => pageErrors.push(e.message))
+      await page.addInitScript((r) => { window.REEL = r }, reel)
+      await page.goto('file://' + template)
+      await page.waitForFunction(() => document.documentElement.dataset.ready === '1', null, { timeout: 60000 })
+      if (pageErrors.length) throw new Error('Template error: ' + pageErrors[0])
+      // Chrome's fast capture path (Playwright's screenshot() doesn't expose optimizeForSpeed).
+      const cdp = await page.context().newCDPSession(page)
+      const from = Math.floor((total * w) / workers), to = Math.floor((total * (w + 1)) / workers)
+      for (let f = from; f < to; f++) {
+        await page.evaluate((t) => window.seek(t), f / FPS)
+        const { data } = await cdp.send('Page.captureScreenshot', { format: 'jpeg', quality: 90, optimizeForSpeed: true })
+        fs.writeFileSync(path.join(frames, String(f).padStart(5, '0') + '.jpg'), Buffer.from(data, 'base64'))
+        if (++done % 60 === 0) onProgress(done, total)
+      }
+      await page.close()
+    }))
   } finally {
     await browser.close()
   }
+  const captureSec = (Date.now() - t0) / 1000
+  const t1 = Date.now()
 
   const delayMs = Math.round((reel.leadSeconds || 0) * 1000)
   execFileSync(FFMPEG, ['-y', '-hide_banner', '-loglevel', 'error',
@@ -58,6 +72,7 @@ export async function renderReel({ reel, audioPath, outPath, onProgress = () => 
     '-c:a', 'aac', '-b:a', '160k', '-ar', '48000',
     '-t', String(reel.durationSeconds), '-movflags', '+faststart', outPath])
   fs.rmSync(work, { recursive: true, force: true })
+  console.log(`${total} frames · ${workers} tab(s) · capture ${captureSec.toFixed(1)}s · encode ${((Date.now() - t1) / 1000).toFixed(1)}s`)
   return { bytes: fs.statSync(outPath).size }
 }
 
