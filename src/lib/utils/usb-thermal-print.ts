@@ -231,7 +231,7 @@ function sectionHeader(
 // ---------------------------------------------------------------------------
 
 const DEFAULT_STORE_ADDRESS = 'Sitio Landing, Talakag, Bukidnon'
-const DEFAULT_STORE_PHONE   = '09765524334'
+const DEFAULT_STORE_PHONE   = '09458013640'
 
 const PAYMENT_LABELS: Record<string, string> = {
   cash: 'Cash',

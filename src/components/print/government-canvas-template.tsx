@@ -68,7 +68,7 @@ const GOV_BORDER = '#bfdbfe'
 // Fallbacks only — real values come from shop_settings (Settings > Store
 // Contact & Address in syd-pos), shared with syd-shop.
 const DEFAULT_STORE_ADDRESS = 'Sitio Landing, Talakag, Bukidnon'
-const DEFAULT_STORE_PHONE   = '09765524334'
+const DEFAULT_STORE_PHONE   = '09458013640'
 
 // ── Component ─────────────────────────────────────────────────────────────────
 

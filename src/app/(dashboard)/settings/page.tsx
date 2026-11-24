@@ -110,7 +110,7 @@ function StoreContactCard() {
               <Input
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
-                placeholder="e.g. 09765524334"
+                placeholder="e.g. 09458013640"
               />
               <p className="text-xs text-muted-foreground">
                 A single number — this replaces the two numbers previously printed side by side.

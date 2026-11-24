@@ -13,7 +13,7 @@ export interface StoreContactInfo {
 }
 
 const DEFAULT_STORE_ADDRESS = 'Sitio Landing, Talakag, Bukidnon'
-const DEFAULT_STORE_PHONE = '09765524334'
+const DEFAULT_STORE_PHONE = '09458013640'
 
 export async function getStoreContactInfo(): Promise<StoreContactInfo> {
   const supabase = getClient()
