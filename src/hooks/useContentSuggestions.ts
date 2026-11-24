@@ -5,6 +5,7 @@ import { getClient } from '@/lib/supabase/client'
 import type { ContentAudience, ContentFormat } from '@/hooks/useContentIdeas'
 import type { ReelTimeline } from '@/lib/marketing/reel-timeline'
 import type { CreativeStyle } from '@/lib/marketing/creative-styles'
+import type { Storyboard } from '@/lib/marketing/reel-styles'
 
 // One caption chunk of the synthesized narration and when it starts
 // (seconds into the audio), from Google TTS SSML mark timepoints.
@@ -39,6 +40,8 @@ export interface ContentSuggestion {
   reel_stickers: string[] | null
   voice_timepoints: VoiceTimepoint[] | null
   reel_timeline: ReelTimeline | null
+  /** Animated reel storyboard (Animated reel dialog), when one was made. */
+  reel_storyboard: Storyboard | null
   status: SuggestionStatus
   reviewed_by: string | null
   reviewed_at: string | null

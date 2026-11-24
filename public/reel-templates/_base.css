@@ -1,0 +1,10 @@
+/* Shared base for animated reel templates: a fixed 1080x1920 stage whose
+   animations are positioned by seek() in _runtime.js. */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 1080px; height: 1920px; overflow: hidden; }
+#stage { position: relative; width: 1080px; height: 1920px; overflow: hidden; }
+.scene { position: absolute; inset: 0; overflow: hidden; }
+/* Paused until seek() positions them; before/after their window they hold their first/last frame. */
+*, *::before, *::after { animation-play-state: paused !important; }
+/* While _runtime.js measures text to fit it. */
+html.measuring *, html.measuring *::before, html.measuring *::after { animation: none !important; }

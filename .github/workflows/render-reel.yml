@@ -1,0 +1,98 @@
+name: Render animated reel
+
+# Started by the app (POST /api/content/render-reel) with a reel_render_jobs id.
+# Renders public/reel-templates/<style>.html to MP4 with reel-renderer/render.mjs,
+# uploads it to R2, attaches it to the post and marks the job done.
+on:
+  workflow_dispatch:
+    inputs:
+      job_id:
+        description: 'reel_render_jobs.id'
+        required: true
+
+concurrency:
+  group: render-reel-${{ inputs.job_id }}
+  cancel-in-progress: false
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            public/reel-templates
+            public/syd-logo.svg
+            reel-renderer
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: reel-renderer/package-lock.json
+
+      # ffmpeg encodes the video; the emoji font draws the ☎ / 📞 icons.
+      - name: Install ffmpeg and fonts
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg fonts-noto-color-emoji
+
+      - name: Install renderer
+        working-directory: reel-renderer
+        run: |
+          npm ci --no-audit --no-fund
+          npx playwright install --with-deps chromium
+
+      - name: Render
+        working-directory: reel-renderer
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_R2_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_R2_ACCESS_KEY_ID }}
+          CLOUDFLARE_R2_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_R2_SECRET_ACCESS_KEY }}
+          CLOUDFLARE_R2_BUCKET: ${{ secrets.CLOUDFLARE_R2_BUCKET }}
+          R2_PUBLIC_URL: ${{ secrets.R2_PUBLIC_URL }}
+          GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: node render.mjs "${{ inputs.job_id }}"
+
+      # If setup failed before render.mjs could report it, don't leave the job "queued".
+      - name: Mark job failed
+        if: failure()
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          JOB_ID: ${{ inputs.job_id }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          curl -sS -X PATCH "$SUPABASE_URL/rest/v1/reel_render_jobs?id=eq.$JOB_ID&status=in.(queued,rendering)" \
+            -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+            -H "Content-Type: application/json" \
+            -d "{\"status\":\"failed\",\"error\":\"The renderer stopped unexpectedly — see the GitHub run.\",\"github_run_url\":\"$RUN_URL\",\"finished_at\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# One-time setup (needs the owner — Claude can't create tokens or secrets):
+#
+# 1. GitHub → this repo → Settings → Secrets and variables → Actions → New
+#    repository secret, add:
+#      SUPABASE_URL                     (Supabase → Project Settings → API → Project URL)
+#      SUPABASE_SERVICE_ROLE_KEY        (same page, "service_role" key — keep secret)
+#      CLOUDFLARE_ACCOUNT_ID            (same values the app uses on Vercel)
+#      CLOUDFLARE_R2_ACCESS_KEY_ID
+#      CLOUDFLARE_R2_SECRET_ACCESS_KEY
+#      CLOUDFLARE_R2_BUCKET
+#      R2_PUBLIC_URL                    (= NEXT_PUBLIC_CLOUDFLARE_R2_PUBLIC_URL on Vercel)
+#
+# 2. GitHub → your profile → Settings → Developer settings → Personal access
+#    tokens → Fine-grained tokens → Generate: repository access = only this
+#    repo; Repository permissions → Actions: Read and write. Expires within a
+#    year — renew it then.
+#
+# 3. Vercel → project → Settings → Environment Variables, add:
+#      GITHUB_REEL_TOKEN = <the token>
+#      GITHUB_REEL_REPO  = rilustrisimo/syd-pos
+#    then redeploy.
+#
+# 4. Run migration supabase/migrations/00111_reel_render_jobs.sql in the
+#    Supabase SQL editor.
+# ─────────────────────────────────────────────────────────────────────────────

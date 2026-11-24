@@ -1,0 +1,14 @@
+{
+  "name": "syd-reel-renderer",
+  "private": true,
+  "type": "module",
+  "description": "Renders animated reels (public/reel-templates) to MP4. Run by .github/workflows/render-reel.yml.",
+  "scripts": {
+    "render": "node render.mjs"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "2.95.3",
+    "aws4fetch": "1.0.20",
+    "playwright": "1.55.0"
+  }
+}

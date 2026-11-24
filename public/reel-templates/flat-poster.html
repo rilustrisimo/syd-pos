@@ -1,0 +1,180 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Flat Poster</title>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@600;800&display=block" rel="stylesheet">
+<link rel="stylesheet" href="_base.css">
+<style>
+  :root { --yellow:#FFC107; --ink:#0F172A; --paper:#FFF6DC; --red:#E63946; --grey:#A8AEB8; }
+  body { background:var(--ink); }
+  .anton { font-family:'Anton', sans-serif; text-transform:uppercase; line-height:.95; }
+  .inter { font-family:'Inter', sans-serif; }
+
+  @keyframes wipe { from { clip-path: inset(0 0 0 100%); } to { clip-path: inset(0 0 0 0); } }
+  @keyframes slam { 0% { opacity:0; transform:scale(1.6) rotate(-4deg); } 70% { opacity:1; transform:scale(.96); } 100% { opacity:1; transform:none; } }
+  @keyframes rise { from { opacity:0; transform:translateY(140px); } to { opacity:1; transform:none; } }
+  @keyframes drop { 0% { transform:translateY(-1500px) rotate(-8deg); } 60% { transform:translateY(40px) rotate(2deg); } 80% { transform:translateY(-20px); } 100% { transform:none; } }
+  @keyframes stamp { 0% { opacity:0; transform:scale(2.6) rotate(-10deg); } 60% { opacity:1; transform:scale(.92) rotate(-10deg); } 100% { opacity:1; transform:scale(1) rotate(-10deg); } }
+  @keyframes fromLeft { from { opacity:0; transform:translateX(-1100px) rotate(-4deg); } to { opacity:1; transform:none; } }
+  @keyframes fromRight { from { opacity:0; transform:translateX(1100px) rotate(4deg); } to { opacity:1; transform:none; } }
+  @keyframes pop { 0% { opacity:0; transform:scale(0); } 70% { opacity:1; transform:scale(1.12); } 100% { opacity:1; transform:scale(1); } }
+  @keyframes fade { from { opacity:0; } to { opacity:1; } }
+  @keyframes tape { from { transform:translateX(-1400px) rotate(var(--r)); } to { transform:translateX(0) rotate(var(--r)); } }
+  @keyframes draw { from { stroke-dashoffset:1600; } to { stroke-dashoffset:0; } }
+  @keyframes type { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+  @keyframes pulse { 0%,100% { transform:scale(1); } 50% { transform:scale(1.06); } }
+  @keyframes spin { from { transform:rotate(0); } to { transform:rotate(360deg); } }
+
+  .tape { position:absolute; left:-200px; width:1500px; height:90px;
+    background:repeating-linear-gradient(-45deg, var(--ink) 0 50px, var(--yellow) 50px 100px); }
+  .bg-yellow { background:var(--yellow); } .bg-paper { background:var(--paper); } .bg-ink { background:var(--ink); }
+  .head { position:absolute; left:60px; color:var(--ink); }
+  .head .w { display:inline-block; margin-right:.22em; }
+  .sub { position:absolute; left:90px; font-weight:600; }
+  .stamp { position:absolute; padding:18px 40px; border:14px solid var(--red); color:var(--red); background:rgba(255,246,220,.9); white-space:nowrap; }
+  .card { position:absolute; left:80px; width:920px; height:190px; border-radius:30px; display:flex; align-items:center; gap:34px; padding:0 44px; }
+  .card .tick { flex:0 0 96px; height:96px; border-radius:50%; background:var(--ink); color:var(--yellow); display:flex; align-items:center; justify-content:center; font-size:64px; font-family:'Inter'; font-weight:800; }
+  .card .lbl { color:var(--ink); line-height:1; }
+  .badge { position:absolute; left:240px; top:250px; width:600px; padding:50px 60px; background:var(--ink); border-radius:40px; }
+  .badge img { width:100%; display:block; }
+  .pill { position:absolute; left:90px; width:900px; background:var(--ink); color:var(--yellow); border-radius:999px; text-align:center; padding:46px 0; font-weight:800; }
+  .btn { position:absolute; left:290px; width:500px; padding:30px 0; text-align:center; border-radius:24px; background:var(--red); color:#fff; }
+  .photo { position:absolute; left:190px; top:470px; width:700px; height:700px; border-radius:36px; background:#fff; border:14px solid var(--ink); overflow:hidden; }
+  .photo img { width:100%; height:100%; object-fit:contain; }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<script>
+const SVG_NS = 'http://www.w3.org/2000/svg'
+function svg(markup, cls, viewBox) {
+  const s = document.createElementNS(SVG_NS, 'svg')
+  s.setAttribute('viewBox', viewBox); if (cls) s.setAttribute('class', cls); s.innerHTML = markup; return s
+}
+/** Headline split into words that slam in one after another. */
+function slamWords(ctx, text, opts) {
+  const { el, animate } = ctx
+  const box = el('div', 'head anton')
+  const words = text.trim().split(/\s+/)
+  words.forEach((w, i) => {
+    const span = el('span', 'w', w)
+    if (opts.lastRed && i === words.length - 1 && words.length > 1) span.style.color = 'var(--red)'
+    animate(span, ['slam', 0.42, opts.at + i * 0.16, 'ease-out'])
+    box.appendChild(span)
+  })
+  box.style.top = opts.top + 'px'
+  ctx.fit(box, { w: 960, h: opts.h, max: opts.max, min: 70 })
+  return box
+}
+
+window.STYLE = {
+  fonts: ['Anton', '600 Inter', '800 Inter'],
+  transition: 'wipe',
+  roles: {
+    hook(scene, ctx) {
+      const { el, animate, at } = ctx
+      const s = el('section', 'bg-yellow')
+      const t1 = el('div', 'tape'); t1.style.top = '120px'; t1.style.setProperty('--r', '-4deg'); animate(t1, ['tape', .7, at(0.02)])
+      const t2 = el('div', 'tape'); t2.style.bottom = '150px'; t2.style.setProperty('--r', '3deg'); animate(t2, ['tape', .7, at(0.05)])
+      s.append(t1, t2, slamWords(ctx, scene.headline, { at: at(0.12), top: 320, h: 760, max: 240, lastRed: true }))
+      if (scene.sub) { const sub = el('div', 'sub inter', scene.sub); sub.style.top = '1110px'; sub.style.color = 'var(--ink)'; animate(sub, ['fade', .5, at(0.5)]); ctx.fit(sub, { w: 900, max: 56, min: 34 }); s.append(sub) }
+      const house = svg('<path d="M40 200 L250 30 L460 200 M90 160 V390 H410 V160 M200 390 V270 H300 V390" stroke-dasharray="1600"/>', '', '0 0 500 420')
+      Object.assign(house.style, { position: 'absolute', left: '290px', top: scene.sub ? '1230px' : '1130px', width: '500px' })
+      house.setAttribute('fill', 'none'); house.setAttribute('stroke', '#0F172A'); house.setAttribute('stroke-width', '22')
+      house.setAttribute('stroke-linejoin', 'round'); house.setAttribute('stroke-linecap', 'round')
+      animate(house, ['rise', .5, at(0.45)]); animate(house.querySelector('path'), ['draw', 1.1, at(0.48)])
+      s.append(house)
+      return s
+    },
+
+    product(scene, ctx) {
+      const { el, animate, at, data } = ctx
+      const s = el('section', 'bg-paper')
+      const rays = el('div'); Object.assign(rays.style, { position: 'absolute', left: '40px', top: '330px', width: '1000px', height: '1000px', borderRadius: '50%',
+        background: 'repeating-conic-gradient(rgba(15,23,42,.07) 0 6deg, transparent 6deg 18deg)' })
+      animate(rays, ['spin', 14, at(0), 'linear', 'infinite'])
+      const sun = el('div'); Object.assign(sun.style, { position: 'absolute', left: '140px', top: '430px', width: '800px', height: '800px', borderRadius: '50%', background: 'var(--yellow)' })
+      animate(sun, ['pop', .5, at(0.04)])
+      const cap = el('div', 'head anton', scene.headline); cap.style.top = '190px'; animate(cap, ['rise', .45, at(0.06)])
+      ctx.fit(cap, { w: 900, h: 220, max: 130, min: 60 })
+      s.append(rays, sun, cap)
+      if (data.product.imageUrl) {
+        const frame = el('div', 'photo'); const img = el('img'); img.src = data.product.imageUrl; frame.append(img)
+        animate(frame, ['drop', .9, at(0.1), 'cubic-bezier(.3,1.2,.5,1)']); s.append(frame)
+      } else {
+        const name = (data.product.name || scene.headline).toUpperCase()
+        const bag = svg(`<path d="M60 60 Q250 20 440 60 L470 590 Q250 630 30 590 Z" fill="#A8AEB8" stroke="#0F172A" stroke-width="14" stroke-linejoin="round"/>
+          <path d="M60 60 Q250 95 440 60" fill="none" stroke="#0F172A" stroke-width="10"/>
+          <rect x="85" y="190" width="330" height="230" rx="22" fill="#FFC107" stroke="#0F172A" stroke-width="10"/>
+          <path d="M120 500 H380 M150 535 H350" stroke="#6B7280" stroke-width="10" stroke-linecap="round"/>`, '', '0 0 500 640')
+        Object.assign(bag.style, { position: 'absolute', left: '290px', top: '470px', width: '500px' })
+        // Label as an HTML overlay on the bag's yellow panel (moves with the bag).
+        const wrap = el('div'); Object.assign(wrap.style, { position: 'absolute', left: '290px', top: '470px', width: '500px', height: '640px' })
+        bag.style.position = 'static'; bag.style.width = '500px'
+        const label = el('div', 'anton', name)
+        Object.assign(label.style, { position: 'absolute', left: '100px', top: '200px', height: '210px', display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', color: '#0F172A' })
+        wrap.append(bag, label)
+        animate(wrap, ['drop', .9, at(0.1), 'cubic-bezier(.3,1.2,.5,1)']); s.append(wrap)
+        ctx.fit(label, { w: 300, h: 210, max: 92, min: 34 })
+      }
+      if (scene.stamp) {
+        const st = el('div', 'stamp anton', scene.stamp); st.style.top = '1210px'; st.style.left = '250px'
+        animate(st, ['stamp', .35, at(0.62), 'ease-out']); ctx.fit(st, { w: 640, max: 130, min: 60 }); st.style.width = 'auto'; s.append(st)
+      }
+      if (scene.sub) { const sub = el('div', 'sub inter', scene.sub); sub.style.top = '1520px'; sub.style.color = 'var(--ink)'; animate(sub, ['fade', .5, at(0.45)]); ctx.fit(sub, { w: 900, max: 56, min: 34 }); s.append(sub) }
+      const dots = el('div'); Object.assign(dots.style, { position: 'absolute', right: '-60px', bottom: '-60px', width: '520px', height: '520px',
+        backgroundImage: 'radial-gradient(#0F172A 9px, transparent 10px)', backgroundSize: '44px 44px', opacity: '.85',
+        webkitMaskImage: 'radial-gradient(circle at 100% 100%, #000 30%, transparent 70%)', maskImage: 'radial-gradient(circle at 100% 100%, #000 30%, transparent 70%)' })
+      animate(dots, ['fade', .6, at(0.1)]); s.append(dots)
+      return s
+    },
+
+    proof(scene, ctx) {
+      const { el, animate, at } = ctx
+      const s = el('section', 'bg-ink')
+      const head = el('div', 'head anton', scene.headline); head.style.top = '170px'; head.style.color = 'var(--yellow)'
+      animate(head, ['slam', .45, at(0.04), 'ease-out']); ctx.fit(head, { w: 920, h: 480, max: 260, min: 90 }); s.append(head)
+      if (scene.sub) { const sub = el('div', 'sub anton', scene.sub); sub.style.top = '690px'; sub.style.color = '#fff'; animate(sub, ['rise', .45, at(0.12)]); ctx.fit(sub, { w: 920, max: 84, min: 44 }); s.append(sub) }
+      if (scene.stamp) {
+        const st = el('div', 'stamp anton', scene.stamp); Object.assign(st.style, { top: '780px', left: '420px', background: 'var(--red)', color: '#fff', borderColor: 'var(--red)' })
+        animate(st, ['stamp', .35, at(0.3), 'ease-out']); ctx.fit(st, { w: 580, max: 92, min: 50 }); st.style.width = 'auto'; s.append(st)
+      }
+      const items = (scene.items || []).slice(0, 3)
+      items.forEach((text, i) => {
+        const card = el('div', 'card'); card.style.top = (980 + i * 230) + 'px'
+        card.style.background = i % 2 ? 'var(--paper)' : 'var(--yellow)'
+        const tick = el('div', 'tick', '✓'); const lbl = el('div', 'lbl anton', text)
+        card.append(tick, lbl)
+        const start = 0.35 + i * (0.5 / Math.max(1, items.length))
+        animate(card, [i % 2 ? 'fromRight' : 'fromLeft', .55, at(start), 'cubic-bezier(.2,.9,.3,1.2)'])
+        ctx.fit(lbl, { w: 700, h: 160, max: 110, min: 44 })
+        s.append(card)
+      })
+      return s
+    },
+
+    cta(scene, ctx) {
+      const { el, animate, at, data } = ctx
+      const s = el('section', 'bg-yellow')
+      const badge = el('div', 'badge'); const logo = el('img'); logo.src = data.logoUrl; badge.append(logo)
+      animate(badge, ['pop', .5, at(0.03)]); s.append(badge)
+      const head = el('div', 'head anton', scene.headline || 'Order online'); head.style.top = '700px'; head.style.textAlign = 'center'
+      animate(head, ['slam', .45, at(0.1), 'ease-out']); ctx.fit(head, { w: 900, h: 230, max: 200, min: 80 }); s.append(head)
+      const pill = el('div', 'pill inter', data.cta.site); pill.style.top = '980px'; pill.style.fontSize = '92px'
+      animate(pill, ['type', .9, at(0.22), 'steps(18)']); s.append(pill)
+      if (data.cta.phone) {
+        const ph = el('div', 'sub inter', '📞 ' + data.cta.phone); Object.assign(ph.style, { top: '1250px', width: '900px', textAlign: 'center', color: 'var(--ink)', fontSize: '64px', fontWeight: '800' })
+        animate(ph, ['fade', .5, at(0.4)]); s.append(ph)
+      }
+      const btn = el('div', 'btn anton', scene.stamp || 'Order na!'); btn.style.top = '1420px'; btn.style.fontSize = '72px'
+      animate(btn, [['pop', .4, at(0.5)], ['pulse', .9, at(0.5) + .5, 'ease-in-out', 'infinite']]); s.append(btn)
+      const tape = el('div', 'tape'); tape.style.bottom = '150px'; tape.style.setProperty('--r', '3deg'); animate(tape, ['tape', .7, at(0.05)]); s.append(tape)
+      return s
+    },
+  },
+}
+</script>
+<script src="_runtime.js"></script>
+</body>
+</html>

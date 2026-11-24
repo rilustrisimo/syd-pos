@@ -1,0 +1,137 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Pop Comic</title>
+<link href="https://fonts.googleapis.com/css2?family=Bangers&family=Inter:wght@700;800&display=block" rel="stylesheet">
+<link rel="stylesheet" href="_base.css">
+<style>
+  :root { --yellow:#FFD23F; --cyan:#3BCEAC; --blue:#2E86DE; --red:#EE4266; --ink:#111; --paper:#FFF8E7; }
+  body { background:var(--ink); }
+  .bang { font-family:'Bangers', cursive; letter-spacing:.03em; line-height:.95; text-transform:uppercase; }
+  .inter { font-family:'Inter', sans-serif; font-weight:800; }
+  .dots { position:absolute; inset:0; background-size:36px 36px; }
+  .frame { position:absolute; inset:26px; border:16px solid var(--ink); border-radius:18px; pointer-events:none; }
+  .bubble { position:absolute; background:#fff; border:12px solid var(--ink); border-radius:120px; padding:60px 70px; color:var(--ink); text-align:center; }
+  .bubble::after { content:''; position:absolute; left:180px; bottom:-120px; width:0; height:0; border-left:60px solid transparent; border-right:60px solid transparent; border-top:120px solid var(--ink); transform:skewX(-22deg); }
+  .bubble::before { content:''; position:absolute; left:191px; bottom:-88px; width:0; height:0; border-left:44px solid transparent; border-right:44px solid transparent; border-top:96px solid #fff; transform:skewX(-22deg); z-index:1; }
+  .burst { position:absolute; display:flex; align-items:center; justify-content:center; }
+  .burst svg { position:absolute; inset:0; width:100%; height:100%; }
+  .burst .t { position:relative; color:var(--ink); text-align:center; }
+  .panel { position:absolute; left:90px; width:900px; height:200px; background:#fff; border:12px solid var(--ink); box-shadow:18px 18px 0 var(--ink); display:flex; align-items:center; padding:0 40px; }
+  .panel .t { color:var(--ink); line-height:1; }
+  .caption { position:absolute; background:var(--yellow); border:10px solid var(--ink); padding:18px 34px; color:var(--ink); box-shadow:12px 12px 0 var(--ink); }
+  .photo { position:absolute; left:170px; top:520px; width:740px; height:740px; background:#fff; border:16px solid var(--ink); box-shadow:24px 24px 0 var(--ink); overflow:hidden; }
+  .photo img { width:100%; height:100%; object-fit:contain; }
+  .badge { position:absolute; left:250px; top:220px; width:580px; padding:44px 56px; background:var(--ink); border-radius:30px; box-shadow:18px 18px 0 #fff; }
+  .badge img { width:100%; display:block; }
+
+  @keyframes jolt { 0% { clip-path:polygon(0 0,0 0,0 100%,0 100%); } 100% { clip-path:polygon(0 0,130% 0,100% 100%,0 100%); } }
+  @keyframes boing { 0% { opacity:0; transform:scale(0) rotate(-8deg); } 60% { opacity:1; transform:scale(1.12) rotate(3deg); } 80% { transform:scale(.96) rotate(-1deg); } 100% { opacity:1; transform:scale(1) rotate(0); } }
+  @keyframes burstIn { 0% { opacity:0; transform:scale(0) rotate(-30deg); } 70% { opacity:1; transform:scale(1.18) rotate(6deg); } 100% { opacity:1; transform:scale(1) rotate(-6deg); } }
+  @keyframes shake { 0%,100% { transform:translateX(0) rotate(0); } 20% { transform:translateX(-14px) rotate(-1.5deg); } 40% { transform:translateX(12px) rotate(1deg); } 60% { transform:translateX(-8px); } 80% { transform:translateX(6px); } }
+  @keyframes slideL { from { opacity:0; transform:translateX(-1200px) rotate(-6deg); } to { opacity:1; transform:rotate(-1.5deg); } }
+  @keyframes slideR { from { opacity:0; transform:translateX(1200px) rotate(6deg); } to { opacity:1; transform:rotate(1.5deg); } }
+  @keyframes drop { 0% { transform:translateY(-1600px) rotate(12deg); } 65% { transform:translateY(30px) rotate(-3deg); } 100% { transform:rotate(-2deg); } }
+  @keyframes spin { from { transform:rotate(0); } to { transform:rotate(360deg); } }
+  @keyframes fade { from { opacity:0; } to { opacity:1; } }
+  @keyframes wobble { 0%,100% { transform:rotate(-3deg) scale(1); } 50% { transform:rotate(3deg) scale(1.06); } }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<script>
+const NS = 'http://www.w3.org/2000/svg'
+function burstSvg(fill) {
+  const s = document.createElementNS(NS, 'svg'); s.setAttribute('viewBox', '0 0 200 200')
+  const pts = []; for (let i = 0; i < 24; i++) { const r = i % 2 ? 62 : 98, a = (i / 24) * Math.PI * 2; pts.push(`${100 + r * Math.cos(a)},${100 + r * Math.sin(a)}`) }
+  s.innerHTML = `<polygon points="${pts.join(' ')}" fill="${fill}" stroke="#111" stroke-width="7" stroke-linejoin="round"/>`
+  return s
+}
+function burst(ctx, text, { left, top, size, at, fill = '#FFD23F', fontMax = 110 }) {
+  const b = ctx.el('div', 'burst'); Object.assign(b.style, { left: left + 'px', top: top + 'px', width: size + 'px', height: size + 'px' })
+  const t = ctx.el('div', 't bang', text)
+  b.append(burstSvg(fill), t); ctx.animate(b, ['burstIn', .45, at, 'ease-out'])
+  ctx.fit(t, { w: size * 0.66, h: size * 0.46, max: fontMax, min: 36 })
+  return b
+}
+function dots(color, bg) { const d = document.createElement('div'); d.className = 'dots'; d.style.background = bg; d.style.backgroundImage = `radial-gradient(${color} 7px, transparent 8px)`; d.style.backgroundSize = '36px 36px'; return d }
+function speedLines(color) { const d = document.createElement('div'); Object.assign(d.style, { position: 'absolute', left: '-460px', top: '-40px', width: '2000px', height: '2000px', borderRadius: '50%', background: `repeating-conic-gradient(${color} 0 4deg, transparent 4deg 14deg)` }); return d }
+
+window.STYLE = {
+  fonts: ['Bangers', '700 Inter', '800 Inter'],
+  transition: 'jolt',
+  roles: {
+    hook(scene, ctx) {
+      const { el, animate, at } = ctx
+      const s = el('section'); s.append(dots('rgba(17,17,17,.18)', 'var(--cyan)'))
+      const bub = el('div', 'bubble'); Object.assign(bub.style, { left: '60px', top: '300px', width: '960px', padding: '70px 40px' })
+      const t = el('div', 'bang', scene.headline); bub.append(t)
+      animate(bub, [['boing', .55, at(0.06), 'ease-out'], ['wobble', 2.2, at(0.06) + .6, 'ease-in-out', 'infinite']])
+      ctx.fit(t, { w: 856, h: 700, max: 230, min: 80 })
+      s.append(bub)
+      s.append(burst(ctx, '!?', { left: 700, top: 1180, size: 300, at: at(0.45), fill: '#EE4266', fontMax: 150 }))
+      if (scene.sub) { const sub = el('div', 'caption inter', scene.sub); Object.assign(sub.style, { left: '90px', top: '1520px', fontSize: '50px' }); animate(sub, ['slideL', .5, at(0.5)]); s.append(sub) }
+      s.append(el('div', 'frame'))
+      return s
+    },
+
+    product(scene, ctx) {
+      const { el, animate, at, data } = ctx
+      const s = el('section'); s.style.background = 'var(--red)'
+      const lines = speedLines('rgba(255,255,255,.22)'); animate(lines, ['spin', 30, at(0), 'linear', 'infinite']); s.append(lines)
+      const cap = el('div', 'caption bang', scene.headline); Object.assign(cap.style, { left: '80px', top: '150px', transform: 'rotate(-2deg)' })
+      animate(cap, ['slideL', .45, at(0.05), 'cubic-bezier(.2,.9,.3,1.3)']); ctx.fit(cap, { w: 800, h: 260, max: 140, min: 60 }); cap.style.width = 'auto'; s.append(cap)
+      const panel = el('div', 'photo')
+      if (data.product.imageUrl) { const img = el('img'); img.src = data.product.imageUrl; panel.append(img) }
+      else {
+        panel.style.background = 'var(--yellow)'; panel.append(dots('rgba(17,17,17,.15)', 'var(--yellow)'))
+        const name = el('div', 'bang', data.product.name || scene.headline); Object.assign(name.style, { position: 'absolute', left: '60px', top: '200px', height: '320px', display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', color: 'var(--ink)' })
+        panel.append(name); ctx.fit(name, { w: 590, h: 320, max: 170, min: 60 })
+      }
+      animate(panel, ['drop', .8, at(0.1), 'cubic-bezier(.3,1.3,.5,1)']); s.append(panel)
+      if (scene.stamp) s.append(burst(ctx, scene.stamp, { left: 470, top: 1080, size: 580, at: at(0.6), fontMax: 130 }))
+      if (scene.sub) { const sub = el('div', 'caption inter', scene.sub); Object.assign(sub.style, { left: '90px', top: '1560px', fontSize: '50px' }); animate(sub, ['fade', .4, at(0.4)]); s.append(sub) }
+      s.append(el('div', 'frame'))
+      return s
+    },
+
+    proof(scene, ctx) {
+      const { el, animate, at } = ctx
+      const s = el('section'); s.append(dots('rgba(17,17,17,.16)', 'var(--yellow)'))
+      const head = el('div', 'bang', scene.headline); Object.assign(head.style, { position: 'absolute', left: '80px', top: '150px', color: 'var(--ink)', textShadow: '8px 8px 0 #fff' })
+      animate(head, [['boing', .5, at(0.04), 'ease-out'], ['shake', .4, at(0.04) + .5]]); ctx.fit(head, { w: 920, h: 460, max: 230, min: 90 }); s.append(head)
+      if (scene.sub) { const sub = el('div', 'caption inter', scene.sub); Object.assign(sub.style, { left: '90px', top: '650px', fontSize: '46px', background: '#fff' }); animate(sub, ['slideR', .45, at(0.12)]); s.append(sub) }
+      if (scene.stamp) s.append(burst(ctx, scene.stamp, { left: 640, top: 600, size: 360, at: at(0.28), fill: '#EE4266', fontMax: 90 }))
+      const items = (scene.items || []).slice(0, 3)
+      items.forEach((text, i) => {
+        const p = el('div', 'panel'); p.style.top = (940 + i * 260) + 'px'
+        const n = el('div', 'bang', String(i + 1)); Object.assign(n.style, { fontSize: '120px', color: 'var(--red)', marginRight: '34px', WebkitTextStroke: '4px #111' })
+        const t = el('div', 't bang', text); p.append(n, t)
+        animate(p, [[i % 2 ? 'slideR' : 'slideL', .5, at(0.36 + i * (0.5 / Math.max(1, items.length))), 'cubic-bezier(.2,.9,.3,1.25)']])
+        ctx.fit(t, { w: 690, h: 170, max: 120, min: 46 }); s.append(p)
+      })
+      s.append(el('div', 'frame'))
+      return s
+    },
+
+    cta(scene, ctx) {
+      const { el, animate, at, data } = ctx
+      const s = el('section'); s.append(dots('rgba(17,17,17,.15)', 'var(--blue)'))
+      const badge = el('div', 'badge'); const logo = el('img'); logo.src = data.logoUrl; badge.append(logo); animate(badge, ['boing', .5, at(0.03), 'ease-out']); s.append(badge)
+      const head = el('div', 'bang', scene.headline || 'Order online'); Object.assign(head.style, { position: 'absolute', left: '80px', top: '640px', color: '#fff', textAlign: 'center', textShadow: '10px 10px 0 #111' })
+      animate(head, ['boing', .5, at(0.12), 'ease-out']); ctx.fit(head, { w: 920, h: 260, max: 190, min: 80 }); s.append(head)
+      const bub = el('div', 'bubble inter', data.cta.site); Object.assign(bub.style, { left: '110px', top: '940px', width: '860px', fontSize: '84px', padding: '44px 30px', borderRadius: '90px' })
+      animate(bub, ['boing', .5, at(0.25), 'ease-out']); s.append(bub)
+      if (data.cta.phone) { const ph = el('div', 'caption inter', '📞 ' + data.cta.phone); Object.assign(ph.style, { left: '200px', top: '1250px', fontSize: '60px', background: '#fff' }); animate(ph, ['slideL', .45, at(0.42)]); s.append(ph) }
+      const st = burst(ctx, scene.stamp || 'Order na!', { left: 290, top: 1370, size: 500, at: at(0.52), fill: '#EE4266', fontMax: 120 })
+      st.style.animation += `, wobble 1s ease-in-out ${(at(0.52) + .5).toFixed(3)}s infinite both`
+      s.append(st, el('div', 'frame'))
+      return s
+    },
+  },
+}
+</script>
+<script src="_runtime.js"></script>
+</body>
+</html>

@@ -40,3 +40,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Reel renderer worker (installed by the GitHub Actions job)
+/reel-renderer/node_modules
+
+# Local schema export for testing (supabase db dump) — never commit
+/supabase/prod_schema.sql

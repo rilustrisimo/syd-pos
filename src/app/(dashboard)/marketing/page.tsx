@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { Megaphone, Sparkles, Search, ExternalLink, Check, X, Trash2, Image as ImageIcon, Wand2, Lightbulb, Copy, Film } from 'lucide-react'
+import { Megaphone, Sparkles, Search, ExternalLink, Check, X, Trash2, Image as ImageIcon, Wand2, Lightbulb, Copy, Film, Clapperboard } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -47,6 +47,7 @@ import { useContentMedia, getContentMediaUrl } from '@/hooks/useContentMedia'
 import { useContentIdeas } from '@/hooks/useContentIdeas'
 import { MediaLightbox } from '@/components/marketing/media-lightbox'
 import { ReelBuilderDialog } from '@/components/marketing/reel-builder-dialog'
+import { AnimatedReelDialog } from '@/components/marketing/animated-reel-dialog'
 import { PostPlanner } from '@/components/marketing/post-planner'
 import { CreativeStyleBadge } from '@/components/marketing/creative-style-badge'
 import { CanvaPromptPanel } from '@/components/marketing/canva-prompt-panel'
@@ -308,6 +309,7 @@ function SuggestionCard({ suggestion }: { suggestion: ContentSuggestion }) {
   const isReel = suggestion.format === 'reel'
   const creativePrompt = suggestion.creative_prompt ?? suggestion.source_idea?.creative_prompt
   const [showReelBuilder, setShowReelBuilder] = useState(false)
+  const [showAnimatedReel, setShowAnimatedReel] = useState(false)
 
   function handleSaveCaption() {
     updateCaption.mutate(
@@ -537,6 +539,16 @@ function SuggestionCard({ suggestion }: { suggestion: ContentSuggestion }) {
                 <Film className="w-3.5 h-3.5" /> Build Reel
               </Button>
             )}
+            {isReel && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 text-xs gap-1"
+                onClick={() => setShowAnimatedReel(true)}
+              >
+                <Clapperboard className="w-3.5 h-3.5" /> Animated Reel
+              </Button>
+            )}
           </div>
 
           <div className="flex items-center gap-1">
@@ -576,6 +588,14 @@ function SuggestionCard({ suggestion }: { suggestion: ContentSuggestion }) {
           </div>
         </div>
       </CardContent>
+
+      {isReel && showAnimatedReel && (
+        <AnimatedReelDialog
+          suggestion={suggestion}
+          open={showAnimatedReel}
+          onOpenChange={setShowAnimatedReel}
+        />
+      )}
 
       {isReel && showReelBuilder && (
         <ReelBuilderDialog

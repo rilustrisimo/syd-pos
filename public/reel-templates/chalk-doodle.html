@@ -1,0 +1,151 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Chalk Doodle</title>
+<link href="https://fonts.googleapis.com/css2?family=Caveat+Brush&family=Patrick+Hand&display=block" rel="stylesheet">
+<link rel="stylesheet" href="_base.css">
+<style>
+  :root { --board:#22302A; --chalk:#F4F1E4; --yellow:#F7D774; --pink:#F59A8F; --blue:#9FD3E8; }
+  body { background:var(--board); }
+  .board { position:absolute; inset:0; background:
+      radial-gradient(ellipse at 30% 20%, rgba(255,255,255,.06), transparent 55%),
+      radial-gradient(ellipse at 80% 85%, rgba(255,255,255,.05), transparent 50%),
+      repeating-radial-gradient(circle at 40% 60%, rgba(255,255,255,.015) 0 2px, transparent 2px 5px),
+      var(--board); }
+  .board::after { content:''; position:absolute; inset:0; border:34px solid #6B4A2B; box-shadow:inset 0 0 0 8px #4E3520; }
+  .chalk { font-family:'Caveat Brush', cursive; line-height:1; color:var(--chalk);
+    text-shadow:0 0 1px rgba(255,255,255,.9), 0 0 6px rgba(255,255,255,.25), 2px 2px 0 rgba(255,255,255,.08); }
+  .hand { font-family:'Patrick Hand', cursive; color:var(--chalk); }
+  .doodle { position:absolute; fill:none; stroke-linecap:round; stroke-linejoin:round; filter:drop-shadow(0 0 3px rgba(255,255,255,.35)); }
+  .doodle path, .doodle ellipse, .doodle rect { stroke-dasharray:3000; }
+  .row { position:absolute; left:110px; width:860px; display:flex; align-items:center; gap:36px; }
+  .row .box { flex:0 0 110px; height:110px; position:relative; }
+  .photo { position:absolute; left:220px; top:500px; width:640px; height:640px; background:#fff; padding:26px 26px 90px; transform:rotate(-3deg); box-shadow:0 20px 40px rgba(0,0,0,.4); }
+  .photo img { width:100%; height:100%; object-fit:contain; background:#fff; }
+  .tape { position:absolute; width:220px; height:60px; background:rgba(247,215,116,.75); top:-26px; left:210px; transform:rotate(4deg); }
+  .logo { position:absolute; left:290px; top:250px; width:500px; filter:drop-shadow(0 0 10px rgba(247,215,116,.4)); }
+
+  @keyframes erase { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+  @keyframes write { from { clip-path: inset(-20% 100% -20% -5%); } to { clip-path: inset(-20% -5% -20% -5%); } }
+  @keyframes draw { from { stroke-dashoffset:3000; } to { stroke-dashoffset:0; } }
+  @keyframes dust { 0% { opacity:0; transform:translateY(16px); } 100% { opacity:1; transform:none; } }
+  @keyframes wiggle { 0%,100% { transform:rotate(-2deg); } 50% { transform:rotate(2deg) scale(1.04); } }
+  @keyframes pin { 0% { opacity:0; transform:translateY(-120px) rotate(-12deg); } 100% { opacity:1; transform:rotate(-3deg); } }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<script>
+const NS = 'http://www.w3.org/2000/svg'
+function doodle(paths, box, color, width) {
+  const s = document.createElementNS(NS, 'svg'); s.setAttribute('viewBox', box.view); s.setAttribute('class', 'doodle')
+  Object.assign(s.style, { left: box.left + 'px', top: box.top + 'px', width: box.w + 'px' })
+  s.innerHTML = paths; s.setAttribute('stroke', color); s.setAttribute('stroke-width', width)
+  return s
+}
+/** Chalk text that "writes" itself left to right; long text writes line by line visually via clip. */
+function written(ctx, text, cls, { left, top, w, h, max, min = 50, at, dur = 0.9, color }) {
+  const n = ctx.el('div', cls, text); Object.assign(n.style, { position: 'absolute', left: left + 'px', top: top + 'px' })
+  if (color) n.style.color = color
+  ctx.animate(n, ['write', dur, at, 'linear'])
+  ctx.fit(n, { w, h, max, min })
+  return n
+}
+/** After fitting, place node `gap` px below `target` (pairs collected per scene). */
+let follows = []
+const follow = (node, target, gap) => { follows.push([node, target, gap]); return node }
+const underline = (left, top, w, at, ctx, color = '#F7D774') => {
+  const d = doodle(`<path d="M10 30 C ${w * .25} 8, ${w * .5} 44, ${w * .75} 20 S ${w - 20} 26, ${w - 10} 18"/>`, { view: `0 0 ${w} 50`, left, top, w }, color, 10)
+  ctx.animate(d.querySelector('path'), ['draw', .7, at, 'ease-out']); return d
+}
+
+window.STYLE = {
+  fonts: ['Caveat Brush', 'Patrick Hand'],
+  transition: 'erase',
+  afterBuild(section) {
+    // Bounding boxes work for SVG too (offsetTop doesn't); measure without animation transforms.
+    document.documentElement.classList.add('measuring')
+    const base = section.getBoundingClientRect().top
+    for (const [node, target, gap] of follows) node.style.top = (target.getBoundingClientRect().bottom - base + gap) + 'px'
+    document.documentElement.classList.remove('measuring')
+    follows = []
+  },
+  roles: {
+    hook(scene, ctx) {
+      const { el, at, animate } = ctx
+      const s = el('section'); s.append(el('div', 'board'))
+      const hl = written(ctx, scene.headline, 'chalk', { left: 100, top: 300, w: 880, h: 700, max: 220, at: at(0.08), dur: Math.min(1.4, ctx.dur * 0.5) })
+      const ul = follow(underline(100, 1040, 760, at(0.55), ctx), hl, 20)
+      s.append(hl, ul)
+      const arrow = doodle('<path d="M60 20 C 120 140, 60 260, 150 360 M150 360 L 95 330 M150 360 L 165 300"/>', { view: '0 0 220 400', left: 700, top: 1150, w: 220 }, '#F59A8F', 12)
+      arrow.querySelectorAll('path').forEach((p) => animate(p, ['draw', .8, at(0.62), 'ease-out'])); s.append(follow(arrow, ul, 30))
+      if (scene.sub) s.append(follow(written(ctx, scene.sub, 'hand', { left: 110, top: 1180, w: 560, h: 260, max: 70, at: at(0.5) }), ul, 50))
+      return s
+    },
+
+    product(scene, ctx) {
+      const { el, at, animate, data } = ctx
+      const s = el('section'); s.append(el('div', 'board'))
+      s.append(written(ctx, scene.headline, 'chalk', { left: 100, top: 170, w: 880, h: 250, max: 170, at: at(0.05), color: '#F7D774' }))
+      if (data.product.imageUrl) {
+        const ph = el('div', 'photo'); const img = el('img'); img.src = data.product.imageUrl; ph.append(img, el('div', 'tape'))
+        animate(ph, ['pin', .6, at(0.12), 'cubic-bezier(.3,1.3,.5,1)']); s.append(ph)
+      } else {
+        const bag = doodle(`<path d="M70 70 Q250 30 430 70 L460 600 Q250 640 40 600 Z"/><path d="M70 70 Q250 110 430 70"/><rect x="105" y="200" width="290" height="220" rx="20"/><path d="M130 510 H370 M160 548 H340"/>`,
+          { view: '0 0 500 660', left: 290, top: 470, w: 500 }, '#F4F1E4', 12)
+        bag.querySelectorAll('path, rect').forEach((p, i) => animate(p, ['draw', 1.0, at(0.1) + i * 0.12, 'ease-out'])); s.append(bag)
+        const label = el('div', 'chalk', data.product.name || scene.headline)
+        Object.assign(label.style, { position: 'absolute', left: '400px', top: '670px', height: '210px', display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', color: '#F7D774' })
+        animate(label, ['dust', .5, at(0.45)]); s.append(label); ctx.fit(label, { w: 280, h: 210, max: 90, min: 34 })
+      }
+      if (scene.stamp) {
+        const st = written(ctx, scene.stamp, 'chalk', { left: 300, top: 1290, w: 480, h: 170, max: 150, at: at(0.6), color: '#F59A8F' }); s.append(st)
+        const ring = doodle('<ellipse cx="300" cy="110" rx="285" ry="95" transform="rotate(-4 300 110)"/>', { view: '0 0 600 220', left: 240, top: 1265, w: 600 }, '#F59A8F', 9)
+        animate(ring.querySelector('ellipse'), ['draw', .7, at(0.68), 'ease-out']); s.append(ring)
+      }
+      if (scene.sub) s.append(written(ctx, scene.sub, 'hand', { left: 110, top: 1560, w: 860, h: 140, max: 64, at: at(0.4) }))
+      return s
+    },
+
+    proof(scene, ctx) {
+      const { el, at, animate } = ctx
+      const s = el('section'); s.append(el('div', 'board'))
+      const hl = written(ctx, scene.headline, 'chalk', { left: 100, top: 150, w: 880, h: 420, max: 210, at: at(0.04) })
+      const ul = follow(underline(100, 590, 620, at(0.2), ctx), hl, 10)
+      s.append(hl, ul)
+      if (scene.sub) s.append(follow(written(ctx, scene.sub, 'hand', { left: 110, top: 670, w: 860, h: 120, max: 64, at: at(0.14), color: '#9FD3E8' }), ul, 20))
+      if (scene.stamp) s.append(written(ctx, scene.stamp, 'chalk', { left: 600, top: 520, w: 380, h: 120, max: 100, at: at(0.3), color: '#F59A8F' }))
+      const items = (scene.items || []).slice(0, 3)
+      items.forEach((text, i) => {
+        const t0 = at(0.36 + i * (0.5 / Math.max(1, items.length)))
+        const top = 880 + i * 250
+        const box = doodle('<rect x="8" y="8" width="94" height="94" rx="10"/>', { view: '0 0 110 110', left: 110, top, w: 110 }, '#F4F1E4', 9)
+        animate(box.querySelector('rect'), ['draw', .4, t0 - .15, 'ease-out'])
+        const tick = doodle('<path d="M18 58 L 46 88 L 100 10"/>', { view: '0 0 120 110', left: 118, top: top - 20, w: 130 }, '#F7D774', 14)
+        animate(tick.querySelector('path'), ['draw', .35, t0 + .25, 'ease-out'])
+        s.append(box, tick, written(ctx, text, 'chalk', { left: 270, top: top - 10, w: 700, h: 150, max: 120, at: t0, dur: .6 }))
+      })
+      return s
+    },
+
+    cta(scene, ctx) {
+      const { el, at, animate, data } = ctx
+      const s = el('section'); s.append(el('div', 'board'))
+      const logo = el('img', 'logo'); logo.src = data.logoUrl; animate(logo, ['dust', .6, at(0.03)]); s.append(logo)
+      s.append(written(ctx, scene.headline || 'Order online', 'chalk', { left: 100, top: 620, w: 880, h: 240, max: 180, at: at(0.1) }))
+      s.append(written(ctx, data.cta.site, 'hand', { left: 120, top: 920, w: 840, h: 130, max: 110, at: at(0.25), color: '#F7D774' }))
+      s.append(underline(120, 1060, 820, at(0.42), ctx, '#F7D774'))
+      if (data.cta.phone) s.append(written(ctx, '☎ ' + data.cta.phone, 'hand', { left: 120, top: 1150, w: 840, h: 110, max: 80, at: at(0.45) }))
+      const st = written(ctx, scene.stamp || 'Order na!', 'chalk', { left: 290, top: 1380, w: 500, h: 170, max: 150, at: at(0.55), color: '#F59A8F' })
+      animate(st, [['write', .6, at(0.55), 'linear'], ['wiggle', 1, at(0.55) + .7, 'ease-in-out', 'infinite']]); s.append(st)
+      const ring = doodle('<ellipse cx="300" cy="110" rx="285" ry="95" transform="rotate(3 300 110)"/>', { view: '0 0 600 220', left: 240, top: 1350, w: 600 }, '#F59A8F', 9)
+      animate(ring.querySelector('ellipse'), ['draw', .7, at(0.62), 'ease-out']); s.append(ring)
+      return s
+    },
+  },
+}
+</script>
+<script src="_runtime.js"></script>
+</body>
+</html>
