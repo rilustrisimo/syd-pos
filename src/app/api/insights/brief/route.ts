@@ -1,6 +1,6 @@
 /**
  * GET  /api/insights/brief        → latest briefs (weekly + monthly)
- * POST /api/insights/brief { kind: 'weekly' | 'monthly', lang?: 'english' | 'taglish' }
+ * POST /api/insights/brief { kind: 'weekly' | 'monthly' }   (always written in English)
  *
  * Admin only. Weekly = last 7 days vs the 7 before; monthly = last full
  * month vs the month before. Gemini (free tier) writes the brief from the
@@ -37,7 +37,6 @@ export async function POST(req: Request) {
     if (auth.error) return auth.error
     const body = await req.json().catch(() => ({}))
     const kind: 'weekly' | 'monthly' = body.kind === 'monthly' ? 'monthly' : 'weekly'
-    const lang: 'english' | 'taglish' = body.lang === 'english' ? 'english' : 'taglish'
 
     const today = getTodayPH()
     const range = kind === 'weekly'
@@ -49,13 +48,13 @@ export async function POST(req: Request) {
 
     const brief = await geminiJson<InsightsBrief>({
       feature: `insights-brief-${kind}`,
-      system: briefSystem(lang),
+      system: briefSystem(),
       prompt: briefPrompt(kind, report),
       schema: BRIEF_SCHEMA,
       maxOutputTokens: 3500,
       temperature: 0.4,
     })
-    const payload = { ...brief, lang, kpis: { revenue: bundle.overview.current.revenue, grossProfit: bundle.overview.current.grossProfit, revenueGrowth: bundle.overview.growth.revenue } }
+    const payload = { ...brief, lang: 'english', kpis: { revenue: bundle.overview.current.revenue, grossProfit: bundle.overview.current.grossProfit, revenueGrowth: bundle.overview.growth.revenue } }
     const { data, error } = await (supabase as any).from('insights_briefs')
       .insert({ kind, period_start: range.from, period_end: range.to, payload, created_by: auth.userId })
       .select('id, kind, period_start, period_end, payload, created_at').single()

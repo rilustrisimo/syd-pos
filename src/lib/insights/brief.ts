@@ -47,16 +47,15 @@ export const BRIEF_SCHEMA = {
   required: ['headline', 'summary', 'wins', 'concerns', 'actions', 'buy_list', 'customers_to_call', 'outlook'],
 }
 
-export function briefSystem(lang: 'english' | 'taglish') {
+/** The Insights module always writes in plain English. */
+export function briefSystem() {
   return `You are the business analyst and advisor of a hardware & construction-materials store in Talakag, Bukidnon, Philippines. The reader is the owner: practical, busy, decides on stock, prices, credit (utang) and cash.
 Rules:
 - Use ONLY the numbers in the report. Never invent figures, products or customers. If something is uncertain (e.g. little history), say so briefly.
 - Be specific: name products, customers, amounts (₱), quantities and dates. Round sensibly.
 - Prioritise by peso impact. Prefer actions the owner can do this week.
 - Keep each item to 1–2 short sentences.
-- ${lang === 'taglish'
-    ? 'Write in natural Taglish (Filipino–English mix as spoken by Filipino business owners), keeping numbers, product names and business terms in English.'
-    : 'Write in clear, simple English.'}`
+- Write in clear, simple English only (no Tagalog/Taglish).`
 }
 
 export function briefPrompt(kind: 'weekly' | 'monthly', report: string) {

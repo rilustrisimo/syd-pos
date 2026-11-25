@@ -10,8 +10,6 @@ import { Panel, Pill, shortDate } from './ui'
 
 export interface StoredBrief { id: string; kind: 'weekly' | 'monthly'; period_start: string; period_end: string; payload: InsightsBrief & { lang?: string }; created_at: string }
 
-const LANG_KEY = 'insights-brief-lang'
-const readLang = (): 'english' | 'taglish' => { try { return localStorage.getItem(LANG_KEY) === 'english' ? 'english' : 'taglish' } catch { return 'taglish' } }
 
 export function useBriefs() {
   return useQuery<StoredBrief[]>({
@@ -30,11 +28,10 @@ export function BriefCard() {
   const qc = useQueryClient()
   const { data: briefs, isLoading } = useBriefs()
   const [kind, setKind] = useState<'weekly' | 'monthly'>('weekly')
-  const [lang, setLang] = useState<'english' | 'taglish'>(readLang)
 
   const gen = useMutation({
     mutationFn: async (k: 'weekly' | 'monthly') => {
-      const res = await fetch('/api/insights/brief', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: k, lang }) })
+      const res = await fetch('/api/insights/brief', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: k }) })
       const j = await res.json()
       if (!res.ok) throw new Error(j.error || 'Failed')
       return j.brief as StoredBrief
@@ -48,7 +45,7 @@ export function BriefCard() {
   useEffect(() => {
     if (isLoading || !briefs || autoTried.current || gen.isPending) return
     const latest = briefs.find((b) => b.kind === 'weekly')
-    if (!latest || Date.now() - Date.parse(latest.created_at) > 7 * 86400_000) {
+    if (!latest || latest.payload.lang !== 'english' || Date.now() - Date.parse(latest.created_at) > 7 * 86400_000) {
       autoTried.current = true
       gen.mutate('weekly')
     }
@@ -63,7 +60,6 @@ export function BriefCard() {
       action={
         <div className="flex items-center gap-1 flex-wrap justify-end">
           {(['weekly', 'monthly'] as const).map((k) => <Button key={k} size="sm" variant={kind === k ? 'default' : 'outline'} className="h-7 px-2 text-xs" onClick={() => setKind(k)}>{k === 'weekly' ? 'Weekly' : 'Monthly'}</Button>)}
-          <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => { const v = lang === 'taglish' ? 'english' : 'taglish'; setLang(v); try { localStorage.setItem(LANG_KEY, v) } catch {} }}>{lang === 'taglish' ? 'Taglish' : 'English'}</Button>
           <Button size="sm" variant="outline" className="h-7 px-2 text-xs" disabled={gen.isPending} onClick={() => gen.mutate(kind)}>
             {gen.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}<span className="ml-1">{brief ? 'Rewrite' : 'Write'}</span>
           </Button>
