@@ -1,0 +1,67 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Cardboard Diorama</title>
+<link href="https://fonts.googleapis.com/css2?family=Permanent+Marker&family=Kalam:wght@700&display=block" rel="stylesheet">
+<link rel="stylesheet" href="_base.css">
+<style>
+  :root { --kraft:#C9A47A; --kraft2:#B88D5E; --kraft3:#A57A4C; --edge:#5C3D22; --sign:#E8CFA6; --red:#C0392B; --ink:#2B1D12; }
+  body { background:var(--kraft); }
+  .box { position:absolute; inset:0; background:repeating-linear-gradient(90deg, rgba(92,61,34,.07) 0 3px, transparent 3px 16px), linear-gradient(#D7B98F, var(--kraft)); }
+  .layer { position:absolute; left:-120px; width:1320px; overflow:visible; }
+  .t { font-family:'Permanent Marker', cursive; color:var(--ink); line-height:1.02; }
+  /* Text written on cardboard signs, taped up. */
+  .t-head, .t-site, .t-label { background:var(--sign); padding:22px 30px; box-sizing:border-box; box-shadow:0 12px 0 rgba(60,35,15,.3); border:4px solid rgba(92,61,34,.4); }
+  .t-head::before, .t-label::before { content:''; position:absolute; left:42%; top:-26px; width:150px; height:46px; background:rgba(245,235,210,.75); transform:rotate(-5deg); }
+  .t-sub, .t-item, .t-phone { font-family:'Kalam', cursive; font-weight:700; color:var(--ink); }
+  .t-stamp, .t-button { color:#fff; background:var(--red); padding:12px 28px; box-sizing:border-box; transform:rotate(-3deg); box-shadow:0 10px 0 rgba(60,35,15,.35); }
+  .t-bullet { color:var(--red); }
+  .castbox { color:var(--edge); --fig-fill:var(--sign); --fig-accent:var(--red); --fig-logo:#fff; --fig-stroke:16; --prop-stroke:7; }
+  .castbox .fig-mark { color:var(--red); }
+  /* Parallax: back layers drift less than the front ones. */
+  @keyframes par { from { transform:translateX(0); } to { transform:translateX(var(--dx)); } }
+  @keyframes wob { 0%,100% { transform:rotate(-1.5deg); } 50% { transform:rotate(1.5deg); } }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<script src="_story.js"></script>
+<script>
+const NS = 'http://www.w3.org/2000/svg'
+function layer(ctx, top, h, inner, dx) {
+  const s = document.createElementNS(NS, 'svg'); s.setAttribute('viewBox', `0 0 1320 ${h}`); s.setAttribute('class', 'layer')
+  s.style.top = top + 'px'; s.style.height = h + 'px'
+  const shadow = inner.replace(/fill="[^"]*"/g, 'fill="#3C230F"').replace(/stroke="[^"]*"/g, 'stroke="#3C230F"')
+  s.innerHTML = `<g transform="translate(0 14)" opacity=".35">${shadow}</g>${inner}`
+  s.style.setProperty('--dx', dx + 'px'); ctx.animate(s, ['par', Math.max(1, ctx.dur), ctx.at(0), 'linear'])
+  return s
+}
+const tree = (x, y, r) => `<line x1="${x}" y1="${y}" x2="${x}" y2="${y + r * 2.2}" stroke="#5C3D22" stroke-width="14"/><circle cx="${x}" cy="${y}" r="${r}" fill="#9AA35A" stroke="#5C3D22" stroke-width="7"/>`
+storyStyle({
+  fonts: ['Permanent Marker', '700 Kalam'],
+  transition: 'stSlideR',
+  cast: { enter: 'slide' },
+  enter: { head: ['stDrop', 0.6, 'cubic-bezier(.3,1.25,.5,1)'], text: ['stRise', 0.45], stamp: ['stStamp', 0.4], button: ['stPop', 0.4], logo: ['stDrop', 0.6] },
+  bg(ctx, scene, role) {
+    const dir = ctx.index % 2 ? 1 : -1
+    const sun = role === 'problem'
+      ? '<path d="M980 220 Q1000 150 1070 160 Q1100 110 1160 140 Q1220 140 1220 200 Q1250 240 1200 260 H990 Q950 250 980 220 Z" fill="#9C9184" stroke="#5C3D22" stroke-width="7"/>'
+      : '<circle cx="1080" cy="200" r="110" fill="#E9B949" stroke="#5C3D22" stroke-width="8"/>'
+    return [
+      ctx.el('div', 'box'),
+      layer(ctx, 60, 360, sun, dir * 20),
+      layer(ctx, 1100, 520, '<path d="M0 300 L180 120 L330 260 L520 60 L720 250 L900 110 L1100 260 L1320 140 V520 H0 Z" fill="#B88D5E" stroke="#5C3D22" stroke-width="8"/>', dir * 40),
+      layer(ctx, 1260, 480, tree(160, 90, 80) + tree(1180, 130, 70) + '<path d="M0 260 Q330 170 660 240 T1320 220 V480 H0 Z" fill="#A57A4C" stroke="#5C3D22" stroke-width="8"/>', dir * 80),
+      layer(ctx, 1560, 360, '<path d="M0 120 Q400 60 800 110 T1320 90 V360 H0 Z" fill="#8F6A3F" stroke="#5C3D22" stroke-width="8"/>', dir * 130),
+    ]
+  },
+  // Cut-outs wobble on their little stands.
+  decorateCast(c, ctx) { c.style.transformOrigin = '50% 100%'; ctx.animate(c, ['wob', 1.8, ctx.at(0.2), 'ease-in-out', 'infinite']) },
+})
+</script>
+<script src="_cast.js"></script>
+<script src="_props.js"></script>
+<script src="_runtime.js"></script>
+</body>
+</html>

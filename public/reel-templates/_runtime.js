@@ -57,6 +57,9 @@
     @keyframes castDraw { from { stroke-dashoffset:1.02; } to { stroke-dashoffset:0; } }
     @keyframes castPop { 0% { opacity:0; transform:scale(.2); } 70% { opacity:1; transform:scale(1.08); } 100% { opacity:1; transform:none; } }
     @keyframes castSlideL { from { opacity:0; transform:translateX(-420px); } to { opacity:1; transform:none; } }
+    @keyframes castRise { from { transform:translateY(700px); } 70% { transform:translateY(-30px); } to { transform:none; } }
+    @keyframes castSwapA { 0%,49.9% { opacity:1; } 50%,100% { opacity:0; } }
+    @keyframes castSwapB { 0%,49.9% { opacity:0; } 50%,100% { opacity:1; } }
     @keyframes castSlideR { from { opacity:0; transform:translateX(420px); } to { opacity:1; transform:none; } }
     @keyframes castFillIn { from { fill-opacity:0; } to { fill-opacity:1; } }
     @keyframes castFade { from { opacity:0; } to { opacity:1; } }
@@ -68,6 +71,7 @@
     .castbox { position:absolute; pointer-events:none; }
     .castbox .ci { position:absolute; }
     .castbox svg { display:block; width:100%; height:100%; overflow:visible; }
+    .castbox svg.alt { position:absolute; inset:0; }
     .castbox .fig { stroke-width:var(--fig-stroke, 11); }
     .castbox .prop { stroke-width:var(--prop-stroke, 5); }
     .castbox .f-head { fill:var(--fig-fill, none); }
@@ -87,12 +91,16 @@
    * Returns the .castbox element (or null) with .draws = [{node, at, dur}] for
    * every stroke drawn on, and .endsAt.
    */
+  // Second key pose for limited animation.
+  const ALT_POSE = { stand: 'walk', walk: 'stand', point: 'stand', think: 'stand', worried: 'shrug', happy: 'thumbs_up', carry: 'walk', shrug: 'worried', thumbs_up: 'happy', phone: 'think' }
+
   function castBlock(scene, box, opts, ctx) {
     const character = opts.character !== undefined ? opts.character : scene.character
     const propIds = (opts.props !== undefined ? opts.props : scene.props || []).filter((p) => window.drawProp && window.drawProp(p)).slice(0, 3)
     const hasFig = !!(character && window.drawFigure)
     if (!hasFig && !propIds.length) return null
-    const enter = opts.enter || (window.STYLE.cast && window.STYLE.cast.enter) || 'pop'
+    const cfg = window.STYLE.cast || {}
+    const enter = opts.enter || cfg.enter || 'pop'
     const at = opts.at
     // Alternate sides scene by scene so consecutive scenes don't look alike.
     const figRight = opts.flip != null ? opts.flip : ctx.index % 2 === 1
@@ -106,8 +114,12 @@
       const maxW = n ? box.w * 0.5 : box.w
       if (fw > maxW) { fw = maxW; fh = fw / FIG_RATIO }
       const left = n ? (figRight ? box.w - fw : 0) : (box.w - fw) / 2
-      const svg = window.drawFigure({ cast: character.cast, pose: character.pose, mood: character.mood, flip: figRight && n > 0 })
-      items.push({ svg, kind: 'fig', left, top: box.h - fh, w: fw, h: fh })
+      const look = { cast: character.cast, mood: character.mood, flip: figRight && n > 0, rods: !!cfg.rods }
+      const svg = window.drawFigure({ ...look, pose: character.pose })
+      // Limited animation: hold two key poses and snap between them.
+      const alt = cfg.altPose ? window.drawFigure({ ...look, pose: ALT_POSE[character.pose] || 'stand' }) : null
+      if (alt) alt.classList.add('alt')
+      items.push({ svg, alt, kind: 'fig', left, top: box.h - fh, w: fw, h: fh })
     }
     if (n) {
       const areaL = hasFig ? (figRight ? 0 : box.w * 0.5) : 0
@@ -130,6 +142,7 @@
       const holder = el('div', 'ci')
       Object.assign(holder.style, { left: it.left + 'px', top: it.top + 'px', width: it.w + 'px', height: it.h + 'px' })
       holder.append(it.svg)
+      if (it.alt) holder.append(it.alt)
       wrap.append(holder)
       const start = at + i * 0.18
       if (enter === 'draw') {
@@ -150,14 +163,20 @@
         })
         t = s0 + total
       } else {
-        const name = enter === 'slide' ? (it.kind === 'fig' ? (figRight ? 'castSlideR' : 'castSlideL') : 'castPop') : enter === 'flicker' ? 'castFlicker' : enter === 'fade' ? 'castFade' : 'castPop'
-        animate(holder, [name, enter === 'flicker' ? 0.8 : 0.5, start, enter === 'pop' ? 'cubic-bezier(.3,1.3,.5,1)' : 'cubic-bezier(.2,.8,.2,1)'])
+        const name = enter === 'slide' ? (it.kind === 'fig' ? (figRight ? 'castSlideR' : 'castSlideL') : 'castPop')
+          : enter === 'rise' ? 'castRise' : enter === 'flicker' ? 'castFlicker' : enter === 'fade' ? 'castFade' : 'castPop'
+        animate(holder, [name, enter === 'flicker' ? 0.8 : enter === 'rise' ? 0.7 : 0.5, start, enter === 'pop' ? 'cubic-bezier(.3,1.3,.5,1)' : 'cubic-bezier(.2,.8,.2,1)'])
         t = Math.max(t, start + 0.5)
       }
       // Idle life after the entrance.
       const idleAt = (enter === 'draw' ? t : start + 0.55)
       if (it.kind === 'fig') {
         const pose = character.pose, mood = character.mood
+        if (it.alt) {
+          animate(it.svg, ['castSwapA', 1.1, idleAt, 'linear', 'infinite'])
+          animate(it.alt, ['castSwapB', 1.1, idleAt, 'linear', 'infinite'])
+          return
+        }
         if (mood === 'worried' || pose === 'worried') animate(it.svg, ['castShake', 0.5, idleAt, 'ease-in-out', 'infinite'])
         else animate(it.svg, ['castBob', 1.6, idleAt, 'ease-in-out', 'infinite'])
         const arms = it.svg.querySelector('.fig-arms')
@@ -276,5 +295,7 @@
     .then(() => { build(data) })
     .then(() => Promise.all([...document.images].map((i) => (i.complete ? null : i.decode().catch(() => {})))))
     .then(() => document.fonts.ready)
+    // Optional one-off work after layout (e.g. pixel styles rasterise the cast once).
+    .then(() => (window.STYLE.prepare ? window.STYLE.prepare() : null))
     .then(() => { window.seek(0); document.documentElement.dataset.ready = '1' })
 })()

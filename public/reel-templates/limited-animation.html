@@ -1,0 +1,56 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Limited Animation</title>
+<link href="https://fonts.googleapis.com/css2?family=Luckiest+Guy&family=Nunito:wght@800&display=block" rel="stylesheet">
+<link rel="stylesheet" href="_base.css">
+<style>
+  :root { --sky:#7EC8E3; --ground:#9BC53D; --ink:#1B1B1B; --yellow:#FFD23F; --red:#EE4266; --cream:#FFF4D6; }
+  body { background:var(--sky); }
+  /* Held poses, choppy "on twos" motion: every animation moves in steps. */
+  .scene *, .scene { animation-timing-function:steps(5, end) !important; }
+  .t { font-family:'Luckiest Guy', cursive; color:#fff; line-height:1; -webkit-text-stroke:5px var(--ink); paint-order:stroke fill; text-shadow:7px 7px 0 var(--ink); letter-spacing:.02em; }
+  .t-sub, .t-item, .t-phone { font-family:'Nunito', sans-serif; font-weight:800; -webkit-text-stroke:0; text-shadow:none; color:var(--ink); }
+  .t-stamp, .t-button { background:var(--red); border:7px solid var(--ink); border-radius:24px; padding:10px 28px; box-shadow:9px 9px 0 var(--ink); box-sizing:border-box; }
+  .t-bullet { color:var(--yellow); }
+  .t-site, .t-label { color:var(--yellow); }
+  .sky, .hill, .sun, .cloud { position:absolute; }
+  .sky { inset:0; }
+  .sun { width:220px; height:220px; border-radius:50%; background:var(--yellow); border:8px solid var(--ink); }
+  .cloud { width:260px; height:90px; background:#fff; border:7px solid var(--ink); border-radius:60px; }
+  @keyframes drift { from { transform:translateX(0); } to { transform:translateX(160px); } }
+  .castbox { color:var(--ink); --fig-fill:#FFE0BD; --fig-accent:var(--yellow); --fig-stroke:14; --prop-stroke:6.5; }
+  .castbox .fig-mark { color:var(--red); }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<script src="_story.js"></script>
+<script>
+const SKIES = { hook: '#7EC8E3', problem: '#6C5B7B', solution: '#7EC8E3', product: '#F7B267', proof: '#8ED1B5', cta: '#5DA9E9' }
+storyStyle({
+  fonts: ['Luckiest Guy', '800 Nunito'],
+  transition: 'stCut',
+  cast: { enter: 'pop', altPose: true },
+  enter: { head: ['stPop', 0.5], text: ['stRise', 0.5], stamp: ['stStamp', 0.4], button: ['stPop', 0.4], logo: ['stPop', 0.5] },
+  // Flat painted background, held still like a cel background.
+  bg(ctx, scene, role) {
+    const { el, animate } = ctx
+    const sky = el('div', 'sky'); sky.style.background = SKIES[role] || SKIES.hook
+    const sun = el('div', 'sun'); Object.assign(sun.style, { right: '-70px', top: '-70px', background: role === 'problem' ? '#E8E8E8' : 'var(--yellow)' })
+    const c1 = el('div', 'cloud'); Object.assign(c1.style, { left: '-80px', top: '1180px' }); animate(c1, ['drift', 6, ctx.at(0), 'linear'])
+    // Rolling hills as one flat SVG (cel background).
+    const hills = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+    hills.setAttribute('viewBox', '0 0 1080 560'); hills.setAttribute('preserveAspectRatio', 'none')
+    Object.assign(hills.style, { position: 'absolute', left: '0', top: '1360px', width: '1080px', height: '560px' })
+    hills.innerHTML = '<path d="M-20 140 Q 300 -40 640 120 T 1100 80 V 600 H -20 Z" fill="#86B33A" stroke="#1B1B1B" stroke-width="8"/><path d="M-20 300 Q 420 120 1100 260 V 600 H -20 Z" fill="#9BC53D" stroke="#1B1B1B" stroke-width="8"/>'
+    return [sky, sun, c1, hills]
+  },
+})
+</script>
+<script src="_cast.js"></script>
+<script src="_props.js"></script>
+<script src="_runtime.js"></script>
+</body>
+</html>

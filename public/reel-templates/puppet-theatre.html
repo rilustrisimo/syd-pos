@@ -1,0 +1,83 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Hand Puppet Theatre</title>
+<link href="https://fonts.googleapis.com/css2?family=Rye&family=Alegreya+Sans:wght@800&display=block" rel="stylesheet">
+<link rel="stylesheet" href="_base.css">
+<style>
+  :root { --velvet:#8E1B24; --velvet2:#5E0E15; --gold:#E9B949; --wood:#7A4A26; --wood2:#5C3519; --cream:#FFF3D6; }
+  body { background:#1A0F0A; }
+  .back { position:absolute; inset:0; background:radial-gradient(ellipse at 50% 55%, #3B2A55 0%, #140C1E 80%); }
+  .backdrop { position:absolute; left:150px; right:150px; top:180px; bottom:480px; }
+  .curtain { position:absolute; top:0; bottom:0; width:190px; background:repeating-linear-gradient(90deg, var(--velvet) 0 34px, var(--velvet2) 34px 50px, var(--velvet) 50px 70px); box-shadow:inset 0 0 40px rgba(0,0,0,.6); will-change:transform; }
+  .valance { position:absolute; left:0; right:0; top:0; height:190px; background:var(--velvet);
+    -webkit-mask:radial-gradient(circle at 60px 190px, transparent 58px, #000 60px) 0 0/120px 190px repeat-x; mask:radial-gradient(circle at 60px 190px, transparent 58px, #000 60px) 0 0/120px 190px repeat-x;
+    box-shadow:inset 0 -20px 0 var(--gold); will-change:transform; }
+  .tassel { position:absolute; top:0; height:190px; left:0; right:0; border-bottom:10px solid var(--gold); }
+  .stagefront { position:absolute; left:0; right:0; top:1440px; bottom:0; background:repeating-linear-gradient(0deg, var(--wood) 0 54px, var(--wood2) 54px 60px); border-top:22px solid var(--gold); box-shadow:0 -14px 30px rgba(0,0,0,.5); will-change:transform; }
+  .spot { position:absolute; inset:0; background:radial-gradient(ellipse 520px 760px at 50% 62%, rgba(255,240,200,.16), transparent 70%); will-change:transform; }
+  .rope { position:absolute; top:150px; width:8px; height:110px; background:#C9A26B; }
+  .t { font-family:'Alegreya Sans', sans-serif; font-weight:800; color:var(--cream); line-height:1.02; }
+  /* The headline hangs on a painted wooden sign. */
+  .t-head { font-family:'Rye', serif; font-weight:400; color:#3A1F0D; background:linear-gradient(#E9C58A, #D3A766); border:10px solid #6B3E1E; border-radius:18px; padding:24px 30px; box-sizing:border-box; box-shadow:0 14px 0 rgba(0,0,0,.35); }
+  .t-stamp, .t-button { font-family:'Rye', serif; font-weight:400; color:var(--velvet2); background:var(--gold); padding:10px 28px; border-radius:14px; box-sizing:border-box; }
+  .t-bullet { color:var(--gold); font-family:'Rye', serif; font-weight:400; }
+  .t-site { color:var(--gold); }
+  .castbox { color:#2A1608; --fig-fill:#F5C99B; --fig-accent:var(--gold); --fig-logo:#fff; --fig-stroke:17; --prop-stroke:7; filter:drop-shadow(0 0 24px rgba(255,230,180,.25)); }
+  .castbox .fig-mark { color:var(--gold); }
+  .st-logo { filter:drop-shadow(0 10px 0 rgba(0,0,0,.4)); }
+  @keyframes curtainL { from { transform:translateX(380px); } to { transform:none; } }
+  @keyframes curtainR { from { transform:translateX(-380px); } to { transform:none; } }
+  @keyframes swing { 0%,100% { transform:rotate(-1.2deg); } 50% { transform:rotate(1.2deg); } }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<script src="_story.js"></script>
+<script>
+const SIGN = { left: 150, top: 250, w: 780, h: 300, max: 120, align: 'center' }
+storyStyle({
+  fonts: ['Rye', '800 Alegreya Sans'],
+  transition: 'stFade',
+  cast: { enter: 'rise' },
+  enter: { head: ['stDrop', 0.6, 'cubic-bezier(.3,1.3,.5,1)'], text: ['stFade', 0.4], stamp: ['stPop', 0.4], button: ['stPop', 0.4], logo: ['stPop', 0.5] },
+  // Puppets stand behind the stage front (legs hidden); text on the front is painted on.
+  layout: {
+    hook: { head: SIGN, sub: { left: 150, top: 1500, w: 780, h: 100, max: 60, align: 'center' }, cast: { left: 170, top: 620, w: 740, bottom: 1620 } },
+    problem: { head: SIGN, sub: { left: 150, top: 1500, w: 780, h: 90, max: 56, align: 'center' }, cast: { left: 170, top: 620, w: 740, bottom: 1620 }, stamp: { left: 290, top: 1620, w: 500, h: 110, max: 80 } },
+    product: { head: SIGN, visual: { left: 290, top: 640, w: 500, h: 760 }, label: { left: 150, top: 1490, w: 780, h: 100, max: 64 }, figure: { left: 160, top: 860, w: 280, h: 720 }, stamp: { left: 600, top: 1610, w: 380, h: 110, max: 76 }, sub: { left: 150, top: 1610, w: 420, h: 110, max: 50 } },
+    proof: { head: { ...SIGN, w: 760 }, sub: { left: 150, top: 590, w: 780, h: 80, max: 50, align: 'center' }, stamp: { left: 640, top: 1690, w: 300, h: 90, max: 60 }, items: { left: 170, top: 1470, w: 760, h: 90, step: 104, max: 62 }, side: { left: 620, top: 640, w: 300, h: 920 }, cast: { left: 170, top: 640, w: 740, bottom: 1620 } },
+    cta: { logo: { left: 360, top: 620, w: 360 }, head: SIGN, site: { left: 150, top: 1480, w: 780, h: 100, max: 76 }, phone: { left: 150, top: 1590, w: 780, h: 70, max: 48 }, button: { left: 330, top: 1670, w: 420, h: 100, max: 70 }, figure: { left: 690, top: 880, w: 260, h: 700 } },
+  },
+  text: {
+    head(ctx, text, box, make) {
+      const n = make()
+      Object.assign(n.style, { transformOrigin: '50% -100px' })
+      n.style.animation += `, swing 2.6s ease-in-out ${(box.at + 0.7).toFixed(3)}s infinite both`
+      return n
+    },
+  },
+  bg(ctx) {
+    const { el } = ctx
+    return [el('div', 'back')]
+  },
+  overlay(ctx) {
+    const { el, animate } = ctx
+    const front = el('div', 'stagefront'), spot = el('div', 'spot')
+    const cl = el('div', 'curtain'); cl.style.left = '-10px'; const cr = el('div', 'curtain'); cr.style.right = '-10px'
+    if (ctx.index === 0) { animate(cl, ['curtainL', 0.9, ctx.at(0), 'ease-out']); animate(cr, ['curtainR', 0.9, ctx.at(0), 'ease-out']) }
+    const r1 = el('div', 'rope'); r1.style.left = '300px'; const r2 = el('div', 'rope'); r2.style.left = '772px'
+    return [spot, front, r1, r2, cl, cr, el('div', 'valance'), el('div', 'tassel')]
+  },
+  // Text painted on the stage front and the sign must sit above the scenery.
+  afterBuild(section) {
+    section.querySelectorAll('.t').forEach((t) => section.appendChild(t))
+  },
+})
+</script>
+<script src="_cast.js"></script>
+<script src="_props.js"></script>
+<script src="_runtime.js"></script>
+</body>
+</html>

@@ -252,7 +252,7 @@ export function AnimatedReelDialog({
             <div className="space-y-4">
               <div>
                 <h3 className="font-semibold mb-2">Style</h3>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-4 gap-1.5 max-h-[340px] overflow-y-auto pr-1">
                   {(Object.keys(REEL_STYLES) as ReelStyle[]).map((s) => (
                     <button
                       key={s}

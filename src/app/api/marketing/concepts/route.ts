@@ -13,7 +13,8 @@ import { buildDigest, loadInsights } from '@/lib/marketing/insights-data'
 import { loadProductDigest, productIdsByCode } from '@/lib/marketing/product-signals'
 import { geminiJson, GeminiError } from '@/lib/marketing/gemini'
 import { toConceptCode } from '@/lib/marketing/concept-code'
-import { PLANNER_SYSTEM, conceptsSchema, conceptsPrompt, type AdConcept, type ConceptKind } from '@/lib/marketing/planner-prompts'
+import { PLANNER_SYSTEM, conceptsSchema, conceptsPrompt, storyCount, type AdConcept, type ConceptKind } from '@/lib/marketing/planner-prompts'
+import { loadRecentProblemIds, pickStories } from '@/lib/marketing/story-picks'
 import type { ContentAudience } from '@/hooks/useContentIdeas'
 import { parseNarrationLanguage } from '@/lib/marketing/narration-language'
 
@@ -47,10 +48,14 @@ export async function POST(request: Request) {
       loadInsights(supabase as any),
       body.source_product_id ? Promise.resolve('') : loadProductDigest(supabase as any),
     ])
+    const topic = body.topic?.trim().slice(0, 200) ?? ''
+    const recent = await loadRecentProblemIds(supabase as any)
+    const note = topic || productName || undefined
+    const picks = kind === 'post' ? pickStories(storyCount(count), { note, recent }) : []
     const result = await geminiJson<{ concepts: AdConcept[] }>({
       feature: 'concepts',
       system: PLANNER_SYSTEM,
-      prompt: conceptsPrompt(buildDigest(data) + productDigest, { topic: body.topic?.trim().slice(0, 200) ?? '', productName, audiences, count, kind, language }),
+      prompt: conceptsPrompt(buildDigest(data) + productDigest, { topic, productName, audiences, count, kind, language, story: { recent, note, picks } }),
       schema: conceptsSchema(kind),
       maxOutputTokens: 9000,
     })

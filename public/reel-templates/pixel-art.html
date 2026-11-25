@@ -1,0 +1,60 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Pixel Art</title>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=block" rel="stylesheet">
+<link rel="stylesheet" href="_base.css">
+<style>
+  :root { --ink:#1A1C2C; --white:#F4F4F4; --yellow:#FFCD75; --red:#B13E53; --green:#38B764; --blue:#3B5DC9; }
+  body { background:#41A6F6; }
+  .scene *, .scene { animation-timing-function:steps(4, end) !important; }
+  .sky { position:absolute; inset:0; }
+  .ground { position:absolute; left:0; right:0; top:1500px; bottom:0;
+    background:linear-gradient(var(--green) 0 36px, #257179 36px 48px, transparent 48px),
+      repeating-linear-gradient(90deg, #8B5A3C 0 48px, #73462F 48px 96px) 0 48px/96px 48px, #73462F; }
+  .pix { position:absolute; width:12px; height:12px; }
+  .t { font-family:'Press Start 2P', monospace; color:var(--white); line-height:1.25; text-shadow:6px 6px 0 var(--ink); }
+  /* RPG dialog box for the headline. */
+  .t-head { background:var(--ink); border:8px solid var(--white); box-shadow:0 0 0 8px var(--ink), inset 0 0 0 6px var(--blue); padding:34px 36px; box-sizing:border-box; text-shadow:none; }
+  .t-sub, .t-item, .t-phone { font-family:'VT323', monospace; color:var(--white); text-shadow:4px 4px 0 var(--ink); line-height:1; }
+  .t-bullet { color:var(--yellow); }
+  .t-stamp, .t-button { color:var(--ink); background:var(--yellow); box-shadow:0 0 0 8px var(--ink), 8px 8px 0 8px var(--ink); padding:16px 24px; box-sizing:border-box; text-shadow:none; }
+  .t-site, .t-label { color:var(--yellow); }
+  .st-logo { image-rendering:pixelated;  }
+  .castbox { color:var(--ink); --fig-fill:#FFCCAA; --fig-accent:var(--yellow); --fig-logo:var(--white); --fig-stroke:17; --prop-stroke:8; }
+  .castbox .fig-mark { color:var(--red); }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<script src="_story.js"></script>
+<script>
+const SKY = { hook: ['#41A6F6', '#73EFF7'], problem: ['#333C57', '#566C86'], solution: ['#41A6F6', '#73EFF7'], product: ['#EF7D57', '#FFCD75'], proof: ['#29366F', '#3B5DC9'], cta: ['#41A6F6', '#A7F070'] }
+/** A pixel cloud drawn with box-shadow blocks. */
+function cloud(ctx, left, top) {
+  const c = ctx.el('div', 'pix'); Object.assign(c.style, { left: left + 'px', top: top + 'px' })
+  const cells = ['3,0', '4,0', '5,0', '2,1', '3,1', '4,1', '5,1', '6,1', '0,2', '1,2', '2,2', '3,2', '4,2', '5,2', '6,2', '7,2', '8,2', '0,3', '1,3', '2,3', '3,3', '4,3', '5,3', '6,3', '7,3', '8,3', '9,3']
+  c.style.boxShadow = cells.map((p) => { const [x, y] = p.split(',').map(Number); return `${x * 24}px ${y * 24}px 0 12px #fff` }).join(',')
+  return c
+}
+storyStyle({
+  prepare: () => window.pixelateCast(12),
+  fonts: ['Press Start 2P', 'VT323'],
+  transition: 'stWipe',
+  cast: { enter: 'pop' },
+  enter: { head: ['stType', 0.8], text: ['stFade', 0.4], stamp: ['stPop', 0.4], button: ['stPop', 0.4], logo: ['stPop', 0.5] },
+  layout: { hook: { head: { max: 110 } }, problem: { head: { max: 100 } }, proof: { head: { max: 96 }, items: { max: 80 } }, product: { head: { max: 90 } }, cta: { head: { max: 90 }, site: { max: 64 }, button: { max: 70 } } },
+  bg(ctx, scene, role) {
+    const [a, b] = SKY[role] || SKY.hook
+    const s = ctx.el('div', 'sky'); s.style.background = `linear-gradient(${a} 0 25%, ${b} 25% 50%, ${a} 50% 100%)`
+    s.style.background = `repeating-linear-gradient(${a} 0 240px, ${b} 240px 252px)`
+    return [s, cloud(ctx, 640, 1240), cloud(ctx, 60, 1100), ctx.el('div', 'ground')]
+  },
+})
+</script>
+<script src="_cast.js"></script>
+<script src="_props.js"></script>
+<script src="_runtime.js"></script>
+</body>
+</html>

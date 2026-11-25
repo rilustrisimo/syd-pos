@@ -1,0 +1,58 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Paper Cut-out Puppet</title>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@600;700&display=block" rel="stylesheet">
+<link rel="stylesheet" href="_base.css">
+<style>
+  :root { --ink:#3D405B; --coral:#E07A5F; --sand:#F2CC8F; --sage:#81B29A; --cream:#F4F1DE; }
+  body { background:#BFD7EA; }
+  .paper { position:absolute; inset:0; }
+  .fibers { position:absolute; inset:0; opacity:.3;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='400'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.55' numOctaves='3'/%3E%3CfeColorMatrix values='0 0 0 0 .5 0 0 0 0 .45 0 0 0 0 .4 0 0 0 .5 0'/%3E%3C/filter%3E%3Crect width='400' height='400' filter='url(%23n)'/%3E%3C/svg%3E"); }
+  .layer { position:absolute; left:0; width:1080px; filter:drop-shadow(0 10px 0 rgba(0,0,0,.16)); }
+  .t { font-family:'Fredoka', sans-serif; font-weight:700; color:var(--ink); line-height:1.02; }
+  /* Text on torn paper strips, slightly crooked. */
+  .t-head, .t-sub, .t-item, .t-label, .t-site, .t-phone { background:var(--cream); padding:18px 30px; box-sizing:border-box; box-shadow:0 10px 0 rgba(0,0,0,.15);
+    clip-path:polygon(0 4%, 6% 0, 20% 3%, 38% 0, 55% 4%, 72% 0, 88% 3%, 100% 0, 99% 50%, 100% 96%, 84% 100%, 66% 96%, 48% 100%, 30% 97%, 12% 100%, 0 97%, 1% 50%); }
+  .t-head { transform:rotate(-1.5deg); }
+  .t-sub { font-weight:600; transform:rotate(1deg); background:#fff; }
+  .t-stamp, .t-button { color:#fff; background:var(--coral); padding:14px 30px; box-sizing:border-box; transform:rotate(-4deg); box-shadow:0 10px 0 rgba(0,0,0,.18); border-radius:12px; }
+  .t-bullet { color:#fff; background:var(--sage); border-radius:50%; box-shadow:0 8px 0 rgba(0,0,0,.15); }
+  .castbox { color:var(--ink); --fig-fill:var(--sand); --fig-accent:var(--coral); --fig-logo:#fff; --fig-stroke:17; --prop-stroke:7; filter:drop-shadow(0 12px 0 rgba(0,0,0,.18)); }
+  /* Stop-motion puppet: movement in steps. */
+  .castbox * { animation-timing-function:steps(6, end) !important; }
+  .castbox .fig-mark { color:var(--coral); }
+  @keyframes sway { 0%,100% { transform:translateX(0); } 50% { transform:translateX(30px); } }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<script src="_story.js"></script>
+<script>
+const SKY = { hook: '#BFD7EA', problem: '#9A8C98', solution: '#BFD7EA', product: '#F6D8AE', proof: '#CDE7D8', cta: '#F4D6CC' }
+function torn(d, fill) { return `<path d="${d}" fill="${fill}"/>` }
+storyStyle({
+  fonts: ['600 Fredoka', '700 Fredoka'],
+  transition: 'stSlideR',
+  cast: { enter: 'slide' },
+  enter: { head: ['stDrop', 0.7, 'cubic-bezier(.3,1.2,.5,1)'], text: ['stSlideL', 0.5], stamp: ['stStamp', 0.4], button: ['stPop', 0.4], bullet: ['stPop', 0.35], logo: ['stDrop', 0.7] },
+  bg(ctx, scene, role) {
+    const { el, animate } = ctx
+    const p = el('div', 'paper'); p.style.background = SKY[role] || SKY.hook
+    const mk = (top, h, inner) => { const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); s.setAttribute('viewBox', `0 0 1080 ${h}`); s.setAttribute('class', 'layer'); s.style.top = top + 'px'; s.style.height = h + 'px'; s.innerHTML = inner; return s }
+    const sun = mk(90, 300, `<circle cx="900" cy="150" r="110" fill="${role === 'problem' ? '#DDD5CF' : '#F2CC8F'}"/>`)
+    const cloud = mk(420, 200, torn('M80 140 Q90 70 170 80 Q200 20 280 50 Q340 30 370 90 Q430 100 420 150 Z', '#fff'))
+    animate(cloud, ['sway', 5, ctx.at(0), 'ease-in-out', 'infinite'])
+    const back = mk(1300, 620, torn('M0 140 L60 120 L130 150 L210 90 L300 120 L380 60 L470 110 L560 70 L650 120 L740 80 L830 130 L920 90 L1000 120 L1080 100 V620 H0 Z', '#81B29A'))
+    const front = mk(1520, 400, torn('M0 90 L90 60 L180 100 L270 50 L360 90 L450 40 L540 80 L630 50 L720 90 L810 60 L900 100 L990 60 L1080 80 V400 H0 Z', '#5E9C7E'))
+    return [p, sun, cloud, back, front, el('div', 'fibers')]
+  },
+})
+</script>
+<script src="_cast.js"></script>
+<script src="_props.js"></script>
+<script src="_runtime.js"></script>
+</body>
+</html>

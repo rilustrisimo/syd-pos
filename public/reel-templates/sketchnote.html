@@ -1,0 +1,75 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Sketchnote</title>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@700&family=Architects+Daughter&display=block" rel="stylesheet">
+<link rel="stylesheet" href="_base.css">
+<style>
+  :root { --paper:#FCFBF7; --ink:#263238; --hl:#FFE066; --coral:#FF7B6B; --teal:#2A9D8F; --blue:#3D5A80; }
+  body { background:var(--paper); }
+  .st { background:radial-gradient(circle, rgba(38,50,56,.16) 2.5px, transparent 3px) 0 0/44px 44px, var(--paper); }
+  .t { font-family:'Caveat', cursive; font-weight:700; color:var(--ink); line-height:1; }
+  /* Highlighter stroke behind the headline. */
+  .t-head span.hl { background:linear-gradient(transparent 52%, var(--hl) 52%, var(--hl) 90%, transparent 90%); box-decoration-break:clone; -webkit-box-decoration-break:clone; padding:0 8px; }
+  .t-sub, .t-phone { font-family:'Architects Daughter', cursive; color:var(--blue); }
+  .t-stamp, .t-button { color:var(--coral); border:6px solid var(--coral); border-radius:50% 46% 52% 44% / 50% 54% 46% 50%; padding:14px 30px; box-sizing:border-box; }
+  .t-bullet { color:#fff; background:var(--teal); border-radius:50%; width:96px !important; height:96px; display:flex; align-items:center; justify-content:center; }
+  .t-item { border-bottom:5px dashed rgba(42,157,143,.5); padding-bottom:10px; }
+  .t-label { color:var(--teal); }
+  .t-site { color:var(--teal); }
+  .doodle { position:absolute; fill:none; stroke-linecap:round; stroke-linejoin:round; overflow:visible; }
+  .doodle path { stroke-dasharray:1 2; }
+  .castbox { color:var(--ink); --fig-fill:#fff; --fig-accent:rgba(255,123,107,.35); --hat-fill:var(--hl); --fig-logo:var(--coral); --fig-stroke:9; --prop-stroke:4.5; }
+  .castbox .fig-mark { color:var(--coral); }
+  .st-logo { filter:brightness(0) saturate(100%) invert(16%) sepia(13%) saturate(900%) hue-rotate(160deg); }
+  @keyframes skDraw { from { stroke-dashoffset:1.02; } to { stroke-dashoffset:0; } }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<script src="_story.js"></script>
+<script>
+const NS = 'http://www.w3.org/2000/svg'
+const COLORS = ['#FF7B6B', '#2A9D8F', '#3D5A80', '#E9A23B']
+/** A marker doodle (arrow, swirl, star) that draws itself on. */
+function doodle(ctx, d, { left, top, w, view, color, at, dur = 0.6, width = 8 }) {
+  const s = document.createElementNS(NS, 'svg'); s.setAttribute('class', 'doodle'); s.setAttribute('viewBox', view)
+  Object.assign(s.style, { left: left + 'px', top: top + 'px', width: w + 'px' })
+  s.setAttribute('stroke', color); s.setAttribute('stroke-width', width)
+  s.innerHTML = d.map((p) => `<path pathLength="1" d="${p}"/>`).join('')
+  s.querySelectorAll('path').forEach((p, i) => ctx.animate(p, ['skDraw', dur / d.length, at + (i * dur) / d.length, 'ease-out']))
+  return s
+}
+storyStyle({
+  fonts: ['700 Caveat', 'Architects Daughter'],
+  transition: 'stWipe',
+  cast: { enter: 'draw' },
+  enter: { head: ['stType', 0.8, 'linear'], sub: ['stType', 0.7, 'linear'], item: ['stType', 0.6, 'linear'], bullet: ['stPop', 0.35], stamp: ['stPop', 0.4], button: ['stPop', 0.4], text: ['stType', 0.6, 'linear'], logo: ['stFade', 0.6] },
+  text: {
+    head(ctx, text, box, make) {
+      const n = make()
+      n.textContent = ''
+      const hl = ctx.el('span', 'hl', text); n.append(hl)
+      return n
+    },
+  },
+  // Each scene gets a marker arrow from the text to the picture, plus a little star.
+  overlay(ctx, scene, role) {
+    const c = COLORS[ctx.index % COLORS.length]
+    const out = []
+    if (role !== 'cta' && role !== 'product') {
+      const right = ctx.index % 2 === 0
+      out.push(doodle(ctx, right ? ['M20 10 C 120 40, 160 120, 150 220', 'M150 220 L 120 180', 'M150 220 L 182 186'] : ['M180 10 C 80 40, 40 120, 50 220', 'M50 220 L 18 186', 'M50 220 L 80 180'],
+        { left: right ? 800 : 80, top: scene.sub ? 700 : role === 'proof' ? 640 : 560, w: 200, view: '0 0 200 240', color: c, at: ctx.at(0.18), dur: 0.5 }))
+    }
+    out.push(doodle(ctx, ['M40 4 L 50 34 L 80 36 L 56 54 L 66 84 L 40 66 L 14 84 L 24 54 L 0 36 L 30 34 Z'], { left: 950, top: 90, w: 70, view: '0 0 80 90', color: COLORS[(ctx.index + 1) % COLORS.length], at: ctx.at(0.05), dur: 0.4, width: 6 }))
+    return out
+  },
+})
+</script>
+<script src="_cast.js"></script>
+<script src="_props.js"></script>
+<script src="_runtime.js"></script>
+</body>
+</html>

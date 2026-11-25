@@ -1,0 +1,59 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Colored Shadow Puppetry</title>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&family=Cormorant+Garamond:ital,wght@1,600&display=block" rel="stylesheet">
+<link rel="stylesheet" href="_base.css">
+<style>
+  :root { --shadow:#0A0807; }
+  body { background:#000; }
+  .screen { position:absolute; inset:0; }
+  .weave { position:absolute; inset:0; opacity:.12; background:repeating-linear-gradient(0deg, #000 0 2px, transparent 2px 6px), repeating-linear-gradient(90deg, #000 0 2px, transparent 2px 6px); }
+  .frame { position:absolute; inset:0; border:40px solid var(--shadow); background:radial-gradient(ellipse at 50% 50%, transparent 55%, rgba(0,0,0,.6) 100%); }
+  .t { font-family:'Cinzel', serif; font-weight:900; color:var(--shadow); line-height:1.02; }
+  .t-sub, .t-phone, .t-item { font-family:'Cormorant Garamond', serif; font-style:italic; font-weight:600; }
+  .t-stamp, .t-button { background:var(--shadow); color:var(--glow, #FFC680); padding:14px 34px; box-sizing:border-box; clip-path:polygon(4% 0, 96% 0, 100% 50%, 96% 100%, 4% 100%, 0 50%); }
+  .st-logo { filter:brightness(0); opacity:.92; }
+  .castbox { color:var(--shadow); --fig-fill:var(--shadow); --fig-accent:var(--shadow); --hat-fill:var(--shadow); --fig-logo:var(--glow, #FFC680); --fig-stroke:15; --prop-stroke:7; }
+  .castbox .eye { fill:var(--glow, #FFC680); }
+  .castbox .rod { stroke-width:4; }
+  .castbox .fig-mark { color:var(--shadow); }
+  @keyframes shadowIn { from { transform:scale(1.15); opacity:.25; } to { transform:none; opacity:1; } }
+  @keyframes lampFlicker { 0%,100% { opacity:1; } 40% { opacity:.93; } 60% { opacity:.98; } }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<script src="_story.js"></script>
+<script>
+// Backlit screen colour per scene role: [centre, edge, eye-hole glow].
+const LIGHT = { hook: ['#FFD27F', '#B3470B', '#FFE3A8'], problem: ['#FF7A6B', '#5C0A14', '#FFC2B8'], solution: ['#7FF0CF', '#0B4F4A', '#D2FFF0'], product: ['#FFE08A', '#9A5B05', '#FFF1C4'], proof: ['#C3A6FF', '#3A1A6E', '#EADFFF'], cta: ['#FFC680', '#A3330E', '#FFE6C2'] }
+storyStyle({
+  fonts: ['700 Cinzel', '900 Cinzel', 'italic 600 Cormorant Garamond'],
+  transition: 'stFade',
+  cast: { enter: 'fade', rods: true },
+  enter: { text: ['stFade', 0.6], stamp: ['stFade', 0.5], button: ['stFade', 0.5], logo: ['stFade', 0.8] },
+  headAlign: 'center',
+  bg(ctx, scene, role) {
+    const [c, e, g] = LIGHT[role] || LIGHT.hook
+    const s = ctx.el('div', 'screen'); s.style.background = `radial-gradient(ellipse at 50% 48%, ${c} 0%, ${e} 85%)`
+    ctx.animate(s, ['lampFlicker', 2.3, ctx.at(0), 'ease-in-out', 'infinite'])
+    return [s, ctx.el('div', 'weave')]
+  },
+  // The puppet comes into focus as the puppeteer brings it to the screen.
+  decorateCast(c, ctx, scene, role) {
+    c.style.setProperty('--glow', (LIGHT[role] || LIGHT.hook)[2])
+    ctx.animate(c, ['shadowIn', 0.9, ctx.at(0.15), 'ease-out'])
+  },
+  overlay(ctx, scene, role) {
+    const f = ctx.el('div', 'frame')
+    return [f]
+  },
+})
+</script>
+<script src="_cast.js"></script>
+<script src="_props.js"></script>
+<script src="_runtime.js"></script>
+</body>
+</html>

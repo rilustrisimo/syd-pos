@@ -1,0 +1,85 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Silent Film</title>
+<link href="https://fonts.googleapis.com/css2?family=Limelight&family=IM+Fell+English:ital@0;1&display=block" rel="stylesheet">
+<link rel="stylesheet" href="_base.css">
+<style>
+  :root { --cream:#EFE6D2; --ink:#16130F; --film:#BDB4A1; }
+  body { background:#000; }
+  .st { background:radial-gradient(ellipse at 50% 45%, #D9CDB4 0%, #A3967D 60%, #6A6052 100%); }
+  .floor { position:absolute; left:0; right:0; top:1560px; bottom:0; background:linear-gradient(#8C8473, #5F584C); }
+  .t { font-family:'IM Fell English', serif; color:var(--ink); line-height:1.05; }
+  /* Intertitle card: black, ornate double frame, art-deco lettering. */
+  .card { position:absolute; inset:0; background:#0E0C0A; }
+  .card::before { content:''; position:absolute; inset:70px; border:6px solid var(--film); outline:2px solid var(--film); outline-offset:14px; }
+  .card::after { content:'❦'; position:absolute; left:0; right:0; bottom:130px; text-align:center; font-size:90px; color:var(--film); font-family:'IM Fell English', serif; }
+  .card .t { font-family:'Limelight', serif; color:var(--cream); letter-spacing:.02em; }
+  .t-sub { font-style:italic; color:var(--cream); background:rgba(14,12,10,.82); padding:16px 28px; box-sizing:border-box; }
+  .t-stamp, .t-button { font-family:'Limelight', serif; color:var(--cream); background:#0E0C0A; border:5px double var(--film); padding:14px 30px; box-sizing:border-box; }
+  .t-item, .t-bullet, .t-label { font-family:'Limelight', serif; }
+  .st-cta .t, .st-cta .t-phone { color:var(--cream); }
+  .st-cta .t-site { font-style:italic; }
+  .st-logo { filter:brightness(0) invert(.9) sepia(.4); }
+  .grain, .vignette, .scratch, .flicker { position:absolute; pointer-events:none; }
+  .grain { inset:-60px; opacity:.16; will-change:transform;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)'/%3E%3C/svg%3E"); }
+  .vignette { inset:0; will-change:transform; background:radial-gradient(ellipse at 50% 50%, transparent 50%, rgba(0,0,0,.65) 100%); }
+  .scratch { top:0; bottom:0; width:3px; background:rgba(255,255,255,.35); }
+  .flicker { inset:0; background:#fff; }
+  @keyframes grainMove { 0% { transform:translate(0,0); } 25% { transform:translate(-30px,20px); } 50% { transform:translate(20px,-30px); } 75% { transform:translate(-10px,-20px); } 100% { transform:translate(0,0); } }
+  @keyframes flick { 0%,100% { opacity:0; } 10% { opacity:.08; } 20% { opacity:0; } 55% { opacity:.05; } 60% { opacity:0; } }
+  @keyframes scratchMove { from { transform:translateX(0); } to { transform:translateX(-260px); } }
+  @keyframes cardOut { from { opacity:1; } to { opacity:0; } }
+  @keyframes jitter { 0%,100% { transform:translate(0,0); } 33% { transform:translate(2px,-3px); } 66% { transform:translate(-2px,2px); } }
+  .castbox { color:var(--ink); --fig-fill:#E3DBC9; --fig-accent:#8C8473; --hat-fill:#4A443B; --fig-logo:var(--cream); --fig-stroke:12; --prop-stroke:6; }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<script src="_story.js"></script>
+<script>
+storyStyle({
+  fonts: ['Limelight', 'IM Fell English', 'italic 400 IM Fell English'],
+  transition: 'stIris',
+  cast: { enter: 'fade' },
+  castDelay: 0.4,
+  enter: { text: ['stFade', 0.4], stamp: ['stFade', 0.4], button: ['stFade', 0.5], logo: ['stFade', 0.6] },
+  bg(ctx) { return [ctx.el('div', 'floor')] },
+  text: {
+    // The headline is an intertitle card shown first; the "shot" plays after it.
+    head(ctx, text, box, make) {
+      const card = ctx.el('div', 'card')
+      const role = box.role
+      const t = make({ ...box, left: 130, w: 820, top: 560, h: 620, max: 150, align: 'center' })
+      Object.assign(t.style, { display: 'flex', alignItems: 'center', justifyContent: 'center', height: '620px' })
+      if (role === 'cta') { Object.assign(t.style, { top: '560px', height: '240px' }) }
+      card.append(t)
+      if (role !== 'cta') ctx.animate(card, ['cardOut', 0.25, ctx.at(role === 'proof' ? 0.3 : 0.36), 'linear'])
+      return card
+    },
+    sub(ctx, text, box, make) { return make({ ...box, top: 1620, h: 140, at: ctx.at(0.5), align: 'center' }) },
+  },
+  layout: {
+    hook: { cast: { top: 700, bottom: 1600 } },
+    problem: { cast: { top: 640, bottom: 1600 }, stamp: { top: 160 } },
+    proof: { items: { top: 760 }, cast: { top: 700, bottom: 1600 } },
+    product: { stamp: { top: 160 }, sub: { top: 1640 } },
+    cta: { logo: { top: 230 }, head: {}, site: { top: 860 }, phone: { top: 1010 }, button: { top: 1170 }, figure: { left: 420, top: 1380, w: 240, h: 330 } },
+  },
+  decorateCast(c, ctx) { ctx.animate(c, ['jitter', 0.25, ctx.at(0), 'steps(3)', 'infinite']) },
+  overlay(ctx) {
+    const { el, animate } = ctx
+    const g = el('div', 'grain'); animate(g, ['grainMove', 0.4, ctx.at(0), 'steps(4)', 'infinite'])
+    const s1 = el('div', 'scratch'); s1.style.left = (300 + (ctx.index * 211) % 600) + 'px'; animate(s1, ['scratchMove', 1.3, ctx.at(0), 'steps(6)', 'infinite'])
+    const f = el('div', 'flicker'); animate(f, ['flick', 0.7, ctx.at(0), 'steps(6)', 'infinite'])
+    return [g, s1, el('div', 'vignette'), f]
+  },
+})
+</script>
+<script src="_cast.js"></script>
+<script src="_props.js"></script>
+<script src="_runtime.js"></script>
+</body>
+</html>

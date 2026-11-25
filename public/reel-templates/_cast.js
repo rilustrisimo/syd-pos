@@ -52,7 +52,7 @@
 
   const pt = (p) => `${p[0]} ${p[1]}`
 
-  window.drawFigure = function ({ cast = 'ben', pose = 'stand', mood, flip } = {}) {
+  window.drawFigure = function ({ cast = 'ben', pose = 'stand', mood, flip, rods } = {}) {
     const j = POSES[pose] || POSES.stand
     const [eR, hR, eL, hL, kR, fR, kL, fL] = j
     const face = FACES[mood] || (pose === 'happy' || pose === 'thumbs_up' ? FACES.happy : pose === 'worried' ? FACES.worried : FACES.neutral)
@@ -76,6 +76,7 @@
         <path class="d" d="M${pt(HIP)} L${pt(kR)} L${pt(fR)}"/>
         <path class="d" d="M${pt(HIP)} L${pt(kL)} L${pt(fL)}"/>
       </g>
+      ${rods ? `<g class="fig-rods"><path class="d rod" d="M${pt(hR)} L${hR[0] + 30} 520"/><path class="d rod" d="M${pt(hL)} L${hL[0] - 30} 520"/></g>` : ''}
       <g class="fig-arms">
         <path class="d" d="M${pt(SHOULDER)} L${pt(eR)} L${pt(hR)}"/>
         <path class="d" d="M${pt(SHOULDER)} L${pt(eL)} L${pt(hL)}"/>

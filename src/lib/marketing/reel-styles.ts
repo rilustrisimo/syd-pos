@@ -6,7 +6,10 @@
 
 import { isCastId, type CastId } from '@/lib/marketing/cast'
 
-export type ReelStyle = 'flat-poster' | 'pop-comic' | 'chalk-doodle' | 'golden-neon' | 'line-diagram' | 'whiteboard'
+export type ReelStyle =
+  | 'flat-poster' | 'pop-comic' | 'chalk-doodle' | 'golden-neon' | 'line-diagram' | 'whiteboard'
+  | 'stick-figure' | 'sketchnote' | 'minimal-counter' | 'limited-animation' | 'silent-film'
+  | 'paper-cutout' | 'shadow-puppet' | 'woodcut' | 'pixel-art' | 'pixel-grunge' | 'puppet-theatre' | 'cardboard-diorama'
 
 export const REEL_STYLES: Record<ReelStyle, { label: string; description: string }> = {
   'flat-poster': { label: 'Flat Poster', description: 'Bold flat shapes and hazard tape. Promos and product pushes.' },
@@ -15,6 +18,19 @@ export const REEL_STYLES: Record<ReelStyle, { label: string; description: string
   'golden-neon': { label: 'Golden Neon', description: 'Glowing gold on black. Sale nights and new arrivals.' },
   'line-diagram': { label: 'Line Diagram', description: 'Blueprint lines that draw themselves. Specs and comparisons.' },
   whiteboard: { label: 'Hand-drawn Explainer', description: 'A hand sketches and writes on a whiteboard. Lessons and how-tos.' },
+  // Story styles (public/reel-templates/_story.js skins) — made for cast + problem → fix reels.
+  'stick-figure': { label: 'Stick Figure Story', description: 'Stick figures on paper; the headline is their speech bubble. Simple stories.' },
+  sketchnote: { label: 'Sketchnote', description: 'Notebook dots, highlighter and marker doodles. Tips and checklists.' },
+  'minimal-counter': { label: 'Minimal Counter', description: 'Clean type, big scene counter, numbers that count up. Step-by-step and facts.' },
+  'limited-animation': { label: 'Limited Animation', description: 'Saturday-cartoon look: flat colours, held poses, choppy motion. Funny stories.' },
+  'silent-film': { label: 'Silent Film', description: 'Sepia, film grain, flicker and intertitle cards. Throwback stories.' },
+  'paper-cutout': { label: 'Paper Cut-out', description: 'Torn paper scenery and puppet cut-outs moving in steps. Family and farm stories.' },
+  'shadow-puppet': { label: 'Shadow Puppetry', description: 'Black puppets on a glowing coloured screen. Dramatic problem → fix.' },
+  woodcut: { label: 'Woodcut Print', description: 'Carved ink, hatching and a red second colour. Durability and heritage.' },
+  'pixel-art': { label: 'Pixel Art', description: 'Bright 8-bit world with an RPG text box. Playful tips.' },
+  'pixel-grunge': { label: 'Dark Pixel Grunge', description: 'Dark pixels, scanlines and glitchy text. Bold night posts.' },
+  'puppet-theatre': { label: 'Puppet Theatre', description: 'Curtains, a stage and puppets popping up. Story time.' },
+  'cardboard-diorama': { label: 'Cardboard Diorama', description: 'Layered cardboard scenery with parallax. Handmade stories.' },
 }
 
 export const isReelStyle = (s: unknown): s is ReelStyle => typeof s === 'string' && s in REEL_STYLES

@@ -1,0 +1,81 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Minimal Counter Story</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@500;800&family=JetBrains+Mono:wght@700&display=block" rel="stylesheet">
+<link rel="stylesheet" href="_base.css">
+<style>
+  :root { --bg:#F3F0E8; --ink:#111; --accent:#FF5A1F; --dim:#9A968C; }
+  body { background:var(--bg); }
+  .st { background:var(--bg); }
+  .t { font-family:'Inter Tight', sans-serif; font-weight:800; color:var(--ink); line-height:.98; letter-spacing:-.03em; }
+  .t-sub, .t-phone, .t-item { font-weight:500; color:#444; letter-spacing:-.01em; }
+  .t-bullet { font-family:'JetBrains Mono', monospace; color:var(--accent); }
+  .t-stamp, .t-button { color:#fff; background:var(--accent); padding:12px 30px; box-sizing:border-box; }
+  .t-site { color:var(--accent); }
+  /* Numbers in a headline count up (registered property so seek() can scrub it). */
+  @property --n { syntax:'<integer>'; initial-value:0; inherits:false; }
+  .count { display:inline-block; text-align:right; counter-reset:n var(--n); color:var(--accent); }
+  .count::after { content:counter(n); }
+  @keyframes countUp { from { --n:0; } to { --n:var(--to); } }
+  .counter { position:absolute; left:80px; top:1560px; font-family:'JetBrains Mono', monospace; font-weight:700; color:var(--ink); }
+  .counter b { font-size:150px; letter-spacing:-.06em; }
+  .counter span { font-size:44px; color:var(--dim); margin-left:10px; }
+  .bar { position:absolute; left:80px; right:80px; top:1760px; height:6px; background:rgba(17,17,17,.12); }
+  .bar i { position:absolute; left:0; top:0; bottom:0; background:var(--accent); transform-origin:left; }
+  @keyframes barGrow { from { transform:scaleX(var(--from)); } to { transform:scaleX(var(--to)); } }
+  @keyframes tick { from { opacity:0; transform:translateY(40px); } to { opacity:1; transform:none; } }
+  .castbox { color:var(--ink); --fig-fill:var(--bg); --fig-accent:var(--accent); --hat-fill:var(--ink); --fig-logo:var(--bg); --fig-stroke:8; --prop-stroke:4; }
+  .castbox .fig-mark { color:var(--accent); }
+  .st-logo { filter:brightness(0); }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<script src="_story.js"></script>
+<script>
+const pad = (n) => String(n).padStart(2, '0')
+storyStyle({
+  fonts: ['500 Inter Tight', '800 Inter Tight', '700 JetBrains Mono'],
+  transition: 'stCut',
+  cast: { enter: 'fade' },
+  enter: { head: ['stRise', 0.5], text: ['stFade', 0.5], stamp: ['stFade', 0.3], button: ['stFade', 0.3] },
+  // Smaller picture, more air: the counter takes the bottom left.
+  layout: {
+    hook: { cast: { left: 300, w: 700, bottom: 1520 } },
+    problem: { cast: { left: 300, w: 700, bottom: 1520 }, stamp: { left: 560, top: 1580, w: 440 } },
+    proof: { cast: { left: 300, w: 700, bottom: 1520 }, items: { step: 200 } },
+    product: { figure: { left: 760, top: 1300, w: 240 }, stamp: { left: 80, top: 1200, w: 520 }, sub: { top: 1400 } },
+    cta: { figure: { left: 780, top: 1400, w: 220, h: 330 } },
+  },
+  text: {
+    head(ctx, text, box, make) {
+      const n = make()
+      const m = text.match(/(\d{1,4})/)
+      if (m && Number(m[1]) > 1) {
+        const [before, after] = [text.slice(0, m.index), text.slice(m.index + m[1].length)]
+        n.textContent = before
+        const c = ctx.el('span', 'count'); c.style.setProperty('--to', m[1]); c.style.minWidth = m[1].length * 0.62 + 'em'
+        ctx.animate(c, ['countUp', 0.9, box.at + 0.2, 'cubic-bezier(.2,.8,.2,1)'])
+        n.append(c, document.createTextNode(after))
+      }
+      return n
+    },
+  },
+  overlay(ctx, scene, role) {
+    const total = ctx.data.scenes.length, i = ctx.index + 1
+    const c = ctx.el('div', 'counter'); const b = ctx.el('b', null, pad(i)); const t = ctx.el('span', null, '/ ' + pad(total))
+    c.append(b, t); ctx.animate(b, ['tick', 0.4, ctx.at(0)])
+    const bar = ctx.el('div', 'bar'); const fill = ctx.el('i'); bar.append(fill)
+    fill.style.setProperty('--from', String((i - 1) / total)); fill.style.setProperty('--to', String(i / total)); fill.style.width = '100%'
+    ctx.animate(fill, ['barGrow', Math.max(0.5, ctx.dur), ctx.at(0), 'linear'])
+    return role === 'cta' ? [bar] : [c, bar]
+  },
+})
+</script>
+<script src="_cast.js"></script>
+<script src="_props.js"></script>
+<script src="_runtime.js"></script>
+</body>
+</html>

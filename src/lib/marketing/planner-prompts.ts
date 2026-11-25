@@ -8,17 +8,32 @@ import { CREATIVE_STYLE_KEYS, creativeStylesBrief, type CreativeStyle } from '@/
 import type { ContentAudience } from '@/hooks/useContentIdeas'
 import { CAST_IDS, castBrief } from '@/lib/marketing/cast'
 import { problemsForPrompt } from '@/lib/marketing/problem-bank'
+import { storyPickLine, type StoryPick } from '@/lib/marketing/story-picks'
 import { NARRATION_LANGUAGE_RULES, type NarrationLanguage } from '@/lib/marketing/narration-language'
 
-/** Story posts: the recurring cast + this season's problem bank (built per request). */
-function storyContext(): string {
+/** What keeps stories varied: problems used lately, the owner's note, and pre-picked problems. */
+export interface StoryOptions {
+  /** Problem ids used in recent ideas/posts — not to be reused. */
+  recent?: string[]
+  /** Owner's note / topic: stories are about it when given. */
+  note?: string
+  /** Server-picked problem + character per required story (see story-picks.ts). */
+  picks?: StoryPick[]
+}
+
+/** Story posts: the recurring cast + this season's problem bank (built per request, shuffled). */
+function storyContext(story: StoryOptions = {}): string {
+  const note = story.note?.trim()
   return [
     'RECURRING CAST for "story" posts (use their names; one character per story, Ate Lyn can appear as the helpful SYD staff):',
     castBrief(),
     '',
-    'PROBLEM BANK — real local problems with the wrong fix people try and the right fix (use these for "story" posts and tips; pick products from PRODUCT SIGNALS that match the right fix):',
-    problemsForPrompt(),
-  ].join('\n')
+    'PROBLEM BANK — real local problems with the wrong fix people try and the right fix (a starting point, not the only options; pick products from PRODUCT SIGNALS that match the right fix):',
+    problemsForPrompt({ recent: story.recent, note }),
+    story.recent?.length ? `RECENTLY USED problems — do NOT use these again: ${story.recent.join(', ')}.` : '',
+    note ? `OWNER'S NOTE / TOPIC: "${note}". Story posts must be about this: use the matching PROBLEM BANK problem, or write a NEW realistic local problem about it (give it a short new slug as problem_id).` : '',
+    'Variety: never use the same problem twice in one plan, and you may write a NEW common local problem (new short slug as problem_id) whenever it fits the products or the season better than the bank.',
+  ].filter(Boolean).join('\n')
 }
 
 /** Language for everything written in the plan: captions, scripts, voiceovers, on-screen text. */
@@ -157,7 +172,7 @@ export function planSchema(storyDates: string[], otherDates: string[]) {
   return { type: 'OBJECT', properties, required: Object.keys(properties) }
 }
 
-export function planPrompt(digest: string, dates: string[], note?: string, language: NarrationLanguage = 'taglish', storyDates: string[] = []): string {
+export function planPrompt(digest: string, dates: string[], note?: string, language: NarrationLanguage = 'taglish', storyDates: string[] = [], story: StoryOptions = {}): string {
   const week = dates.length > 1
   const forced = storyDates.length
   const otherDates = dates.filter((d) => !storyDates.includes(d))
@@ -165,9 +180,12 @@ export function planPrompt(digest: string, dates: string[], note?: string, langu
     'PERFORMANCE DATA AND CONTEXT:',
     digest,
     '',
-    storyContext(),
+    storyContext({ ...story, note: story.note ?? note }),
     '',
     languageRule(language),
+    forced > 0 && story.picks?.length
+      ? `Use these problems and characters for the story reels (already chosen so stories stay varied):\n${story.picks.slice(0, forced).map((p, i) => storyPickLine(p, `Story reel on ${storyDates[i]}`)).join('\n')}`
+      : '',
     forced > 0
       ? `STORY REELS (required): put exactly ${forced} post${forced > 1 ? 's' : ''} in "story_reels" — reels in creative_style "story": a recurring cast member hits a real problem from the PROBLEM BANK, tries the wrong fix, then fixes it with SYD products (from PRODUCT SIGNALS when one fits) and shows the result. The voice_script narrates that mini story (setup → problem → wrong fix → right fix → result → call to action) and the shot_list and stickers follow the same beats.${forced > 1 ? ' Each story uses a DIFFERENT cast member (or Ate Lyn as the helper) and a DIFFERENT problem, for different audiences.' : ''}${week ? ` Story reel dates: ${storyDates.join(', ')} (one story each). "posts" has exactly one post for each of: ${otherDates.join(', ')} — every date gets exactly one post across both lists; the non-story posts use character "none" and an empty problem_id.` : ''}`
       : week
@@ -261,14 +279,14 @@ export const CONCEPTS_SCHEMA = {
 
 export function conceptsPrompt(
   digest: string,
-  opts: { topic: string; productName?: string | null; audiences: ContentAudience[]; count: number; kind?: ConceptKind; language?: NarrationLanguage }
+  opts: { topic: string; productName?: string | null; audiences: ContentAudience[]; count: number; kind?: ConceptKind; language?: NarrationLanguage; story?: StoryOptions }
 ): string {
   if (opts.kind === 'post') return postConceptsPrompt(digest, opts)
   return [
     'PERFORMANCE DATA AND CONTEXT:',
     digest,
     '',
-    storyContext(),
+    storyContext({ ...opts.story, note: opts.story?.note ?? (opts.topic || undefined) }),
     '',
     languageRule(opts.language ?? 'taglish'),
     'A "story" concept (cast member + PROBLEM BANK problem → right fix with SYD products) is welcome for one of the concepts when it fits the goal; set character and problem_id for it, character "none" for the rest.',
@@ -282,17 +300,21 @@ export function conceptsPrompt(
   ].filter(Boolean).join('\n')
 }
 
+/** How many of a batch of post concepts are stories (~1 in 3). */
+export const storyCount = (count: number) => Math.max(1, Math.round(count / 3))
+
 // Everyday organic posts: build the audience and trust, not hard selling.
 function postConceptsPrompt(
   digest: string,
-  opts: { topic: string; productName?: string | null; audiences: ContentAudience[]; count: number; language?: NarrationLanguage }
+  opts: { topic: string; productName?: string | null; audiences: ContentAudience[]; count: number; language?: NarrationLanguage; story?: StoryOptions }
 ): string {
-  const stories = Math.max(1, Math.round(opts.count / 3))
+  const stories = storyCount(opts.count)
   return [
     'PERFORMANCE DATA AND CONTEXT:',
     digest,
     '',
-    storyContext(),
+    storyContext({ ...opts.story, note: opts.story?.note ?? (opts.topic || undefined) }),
+    opts.story?.picks?.length ? `Use these problems and characters for the story concepts (already chosen so stories stay varied):\n${opts.story.picks.map((p, i) => storyPickLine(p, `Story ${i + 1}`)).join('\n')}` : '',
     '',
     languageRule(opts.language ?? 'taglish'),
     `Stories: make ${stories} of the ${opts.count} concepts creative_style "story" — each with a DIFFERENT cast member and a DIFFERENT problem from the PROBLEM BANK (matching its audience), told as setup → problem → wrong fix → right fix with SYD products → result. Set character and problem_id on them; character "none" and empty problem_id on the rest. The story goes in description, and for reels the voiceover narrates it.`,

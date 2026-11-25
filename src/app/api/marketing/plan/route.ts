@@ -19,6 +19,7 @@ import { loadProductDigest } from '@/lib/marketing/product-signals'
 import { geminiJson, GeminiError } from '@/lib/marketing/gemini'
 import { PLANNER_SYSTEM, MAX_STORY_REELS, planSchema, planPrompt, storyReelDates, type PlannedPost } from '@/lib/marketing/planner-prompts'
 import { parseNarrationLanguage } from '@/lib/marketing/narration-language'
+import { loadRecentProblemIds, pickStories } from '@/lib/marketing/story-picks'
 
 // Gemini fallback (lib/marketing/gemini.ts) may try several models within 55 s.
 export const maxDuration = 60
@@ -31,7 +32,7 @@ export async function POST(request: Request) {
 
     const { mode = 'today', note, language: rawLanguage, story_reels: rawStories } = await request.json() as { mode?: 'today' | 'week'; note?: string; language?: string; story_reels?: number }
     const language = parseNarrationLanguage(rawLanguage)
-    const [data, productDigest] = await Promise.all([loadInsights(supabase as any), loadProductDigest(supabase as any)])
+    const [data, productDigest, recent] = await Promise.all([loadInsights(supabase as any), loadProductDigest(supabase as any), loadRecentProblemIds(supabase as any)])
     const best = bestTimesFrom(data)
     const digest = buildDigest(data, best) + productDigest
 
@@ -41,11 +42,14 @@ export async function POST(request: Request) {
     const storyReels = Math.min(dates.length, MAX_STORY_REELS, Math.max(0, Math.floor(Number(rawStories) || 0)))
     const storyDates = storyReelDates(dates, storyReels)
     const otherDates = dates.filter((d) => !storyDates.includes(d))
+    // Problems + characters chosen up front: skips recent ones, follows the note.
+    const cleanNote = note?.trim().slice(0, 300) || undefined
+    const picks = pickStories(storyReels, { note: cleanNote, recent })
 
     const plan = await geminiJson<{ posts?: PlannedPost[]; story_reels?: PlannedPost[] }>({
       feature: 'plan',
       system: PLANNER_SYSTEM,
-      prompt: planPrompt(digest, dates, note?.trim().slice(0, 300), language, storyDates),
+      prompt: planPrompt(digest, dates, cleanNote, language, storyDates, { recent, note: cleanNote, picks }),
       schema: planSchema(storyDates, otherDates),
       maxOutputTokens: mode === 'week' ? 9000 : 2500,
     })
