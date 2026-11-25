@@ -54,6 +54,8 @@ import { usePendingOnlineOrdersBanner, useOpenLeads } from '@/hooks/useOnlineOrd
 
 const navigation = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
+  // Admin only: business insights, forecasts and the AI brief.
+  { name: 'Insights', href: '/insights', icon: Lightbulb, adminOnly: true },
   {
     name: 'Sale Entry',
     href: '/pos',
