@@ -50,6 +50,7 @@ export const PROP_IDS = [
   'paint_can', 'paint_roller', 'sealant', 'pvc_pipe', 'faucet', 'electrical_wire', 'bulb',
   'nails', 'hammer', 'shovel', 'wheelbarrow', 'truck', 'house', 'roof', 'fence',
   'pig', 'chicken', 'rain_cloud', 'sun', 'water_drop', 'crack', 'rust', 'phone',
+  'termite', 'rotten_post', 'wet_soil', 'concrete_post', 'formwork', 'shield',
 ] as const
 export type PropId = (typeof PROP_IDS)[number]
 

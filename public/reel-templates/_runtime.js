@@ -125,10 +125,18 @@
       const areaL = hasFig ? (figRight ? 0 : box.w * 0.5) : 0
       const areaW = hasFig ? box.w * 0.5 : box.w
       const wide = areaW > box.h * 1.3
-      const size = Math.min(wide ? areaW / n * 0.86 : areaW * 0.86, wide ? box.h * 0.8 : (box.h / n) * 0.92, !hasFig && n === 1 ? 560 : 340)
+      // Three props in a narrow area: a triangle (2 + 1) instead of a thin column.
+      const tri = !wide && n === 3
+      const size = tri
+        ? Math.min(areaW * 0.5, (box.h / 2) * 0.92, 300)
+        : Math.min(wide ? areaW / n * 0.86 : areaW * 0.86, wide ? box.h * 0.8 : (box.h / n) * 0.92, !hasFig && n === 1 ? 560 : 340)
       propIds.forEach((id, i) => {
         let left, top
-        if (wide) { left = areaL + (areaW / n) * (i + 0.5) - size / 2; top = (box.h - size) / 2 + (i % 2 ? size * 0.12 : -size * 0.06) }
+        if (tri) {
+          const gap = (box.h - size * 2) / 3
+          left = i < 2 ? areaL + areaW / 2 + (i === 0 ? -size - 4 : 4) : areaL + (areaW - size) / 2
+          top = i < 2 ? gap : gap * 2 + size
+        } else if (wide) { left = areaL + (areaW / n) * (i + 0.5) - size / 2; top = (box.h - size) / 2 + (i % 2 ? size * 0.12 : -size * 0.06) }
         else { left = areaL + (areaW - size) / 2 + (n > 1 ? (i % 2 ? 1 : -1) * Math.min(40, areaW * 0.06) : 0); top = (box.h - n * size) / 2 + i * size }
         items.push({ svg: window.drawProp(id), kind: 'prop', left, top, w: size, h: size })
       })
