@@ -14,6 +14,7 @@ import type { PlannedPost } from '@/lib/marketing/planner-prompts'
 import { CreativeStyleBadge } from '@/components/marketing/creative-style-badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import type { NarrationLanguage } from '@/lib/marketing/narration-language'
+import { CAST, isCastId } from '@/lib/marketing/cast'
 
 /**
  * The "social media manager" panel on the Feed: Gemini plans today's post
@@ -25,15 +26,18 @@ export function PostPlanner() {
   const save = useSavePlannedPosts()
   const [note, setNote] = useState('')
   const [language, setLanguage] = useState<NarrationLanguage>('taglish')
+  // "auto" lets the planner decide; a number forces that many problem → fix story reels.
+  const [storyReels, setStoryReels] = useState('auto')
   const [posts, setPosts] = useState<PlannedPost[]>([])
   const [picked, setPicked] = useState<Set<number>>(new Set())
   const [confidence, setConfidence] = useState<string | null>(null)
 
   function run(mode: 'today' | 'week') {
     plan.mutate(
-      { mode, note: note.trim() || undefined, language },
+      { mode, note: note.trim() || undefined, language, story_reels: storyReels === 'auto' ? 0 : Number(storyReels) },
       {
         onSuccess: (res) => {
+          if (res.notice) toast.warning(res.notice)
           setPosts(res.posts)
           setPicked(new Set(res.posts.map((_, i) => i)))
           setConfidence(res.confidence)
@@ -85,6 +89,15 @@ export function PostPlanner() {
               <SelectItem value="english">English</SelectItem>
             </SelectContent>
           </Select>
+          <Select value={storyReels} onValueChange={setStoryReels} disabled={plan.isPending}>
+            <SelectTrigger className="w-44 text-sm" aria-label="Story reels"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="auto">Story reels: auto</SelectItem>
+              <SelectItem value="1">1 story reel</SelectItem>
+              <SelectItem value="2">2 story reels (week)</SelectItem>
+              <SelectItem value="3">3 story reels (week)</SelectItem>
+            </SelectContent>
+          </Select>
           <Button onClick={() => run('week')} disabled={plan.isPending} className="gap-1.5">
             <CalendarDays className="w-4 h-4" /> {plan.isPending ? 'Planning…' : 'Plan this week'}
           </Button>
@@ -134,6 +147,11 @@ function PlannedPostCard({ post, picked, onToggle }: { post: PlannedPost; picked
             <Badge variant="outline" className={FORMAT_COLORS[post.format]}>{FORMAT_LABELS[post.format]}</Badge>
             <Badge variant="outline" className={AUDIENCE_COLORS[post.audience]}>{AUDIENCE_LABELS[post.audience]}</Badge>
             <CreativeStyleBadge style={post.creative_style} />
+            {post.character && isCastId(post.character) && (
+              <Badge variant="outline" className="bg-violet-50 text-violet-700 border-violet-200">
+                Story: {CAST.find((c) => c.id === post.character)?.name}{post.problem_id ? ` · ${post.problem_id}` : ''}
+              </Badge>
+            )}
           </div>
           <p className="text-sm font-medium">{post.title}</p>
           <p className="text-xs text-slate-500">{post.why}</p>

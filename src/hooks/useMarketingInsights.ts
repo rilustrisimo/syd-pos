@@ -40,8 +40,8 @@ export function useImportInsights() {
 
 export function usePlanPosts() {
   return useMutation({
-    mutationFn: (input: { mode: 'today' | 'week'; note?: string; language?: 'english' | 'taglish' }) =>
-      postJson<{ posts: PlannedPost[]; confidence: string }>('/api/marketing/plan', input),
+    mutationFn: (input: { mode: 'today' | 'week'; note?: string; language?: 'english' | 'taglish'; story_reels?: number }) =>
+      postJson<{ posts: PlannedPost[]; confidence: string; notice?: string }>('/api/marketing/plan', input),
   })
 }
 

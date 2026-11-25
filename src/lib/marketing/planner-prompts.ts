@@ -121,8 +121,46 @@ export const PLAN_SCHEMA = {
   required: ['posts'],
 }
 
-export function planPrompt(digest: string, dates: string[], note?: string, language: NarrationLanguage = 'taglish'): string {
+/** Most story reels the planner can be asked for in one plan. */
+export const MAX_STORY_REELS = 3
+
+/** Spreads n story reels over the plan's dates (e.g. 2 in a week → days 2 and 6). */
+export function storyReelDates(dates: string[], n: number): string[] {
+  const count = Math.min(n, dates.length)
+  return Array.from({ length: count }, (_, i) => dates[Math.floor(((i + 0.5) * dates.length) / count)])
+}
+
+/**
+ * PLAN_SCHEMA with required problem → fix story reels: they go in their own
+ * "story_reels" array whose items can only be format "reel", style "story",
+ * a real cast member and one of `storyDates`, with exactly that many items —
+ * so Gemini can't skip them. "posts" covers the other dates.
+ */
+export function planSchema(storyDates: string[], otherDates: string[]) {
+  if (storyDates.length === 0) return PLAN_SCHEMA
+  const storyReels = storyDates.length
+  const story = structuredClone(PLAN_SCHEMA.properties.posts.items) as any
+  story.properties.date = { type: 'STRING', enum: storyDates, description: 'One of the story reel dates, each used once.' }
+  story.properties.format = { type: 'STRING', enum: ['reel'] }
+  story.properties.creative_style = { type: 'STRING', enum: ['story'] }
+  story.properties.character = { type: 'STRING', enum: [...CAST_IDS], description: 'The cast member the story is about.' }
+  story.properties.problem_id = { type: 'STRING', description: 'The PROBLEM BANK id in [brackets] this story is built on.' }
+  const rest = otherDates.length
+  const properties: Record<string, unknown> = {
+    story_reels: { type: 'ARRAY', items: story, minItems: storyReels, maxItems: storyReels },
+  }
+  if (rest > 0) {
+    const post = structuredClone(PLAN_SCHEMA.properties.posts.items) as any
+    post.properties.date = { type: 'STRING', enum: otherDates, description: 'One of the remaining dates, each used once.' }
+    properties.posts = { type: 'ARRAY', items: post, minItems: rest, maxItems: rest }
+  }
+  return { type: 'OBJECT', properties, required: Object.keys(properties) }
+}
+
+export function planPrompt(digest: string, dates: string[], note?: string, language: NarrationLanguage = 'taglish', storyDates: string[] = []): string {
   const week = dates.length > 1
+  const forced = storyDates.length
+  const otherDates = dates.filter((d) => !storyDates.includes(d))
   return [
     'PERFORMANCE DATA AND CONTEXT:',
     digest,
@@ -130,7 +168,9 @@ export function planPrompt(digest: string, dates: string[], note?: string, langu
     storyContext(),
     '',
     languageRule(language),
-    week
+    forced > 0
+      ? `STORY REELS (required): put exactly ${forced} post${forced > 1 ? 's' : ''} in "story_reels" — reels in creative_style "story": a recurring cast member hits a real problem from the PROBLEM BANK, tries the wrong fix, then fixes it with SYD products (from PRODUCT SIGNALS when one fits) and shows the result. The voice_script narrates that mini story (setup → problem → wrong fix → right fix → result → call to action) and the shot_list and stickers follow the same beats.${forced > 1 ? ' Each story uses a DIFFERENT cast member (or Ate Lyn as the helper) and a DIFFERENT problem, for different audiences.' : ''}${week ? ` Story reel dates: ${storyDates.join(', ')} (one story each). "posts" has exactly one post for each of: ${otherDates.join(', ')} — every date gets exactly one post across both lists; the non-story posts use character "none" and an empty problem_id.` : ''}`
+      : week
       ? 'Stories: make about 1 in 3 posts creative_style "story" — a recurring cast member with a problem from the PROBLEM BANK, the wrong fix, then the right fix with SYD products. Use different characters and problems; set character and problem_id for them (character "none" and empty problem_id for the rest).'
       : 'If a story fits today, use creative_style "story" with a cast member and a PROBLEM BANK problem; otherwise character "none".',
     week
