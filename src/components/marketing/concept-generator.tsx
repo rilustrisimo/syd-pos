@@ -14,6 +14,8 @@ import { AUDIENCE_COLORS, AUDIENCE_LABELS, FORMAT_COLORS, FORMAT_LABELS } from '
 import type { AdConcept, ConceptKind } from '@/lib/marketing/planner-prompts'
 import { isCreativeStyle } from '@/lib/marketing/creative-styles'
 import { CreativeStyleBadge } from '@/components/marketing/creative-style-badge'
+import { CAST } from '@/lib/marketing/cast'
+import type { NarrationLanguage } from '@/lib/marketing/narration-language'
 
 const AD_AUDIENCES: ContentAudience[] = ['contractor', 'business_farm', 'family_build']
 const POST_AUDIENCES: ContentAudience[] = [...AD_AUDIENCES, 'general']
@@ -51,6 +53,7 @@ export function ConceptGenerator({ onAdded }: { onAdded: () => void }) {
   const [topic, setTopic] = useState('')
   const [audiences, setAudiences] = useState<Set<ContentAudience>>(new Set(AD_AUDIENCES))
   const [count, setCount] = useState('6')
+  const [language, setLanguage] = useState<NarrationLanguage>('taglish')
   const [concepts, setConcepts] = useState<AdConcept[]>([])
   const [picked, setPicked] = useState<Set<number>>(new Set())
   const [adding, setAdding] = useState(false)
@@ -73,7 +76,7 @@ export function ConceptGenerator({ onAdded }: { onAdded: () => void }) {
 
   function run() {
     generate.mutate(
-      { topic, audiences: [...audiences], count: Number(count), kind },
+      { topic, audiences: [...audiences], count: Number(count), kind, language },
       {
         onSuccess: (res) => { setConcepts(res.concepts); setPicked(new Set(res.concepts.map((_, i) => i))) },
         onError: (e) => toast.error(e.message),
@@ -88,7 +91,9 @@ export function ConceptGenerator({ onAdded }: { onAdded: () => void }) {
       for (const [i, c] of concepts.entries()) {
         if (!picked.has(i)) continue
         const isReel = c.format === 'reel'
-        const description = `${c.description} (${kind === 'ad' ? 'Proof' : 'Hook'}: ${c.proof_type}${c.goal ? ` · Goal: ${GOAL_LABELS[c.goal] ?? c.goal}` : ''})`
+        const who = CAST.find((m) => m.id === c.character)
+        const story = who ? `Story: ${who.name}${c.problem_id ? ` · problem ${c.problem_id}` : ''}. ` : ''
+        const description = `${story}${c.description} (${kind === 'ad' ? 'Proof' : 'Hook'}: ${c.proof_type}${c.goal ? ` · Goal: ${GOAL_LABELS[c.goal] ?? c.goal}` : ''})`
         await createIdea.mutateAsync({
           title: c.title,
           source_product_id: c.source_product_id ?? undefined,
@@ -105,6 +110,7 @@ export function ConceptGenerator({ onAdded }: { onAdded: () => void }) {
           reel_stickers: isReel && c.stickers?.length ? c.stickers : undefined,
           creative_prompt: isReel ? undefined : c.creative_prompt,
           stock_keywords: c.stock_keywords || undefined,
+          language,
         })
         added++
       }
@@ -153,6 +159,13 @@ export function ConceptGenerator({ onAdded }: { onAdded: () => void }) {
             className="text-sm flex-1 min-w-[240px]"
             disabled={generate.isPending}
           />
+          <Select value={language} onValueChange={(v) => setLanguage(v as NarrationLanguage)}>
+            <SelectTrigger className="w-28 text-sm" aria-label="Language"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="taglish">Taglish</SelectItem>
+              <SelectItem value="english">English</SelectItem>
+            </SelectContent>
+          </Select>
           <Select value={count} onValueChange={setCount}>
             <SelectTrigger className="w-28 text-sm"><SelectValue /></SelectTrigger>
             <SelectContent>
@@ -190,6 +203,11 @@ export function ConceptGenerator({ onAdded }: { onAdded: () => void }) {
                     <CreativeStyleBadge style={c.creative_style} />
                     {c.goal && <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">{GOAL_LABELS[c.goal] ?? c.goal}</Badge>}
                     <span className="text-[11px] text-slate-400">{c.proof_type}</span>
+                    {CAST.find((m) => m.id === c.character) && (
+                      <Badge variant="outline" className="bg-violet-50 text-violet-700 border-violet-200">
+                        {CAST.find((m) => m.id === c.character)!.name}{c.problem_id ? ` · ${c.problem_id}` : ''}
+                      </Badge>
+                    )}
                   </div>
                   {c.product_code && <p className="text-xs text-slate-600"><span className="font-medium">Product:</span> <span className="font-mono">{c.product_code}</span></p>}
                   <p className="text-xs text-slate-600"><span className="font-medium">Hook:</span> {c.angle}</p>

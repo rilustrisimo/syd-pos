@@ -12,6 +12,8 @@ import { usePlanPosts, useSavePlannedPosts } from '@/hooks/useMarketingInsights'
 import { AUDIENCE_COLORS, AUDIENCE_LABELS, FORMAT_COLORS, FORMAT_LABELS } from '@/lib/marketing/formats'
 import type { PlannedPost } from '@/lib/marketing/planner-prompts'
 import { CreativeStyleBadge } from '@/components/marketing/creative-style-badge'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import type { NarrationLanguage } from '@/lib/marketing/narration-language'
 
 /**
  * The "social media manager" panel on the Feed: Gemini plans today's post
@@ -22,13 +24,14 @@ export function PostPlanner() {
   const plan = usePlanPosts()
   const save = useSavePlannedPosts()
   const [note, setNote] = useState('')
+  const [language, setLanguage] = useState<NarrationLanguage>('taglish')
   const [posts, setPosts] = useState<PlannedPost[]>([])
   const [picked, setPicked] = useState<Set<number>>(new Set())
   const [confidence, setConfidence] = useState<string | null>(null)
 
   function run(mode: 'today' | 'week') {
     plan.mutate(
-      { mode, note: note.trim() || undefined },
+      { mode, note: note.trim() || undefined, language },
       {
         onSuccess: (res) => {
           setPosts(res.posts)
@@ -43,7 +46,7 @@ export function PostPlanner() {
   async function handleSave() {
     const chosen = posts.filter((_, i) => picked.has(i))
     try {
-      const { saved } = await save.mutateAsync(chosen)
+      const { saved } = await save.mutateAsync({ posts: chosen, language })
       toast.success(`${saved} post${saved === 1 ? '' : 's'} added to the Feed below`)
       setPosts([])
       setPicked(new Set())
@@ -75,6 +78,13 @@ export function PostPlanner() {
             className="text-sm flex-1 min-w-[240px]"
             disabled={plan.isPending}
           />
+          <Select value={language} onValueChange={(v) => setLanguage(v as NarrationLanguage)} disabled={plan.isPending}>
+            <SelectTrigger className="w-28 text-sm" aria-label="Language"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="taglish">Taglish</SelectItem>
+              <SelectItem value="english">English</SelectItem>
+            </SelectContent>
+          </Select>
           <Button onClick={() => run('week')} disabled={plan.isPending} className="gap-1.5">
             <CalendarDays className="w-4 h-4" /> {plan.isPending ? 'Planning…' : 'Plan this week'}
           </Button>

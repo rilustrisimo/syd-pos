@@ -27,6 +27,8 @@
   .photo img { width:100%; height:100%; object-fit:contain; display:block; }
   .tape { position:absolute; width:200px; height:56px; background:rgba(157,183,234,.6); top:-24px; left:50%; margin-left:-100px; transform:rotate(-4deg); }
   .logo { position:absolute; left:290px; top:230px; width:500px; }
+  .castbox { color:var(--ink); --fig-fill:#fff; --fig-accent:rgba(157,183,234,.55); --hat-fill:var(--lightblue); --fig-logo:var(--red); --fig-stroke:10; --prop-stroke:5; }
+  .castbox .fig-mark { color:var(--red); }
   #hand { position:absolute; left:0; top:0; width:440px; height:440px; z-index:999; pointer-events:none; }
 
   @keyframes ink { from { clip-path: inset(-25% 100% -25% -5%); } to { clip-path: inset(-25% -5% -25% -5%); } }
@@ -107,13 +109,37 @@ function header(ctx) {
   h.append(crumb, steps); ctx.animate(h, ['fadeIn', .4, ctx.at(0)]); return h
 }
 
+/** The scene's character/props, drawn on by the marker hand. */
+function castSketch(ctx, scene, box, opts) {
+  const c = ctx.cast(scene, box, opts)
+  if (c && c.draws.length) events.push({ kind: 'draw', paths: c.draws })
+  return c || ctx.el('div')
+}
+
 /** Place `node` gap px below `target` once text is fitted (works for SVG too). */
 let follows = []
 const follow = (node, target, gap) => { follows.push([node, target, gap]); return node }
 
+/** Problem / solution: headline, underline, sub, then the cast acting it out. */
+function storyScene(scene, ctx, fix) {
+  const { el, at, data } = ctx
+  const s = el('section'); s.append(el('div', 'paper'), header(ctx))
+  const hl = written(ctx, scene.headline, { left: 80, top: 200, w: 920, h: 360, max: 160, at: at(0.03), color: fix ? '#1E2A44' : '#D64545', budget: ctx.dur * 0.25 })
+  const ul = follow(sketch(ctx, '<path class="d" d="M10 26 C 200 10, 400 40, 600 16"/>', { left: 80, top: 560, w: 620, view: '0 0 620 44', color: fix ? '#2B59C3' : '#D64545', at: hl.endsAt + 0.05, dur: 0.35 }), hl, 8)
+  s.append(hl, ul)
+  if (scene.sub) s.append(follow(written(ctx, scene.sub, { left: 90, top: 640, w: 900, h: 110, max: 56, light: true, color: '#5B6478', at: hl.endsAt + 0.3, budget: ctx.dur * 0.2 }), ul, 18))
+  const props = fix && !(scene.props && scene.props.length) && data.product.prop ? [data.product.prop] : undefined
+  s.append(castSketch(ctx, scene, { left: 90, top: 780, w: 900, h: scene.stamp ? 800 : 980 }, { at: Math.max(at(0.2), hl.endsAt + 0.4), props }))
+  if (scene.stamp) {
+    s.append(written(ctx, scene.stamp, { left: 300, top: 1620, w: 480, h: 150, max: 110, at: at(0.72), color: '#D64545', budget: 0.7 }))
+  }
+  return s
+}
+
 window.STYLE = {
   fonts: ['700 Kalam', '400 Kalam', '800 Inter'],
   transition: 'paperIn',
+  cast: { enter: 'draw' },
 
   afterBuild(section, scene, ctx) {
     const html = document.documentElement
@@ -170,6 +196,7 @@ window.STYLE = {
       const ul = follow(sketch(ctx, '<path class="d" d="M10 30 C 200 8, 420 40, 640 18 S 820 26, 860 20"/>', { left: 80, top: 800, w: 860, view: '0 0 870 50', at: hl.endsAt + 0.05, dur: 0.45 }), hl, 10)
       s.append(hl, ul)
       if (scene.sub) s.append(follow(written(ctx, scene.sub, { left: 90, top: 900, w: 900, h: 200, max: 64, light: true, at: at(0.5), budget: ctx.dur * 0.3 }), ul, 30))
+      if (ctx.hasCast(scene)) { s.append(castSketch(ctx, scene, { left: 90, top: 1150, w: 900, h: 660 }, { at: Math.max(at(0.35), hl.endsAt + 0.55) })); return s }
       // Stick figure pointing at the headline, plus an arrow.
       const fig = sketch(ctx, '<circle class="d" cx="90" cy="70" r="55"/><path class="d" d="M90 125 L 90 300 M 90 300 L 40 420 M 90 300 L 140 420 M 90 180 L 20 250 M 90 180 L 190 90"/>',
         { left: 110, top: 1300, w: 220, view: '0 0 220 440', color: '#1E2A44', width: 12, at: at(0.45), dur: 0.9 })
@@ -187,6 +214,9 @@ window.STYLE = {
         const ph = el('div', 'photo'); Object.assign(ph.style, { left: '230px', top: '500px', width: '620px', height: '620px' })
         const img = el('img'); img.src = data.product.imageUrl; ph.append(img, el('div', 'tape')); animate(ph, ['pinIn', .5, at(0.12)]); s.append(ph)
         s.append(sketch(ctx, '<rect class="d" x="10" y="10" width="700" height="700" rx="20"/>', { left: 190, top: 460, w: 720, view: '0 0 720 720', at: at(0.2), dur: 0.8, width: 7 }))
+      } else if (ctx.productProp() !== 'cement_bag') {
+        s.append(castSketch(ctx, scene, { left: 240, top: 470, w: 600, h: 600 }, { at: at(0.12), character: null, props: [ctx.productProp()] }))
+        if (data.product.name) s.append(written(ctx, data.product.name, { left: 120, top: 1100, w: 840, h: 140, max: 90, min: 36, at: at(0.4), color: '#2B59C3', budget: 1.2 }))
       } else {
         const h = hatchDef('#9DB7EA')
         const bag = sketch(ctx, `${h.def}<path class="d" d="M70 70 Q250 30 430 70 L460 600 Q250 640 40 600 Z"/><path class="d" d="M70 70 Q250 110 430 70"/><rect class="d" x="105" y="210" width="290" height="200" rx="14" fill="#fff"/><path class="d" d="M120 470 H 380 M 120 520 H 330"/>`,
@@ -202,18 +232,22 @@ window.STYLE = {
         const ring = sketch(ctx, '<ellipse class="d" cx="300" cy="105" rx="285" ry="92" transform="rotate(-3 300 105)"/>', { left: 240, top: 1265, w: 600, view: '0 0 600 210', color: '#D64545', width: 8, at: at(0.6) + 0.6, dur: 0.6 })
         s.append(st, ring)
       }
-      if (scene.sub) s.append(written(ctx, scene.sub, { left: 90, top: 1580, w: 900, h: 160, max: 60, light: true, at: at(0.4), budget: ctx.dur * 0.25 }))
+      if (scene.character) s.append(castSketch(ctx, scene, { left: 60, top: 1300, w: 240, h: 380 }, { at: at(0.5), props: [], flip: false }))
+      if (scene.sub) s.append(written(ctx, scene.sub, { left: scene.character ? 330 : 90, top: 1580, w: scene.character ? 660 : 900, h: 160, max: 60, light: true, at: at(0.4), budget: ctx.dur * 0.25 }))
       return s
     },
 
     proof(scene, ctx) {
       const { el, at } = ctx
       const s = el('section'); s.append(el('div', 'paper'), header(ctx))
-      const hl = written(ctx, scene.headline, { left: 80, top: 200, w: 920, h: 400, max: 170, at: at(0.03), budget: ctx.dur * 0.25 })
-      const ul = follow(sketch(ctx, '<path class="d" d="M10 26 C 200 10, 400 40, 600 16"/>', { left: 80, top: 600, w: 620, view: '0 0 620 44', at: hl.endsAt + 0.05, dur: 0.4 }), hl, 8)
-      s.append(hl, ul)
-      if (scene.sub) s.append(follow(written(ctx, scene.sub, { left: 90, top: 680, w: 900, h: 110, max: 56, light: true, color: '#5B6478', at: at(0.15), budget: ctx.dur * 0.2 }), ul, 18))
       const items = (scene.items || []).slice(0, 3)
+      const side = scene.character && items.length
+      const hl = written(ctx, scene.headline, { left: 80, top: 200, w: side ? 620 : 920, h: 400, max: 170, at: at(0.03), budget: ctx.dur * 0.25 })
+      const ul = follow(sketch(ctx, '<path class="d" d="M10 26 C 200 10, 400 40, 600 16"/>', { left: 80, top: 600, w: side ? 560 : 620, view: '0 0 620 44', at: hl.endsAt + 0.05, dur: 0.4 }), hl, 8)
+      s.append(hl, ul)
+      if (side) s.append(castSketch(ctx, scene, { left: 730, top: 170, w: 290, h: 430 }, { at: hl.endsAt + 0.2, props: [] }))
+      else if (ctx.hasCast(scene)) s.append(castSketch(ctx, scene, { left: 90, top: 900, w: 900, h: 840 }, { at: at(0.35) }))
+      if (scene.sub) s.append(follow(written(ctx, scene.sub, { left: 90, top: 680, w: 900, h: 110, max: 56, light: true, color: '#5B6478', at: at(0.15), budget: ctx.dur * 0.2 }), ul, 18))
       items.forEach((text, i) => {
         const t0 = at(0.38 + i * (0.5 / Math.max(1, items.length)))
         const top = 900 + i * 260
@@ -241,11 +275,17 @@ window.STYLE = {
       const box = sketch(ctx, '<rect class="d" x="10" y="10" width="600" height="190" rx="18" transform="rotate(-2 310 105)"/><path class="d" d="M -160 60 C -110 40, -70 60, -20 95 M -20 95 L -70 98 M -20 95 L -45 52"/>',
         { left: 230, top: 1360, w: 620, view: '0 0 620 210', color: '#D64545', width: 8, at: at(0.6) + 0.7, dur: 0.8 })
       s.append(st, box)
+      if (scene.character) s.append(castSketch(ctx, scene, { left: 40, top: 1600, w: 200, h: 280 }, { at: at(0.75), props: [], flip: false }))
       return s
     },
+
+    problem(scene, ctx) { return storyScene(scene, ctx, false) },
+    solution(scene, ctx) { return storyScene(scene, ctx, true) },
   },
 }
 </script>
+<script src="_cast.js"></script>
+<script src="_props.js"></script>
 <script src="_runtime.js"></script>
 </body>
 </html>

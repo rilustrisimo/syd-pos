@@ -15,6 +15,7 @@ import { manilaToday } from '@/lib/marketing/best-times'
 import { loadProductDigest } from '@/lib/marketing/product-signals'
 import { geminiJson, GeminiError } from '@/lib/marketing/gemini'
 import { PLANNER_SYSTEM, PLAN_SCHEMA, planPrompt, type PlannedPost } from '@/lib/marketing/planner-prompts'
+import { parseNarrationLanguage } from '@/lib/marketing/narration-language'
 
 // Gemini fallback (lib/marketing/gemini.ts) may try several models within 55 s.
 export const maxDuration = 60
@@ -25,7 +26,8 @@ export async function POST(request: Request) {
     const auth = await requireMarketingStaff(supabase as any)
     if (auth.error) return auth.error
 
-    const { mode = 'today', note } = await request.json() as { mode?: 'today' | 'week'; note?: string }
+    const { mode = 'today', note, language: rawLanguage } = await request.json() as { mode?: 'today' | 'week'; note?: string; language?: string }
+    const language = parseNarrationLanguage(rawLanguage)
     const [data, productDigest] = await Promise.all([loadInsights(supabase as any), loadProductDigest(supabase as any)])
     const best = bestTimesFrom(data)
     const digest = buildDigest(data, best) + productDigest
@@ -36,7 +38,7 @@ export async function POST(request: Request) {
     const plan = await geminiJson<{ posts: PlannedPost[] }>({
       feature: 'plan',
       system: PLANNER_SYSTEM,
-      prompt: planPrompt(digest, dates, note?.trim().slice(0, 300)),
+      prompt: planPrompt(digest, dates, note?.trim().slice(0, 300), language),
       schema: PLAN_SCHEMA,
       maxOutputTokens: mode === 'week' ? 9000 : 2500,
     })

@@ -55,20 +55,24 @@ export async function POST(request: Request) {
 
     const { data: suggestion } = await (supabase as any)
       .from('content_suggestions')
-      .select('script')
+      .select('script, notes')
       .eq('id', suggestion_id)
-      .single() as { data: { script: string | null } | null }
+      .single() as { data: { script: string | null; notes: string | null } | null }
 
     if (!suggestion?.script?.trim()) {
       return NextResponse.json({ error: 'This suggestion has no script to rewrite yet.' }, { status: 400 })
     }
+
+    // Story posts (notes start "Story: <character> · problem <id>.") keep their character and beats.
+    const story = suggestion.notes?.match(/^Story: ([^.]+)\./)?.[1]
+    const storyRule = story ? `\n\nThis is a story post (${story}): keep the same character, the problem → fix beats and their order.` : ''
 
     let voice_script: string
     try {
       // Falls back to lighter models when one hits its free-tier limit.
       const { text } = await geminiGenerate({
         feature: 'generate-voice-script',
-        system: `${VOICE_BRIEF}\n\nLanguage: ${NARRATION_LANGUAGE_RULES[language]}`,
+        system: `${VOICE_BRIEF}\n\nLanguage: ${NARRATION_LANGUAGE_RULES[language]}${storyRule}`,
         prompt: suggestion.script,
         // Bisaya runs longer than English for the same message.
         generationConfig: { maxOutputTokens: 600 },

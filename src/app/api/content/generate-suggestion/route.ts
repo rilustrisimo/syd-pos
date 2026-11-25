@@ -21,6 +21,7 @@ import { AUDIENCE_BRIEFS } from '@/lib/marketing/brand'
 import { composeCaption, loadStoreContact } from '@/lib/marketing/store-contact'
 import { CREATIVE_STYLES, isCreativeStyle, type CreativeStyle } from '@/lib/marketing/creative-styles'
 import { geminiGenerate, GeminiError } from '@/lib/marketing/gemini'
+import { NARRATION_LANGUAGE_RULES, parseNarrationLanguage, type NarrationLanguage } from '@/lib/marketing/narration-language'
 
 // Gemini fallback (lib/marketing/gemini.ts) may try several models within 55 s.
 export const maxDuration = 60
@@ -28,8 +29,8 @@ export const maxDuration = 60
 const BRAND_BRIEF = `You write social media content for SYD Construction Supplies Trading, a
 hardware/construction supplies store in Talakag, Bukidnon, Philippines. The
 audience is a mix of DIY homeowners and contractors/bulk buyers. Tone:
-friendly, straightforward, locally-grounded — a natural mix of English and
-Filipino is fine (taglish), never overly formal or corporate. Do not invent
+friendly, straightforward, locally-grounded, never overly formal or
+corporate. Write in the LANGUAGE given in the brief. Do not invent
 prices, stock levels, or claims not given to you in the brief below.
 
 You produce two distinct outputs from the same brief — they serve different
@@ -46,14 +47,14 @@ purposes and should not just be copies of each other:
    are appended automatically.
 3. "hashtags": up to 5 relevant hashtags (each including the leading #).`
 
-// Reels are narrated by a Chirp 3 HD voice (Kore by default), which reads
-// Taglish well but mispronounces Bisaya, so the spoken script is Taglish.
+// Reels are narrated by a TTS voice (Filipino voice for Taglish, Kore for
+// English); Bisaya is avoided because the voices mispronounce it.
 const REEL_INSTRUCTIONS = `This is a short vertical reel (15-30 seconds). The "script" is the
-voiceover: 5-7 short sentences, about 60-80 words, in natural, casual
-Taglish (no Bisaya — it is read by a text-to-speech voice), with product
-names, sizes and units in English. Open with a hook in the first sentence, and end by pointing viewers
+voiceover: 5-7 short sentences, about 60-80 words, in the requested LANGUAGE
+(no Bisaya — it is read by a text-to-speech voice), with product names, sizes
+and units in English. Open with a hook in the first sentence, and end by pointing viewers
 to sydconstruct.com to request a quote or to call us ("the number's on
-screen" — never say the digits). The "caption" may still be taglish.`
+screen" — never say the digits).`
 
 export async function POST(request: Request) {
   try {
@@ -79,7 +80,9 @@ export async function POST(request: Request) {
       source_idea_id,
       notes,
       platform = 'facebook',
+      language: requestedLanguage,
     } = await request.json() as {
+      language?: string
       source_product_id?: string
       source_media_id?: string
       source_idea_id?: string
@@ -105,6 +108,7 @@ export async function POST(request: Request) {
       source_product_id = ideaProduct?.source_product_id ?? undefined
     }
 
+    let storyNote = ''
     const briefParts: string[] = []
 
     if (source_product_id) {
@@ -143,11 +147,12 @@ export async function POST(request: Request) {
     let conceptCode: string | null = null
     let creativeStyle: CreativeStyle | null = null
     let reelStickers: string[] | null = null
+    let language: NarrationLanguage = parseNarrationLanguage(requestedLanguage)
 
     if (source_idea_id) {
       const { data: idea } = await (supabase as any)
         .from('content_ideas')
-        .select('title, description, image_concept, format, creative_prompt, audience, angle, concept_code, hashtags, creative_style, reel_stickers')
+        .select('title, description, image_concept, format, creative_prompt, audience, angle, concept_code, hashtags, creative_style, reel_stickers, language')
         .eq('id', source_idea_id)
         .single() as {
           data: {
@@ -162,6 +167,7 @@ export async function POST(request: Request) {
             hashtags: string | null
             creative_style: string | null
             reel_stickers: string[] | null
+            language: string | null
           } | null
         }
 
@@ -188,9 +194,21 @@ export async function POST(request: Request) {
         if (idea.creative_prompt) {
           briefParts.push(`Planned creative (for context, keep the caption consistent with it): ${idea.creative_prompt}`)
         }
+        if (idea.language) language = parseNarrationLanguage(idea.language)
+        // Keep the idea's own script and story: tighten, don't rewrite.
+        const voiceover = idea.description?.match(/Voiceover:\s*([\s\S]+)$/)?.[1]?.trim()
+        if (voiceover) {
+          briefParts.push(`The idea already has this voiceover. Use it as the "script": keep its story, characters, facts, tone and language exactly; only tighten wording if it is too long. Do NOT rewrite it into something new:\n${voiceover}`)
+        }
+        const story = idea.description?.match(/Story:\s*([^.]+)\./)?.[1]
+        if (story) {
+          storyNote = `Story: ${story.trim()}.`
+          briefParts.push(`This is a story post (${story}). Keep the same character and the problem → wrong fix → right fix → result beats in both the script and the caption, in the same tone.`)
+        }
       }
     }
 
+    briefParts.push(`LANGUAGE: ${NARRATION_LANGUAGE_RULES[language]}`)
     if (format) briefParts.push(`Post format: ${format}`)
     if (format === 'reel') briefParts.push(REEL_INSTRUCTIONS)
 
@@ -254,7 +272,8 @@ export async function POST(request: Request) {
         source_media_id: source_media_id || null,
         source_idea_id: source_idea_id || null,
         platform,
-        notes: notes?.trim() || null,
+        // The story line lets later steps (voice script, storyboard) keep the character.
+        notes: [storyNote, notes?.trim()].filter(Boolean).join(' ') || null,
         script,
         caption_draft,
         format,
@@ -262,6 +281,7 @@ export async function POST(request: Request) {
         concept_code: conceptCode,
         creative_style: creativeStyle,
         reel_stickers: reelStickers,
+        language,
       })
       .select()
       .single()

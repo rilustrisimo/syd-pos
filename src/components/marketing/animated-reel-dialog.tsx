@@ -13,9 +13,10 @@ import { getContentMediaUrl } from '@/hooks/useContentMedia'
 import { useGenerateStoryboard, useLatestReelJob, useRenderReel } from '@/hooks/useReelRenders'
 import { getStoreContactInfo } from '@/lib/supabase/queries/shop-settings'
 import {
-  REEL_STYLES, buildReelData, formatPhoneForReel,
-  type ReelStyle, type SceneRole, type Storyboard, type StoryboardScene,
+  REEL_STYLES, buildReelData, formatPhoneForReel, POSES, MOODS, PROP_IDS,
+  type ReelStyle, type SceneRole, type Storyboard, type StoryboardScene, type Pose, type Mood, type PropId,
 } from '@/lib/marketing/reel-styles'
+import { CAST, isCastId } from '@/lib/marketing/cast'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -23,7 +24,10 @@ import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 
-const ROLE_LABELS: Record<SceneRole, string> = { hook: 'Hook', product: 'Product', proof: 'Points', cta: 'Call to action' }
+const ROLE_LABELS: Record<SceneRole, string> = {
+  hook: 'Hook', problem: 'Problem', solution: 'Solution', product: 'Product', proof: 'Points', cta: 'Call to action',
+}
+const label = (id: string) => id.replace(/_/g, ' ')
 const PREVIEW_SCALE = 0.25 // 1080×1920 → 270×480
 
 /** UTF-8 safe base64 for the template's ?data= parameter. */
@@ -178,7 +182,7 @@ export function AnimatedReelDialog({
                       </div>
                       <div className="space-y-1">
                         <Label className="text-xs">Stamp (optional)</Label>
-                        <Input value={scene.stamp ?? ''} maxLength={20} placeholder="Matibay!" onChange={(e) => updateScene(i, { stamp: e.target.value || undefined })} />
+                        <Input value={scene.stamp ?? ''} maxLength={20} placeholder="optional, e.g. Tipid!" onChange={(e) => updateScene(i, { stamp: e.target.value || undefined })} />
                       </div>
                       {scene.role === 'proof' && (
                         <div className="space-y-1 sm:col-span-2">
@@ -189,6 +193,55 @@ export function AnimatedReelDialog({
                           />
                         </div>
                       )}
+                      <div className="space-y-1 sm:col-span-2">
+                        <Label className="text-xs">Character</Label>
+                        <div className="flex flex-wrap gap-2">
+                          <Select
+                            value={scene.character?.cast ?? 'none'}
+                            onValueChange={(v) => updateScene(i, { character: isCastId(v) ? { cast: v, pose: scene.character?.pose ?? 'stand', mood: scene.character?.mood } : undefined })}
+                          >
+                            <SelectTrigger className="h-8 w-40 text-xs" aria-label="Character"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">No character</SelectItem>
+                              {CAST.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                          {scene.character && (
+                            <>
+                              <Select value={scene.character.pose} onValueChange={(v) => updateScene(i, { character: { ...scene.character!, pose: v as Pose } })}>
+                                <SelectTrigger className="h-8 w-32 text-xs" aria-label="Pose"><SelectValue /></SelectTrigger>
+                                <SelectContent>{POSES.map((p) => <SelectItem key={p} value={p}>{label(p)}</SelectItem>)}</SelectContent>
+                              </Select>
+                              <Select value={scene.character.mood ?? 'none'} onValueChange={(v) => updateScene(i, { character: { ...scene.character!, mood: v === 'none' ? undefined : (v as Mood) } })}>
+                                <SelectTrigger className="h-8 w-32 text-xs" aria-label="Mood"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="none">no mood mark</SelectItem>
+                                  {MOODS.map((m) => <SelectItem key={m} value={m}>{m}</SelectItem>)}
+                                </SelectContent>
+                              </Select>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                      <div className="space-y-1 sm:col-span-2">
+                        <Label className="text-xs">Props (up to 3)</Label>
+                        <div className="flex flex-wrap gap-1.5">
+                          {(scene.props ?? []).map((p) => (
+                            <button key={p} type="button" onClick={() => updateScene(i, { props: (scene.props ?? []).filter((x) => x !== p) })}
+                              className="rounded-full border bg-primary/10 px-2 py-0.5 text-xs hover:bg-destructive/10" title="Remove">
+                              {label(p)} ×
+                            </button>
+                          ))}
+                          {(scene.props?.length ?? 0) < 3 && (
+                            <Select value="" onValueChange={(v) => updateScene(i, { props: [...(scene.props ?? []), v as PropId] })}>
+                              <SelectTrigger className="h-7 w-32 text-xs" aria-label="Add prop"><SelectValue placeholder="+ add prop" /></SelectTrigger>
+                              <SelectContent>
+                                {PROP_IDS.filter((p) => !(scene.props ?? []).includes(p)).map((p) => <SelectItem key={p} value={p}>{label(p)}</SelectItem>)}
+                              </SelectContent>
+                            </Select>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 ))

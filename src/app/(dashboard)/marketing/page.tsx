@@ -53,7 +53,7 @@ import { CreativeStyleBadge } from '@/components/marketing/creative-style-badge'
 import { CanvaPromptPanel } from '@/components/marketing/canva-prompt-panel'
 import { CalendarReminders } from '@/components/marketing/calendar-reminders'
 import { VoiceSelect } from '@/components/marketing/voice-select'
-import { DEFAULT_NARRATION_VOICE } from '@/lib/marketing/voices'
+import { defaultVoiceFor } from '@/lib/marketing/voices'
 import { NarrationLanguageSelect } from '@/components/marketing/narration-language-select'
 import { DEFAULT_NARRATION_LANGUAGE, type NarrationLanguage } from '@/lib/marketing/narration-language'
 import {
@@ -275,8 +275,9 @@ function SuggestionCard({ suggestion }: { suggestion: ContentSuggestion }) {
   const generateVoiceScript = useGenerateVoiceScript()
   const saveVoiceScript = useSaveVoiceScript()
   const synthesizeVoice = useSynthesizeVoice()
-  const [voice, setVoice] = useState(DEFAULT_NARRATION_VOICE)
-  const [scriptLanguage, setScriptLanguage] = useState<NarrationLanguage>(DEFAULT_NARRATION_LANGUAGE)
+  // Defaults follow the post's language: Taglish → Filipino voice, English → Kore.
+  const [voice, setVoice] = useState(() => defaultVoiceFor(suggestion.language))
+  const [scriptLanguage, setScriptLanguage] = useState<NarrationLanguage>(suggestion.language ?? DEFAULT_NARRATION_LANGUAGE)
   const attachCreative = useAttachCreativeMedia()
   const generateCreative = useGenerateCreative()
   const review = useReviewContentSuggestion()

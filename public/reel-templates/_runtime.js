@@ -1,7 +1,7 @@
 /*
  * Shared runtime for animated reel templates (see src/lib/marketing/reel-styles.ts).
  *
- * A style file defines window.STYLE = { roles: { hook, product, proof, cta }, transition }
+ * A style file defines window.STYLE = { roles: { hook, problem, solution, product, proof, cta }, transition, cast: { enter } }
  * where each role builder receives (scene, ctx) and returns a <section>.
  * window.REEL (the ReelData) is injected by the renderer or the preview page.
  *
@@ -21,7 +21,22 @@
       { role: 'proof', start: 4.9, end: 10.53, headline: 'Ready stock', sub: 'SYD Construction Supplies', items: ['By the bag', 'Bulk'], spoken: '' },
       { role: 'cta', start: 10.53, end: 14.8, headline: 'Order online', stamp: 'Order na!', spoken: '' },
     ],
-    product: { name: 'Cement 40kg', imageUrl: null },
+    product: { name: 'Cement 40kg', imageUrl: null, prop: 'cement_bag' },
+    cta: { site: 'sydconstruct.com', phone: '+63 945 801 3640' },
+    logoUrl: '../syd-logo.svg',
+  }
+
+  // ?sample=story — a problem → fix story with the cast and props.
+  const STORY_SAMPLE = {
+    durationSeconds: 16, leadSeconds: 0.4,
+    scenes: [
+      { role: 'hook', start: 0, end: 2.6, headline: 'Nakatakas ang baboy!', character: { cast: 'ramon', pose: 'worried', mood: 'surprised' }, props: ['pig', 'fence'], spoken: '' },
+      { role: 'problem', start: 2.6, end: 6.2, headline: 'Bulok na kahoy', sub: 'Inanay ang bakod', character: { cast: 'ramon', pose: 'think', mood: 'worried' }, props: ['fence', 'crack'], spoken: '' },
+      { role: 'solution', start: 6.2, end: 10.4, headline: 'Cyclone wire + G.I. tubes', stamp: 'Sulit!', character: { cast: 'lyn', pose: 'point', mood: 'happy' }, props: ['cyclone_wire', 'gi_pipe'], spoken: '' },
+      { role: 'proof', start: 10.4, end: 13.2, headline: 'Hindi na kakalawangin', items: ['Galvanized', 'Matagal gamitin'], character: { cast: 'ramon', pose: 'thumbs_up', mood: 'happy' }, spoken: '' },
+      { role: 'cta', start: 13.2, end: 16, headline: 'Order na sa SYD', character: { cast: 'lyn', pose: 'phone' }, spoken: '' },
+    ],
+    product: { name: 'Cyclone Wire 6ft', imageUrl: null, prop: 'cyclone_wire' },
     cta: { site: 'sydconstruct.com', phone: '+63 945 801 3640' },
     logoUrl: '../syd-logo.svg',
   }
@@ -33,7 +48,129 @@
       const b64 = params.get('data').replace(/ /g, '+')
       try { return JSON.parse(decodeURIComponent(escape(atob(b64)))) } catch (e) { console.error(e) }
     }
-    return SAMPLE
+    return params.get('sample') === 'story' ? STORY_SAMPLE : SAMPLE
+  }
+
+  // Characters (_cast.js) and props (_props.js), shared by every style.
+  const castCss = document.createElement('style')
+  castCss.textContent = `
+    @keyframes castDraw { from { stroke-dashoffset:1.02; } to { stroke-dashoffset:0; } }
+    @keyframes castPop { 0% { opacity:0; transform:scale(.2); } 70% { opacity:1; transform:scale(1.08); } 100% { opacity:1; transform:none; } }
+    @keyframes castSlideL { from { opacity:0; transform:translateX(-420px); } to { opacity:1; transform:none; } }
+    @keyframes castSlideR { from { opacity:0; transform:translateX(420px); } to { opacity:1; transform:none; } }
+    @keyframes castFillIn { from { fill-opacity:0; } to { fill-opacity:1; } }
+    @keyframes castFade { from { opacity:0; } to { opacity:1; } }
+    @keyframes castFlicker { 0% { opacity:0; } 10% { opacity:1; } 16% { opacity:.15; } 26% { opacity:1; } 32% { opacity:.3; } 42%,100% { opacity:1; } }
+    @keyframes castBob { 0%,100% { transform:translateY(0); } 50% { transform:translateY(-12px); } }
+    @keyframes castWave { 0%,100% { transform:rotate(0); } 50% { transform:rotate(-7deg); } }
+    @keyframes castShake { 0%,100% { transform:translateX(0); } 25% { transform:translateX(-7px); } 75% { transform:translateX(7px); } }
+    @keyframes castFloat { 0%,100% { transform:translateY(0) rotate(-3deg); } 50% { transform:translateY(-10px) rotate(3deg); } }
+    .castbox { position:absolute; pointer-events:none; }
+    .castbox .ci { position:absolute; }
+    .castbox svg { display:block; width:100%; height:100%; overflow:visible; }
+    .castbox .fig { stroke-width:var(--fig-stroke, 11); }
+    .castbox .prop { stroke-width:var(--prop-stroke, 5); }
+    .castbox .f-head { fill:var(--fig-fill, none); }
+    .castbox .f-acc { fill:var(--fig-accent, none); }
+    .castbox .f-hat { fill:var(--hat-fill, var(--cast-color)); }
+    .castbox .eye { fill:currentColor; stroke:none; }
+    .castbox .fig-logo { font:800 24px Inter, Arial, sans-serif; fill:var(--fig-logo, #fff); stroke:none; }
+    .castbox .fig-arms, .castbox .fig-mark { transform-box:view-box; transform-origin:150px 140px; }
+    .castbox .fig-mark { transform-origin:250px 50px; }
+    .castbox.draw .d { stroke-dasharray:1 2; }
+  `
+  document.head.appendChild(castCss)
+
+  /**
+   * Places the scene's character and props in box {left, top, w, h}.
+   * opts: { at, enter ('pop'|'slide'|'fade'|'flicker'|'draw'), flip, character, props, onlyProps }
+   * Returns the .castbox element (or null) with .draws = [{node, at, dur}] for
+   * every stroke drawn on, and .endsAt.
+   */
+  function castBlock(scene, box, opts, ctx) {
+    const character = opts.character !== undefined ? opts.character : scene.character
+    const propIds = (opts.props !== undefined ? opts.props : scene.props || []).filter((p) => window.drawProp && window.drawProp(p)).slice(0, 3)
+    const hasFig = !!(character && window.drawFigure)
+    if (!hasFig && !propIds.length) return null
+    const enter = opts.enter || (window.STYLE.cast && window.STYLE.cast.enter) || 'pop'
+    const at = opts.at
+    // Alternate sides scene by scene so consecutive scenes don't look alike.
+    const figRight = opts.flip != null ? opts.flip : ctx.index % 2 === 1
+    const wrap = el('div', 'castbox' + (enter === 'draw' ? ' draw' : ''))
+    Object.assign(wrap.style, { left: box.left + 'px', top: box.top + 'px', width: box.w + 'px', height: box.h + 'px' })
+    const items = []
+    const FIG_RATIO = 300 / 440
+    const n = propIds.length
+    if (hasFig) {
+      let fh = box.h, fw = fh * FIG_RATIO
+      const maxW = n ? box.w * 0.5 : box.w
+      if (fw > maxW) { fw = maxW; fh = fw / FIG_RATIO }
+      const left = n ? (figRight ? box.w - fw : 0) : (box.w - fw) / 2
+      const svg = window.drawFigure({ cast: character.cast, pose: character.pose, mood: character.mood, flip: figRight && n > 0 })
+      items.push({ svg, kind: 'fig', left, top: box.h - fh, w: fw, h: fh })
+    }
+    if (n) {
+      const areaL = hasFig ? (figRight ? 0 : box.w * 0.5) : 0
+      const areaW = hasFig ? box.w * 0.5 : box.w
+      const wide = areaW > box.h * 1.3
+      const size = Math.min(wide ? areaW / n * 0.86 : areaW * 0.86, wide ? box.h * 0.8 : (box.h / n) * 0.92, 340)
+      propIds.forEach((id, i) => {
+        let left, top
+        if (wide) { left = areaL + (areaW / n) * (i + 0.5) - size / 2; top = (box.h - size) / 2 + (i % 2 ? size * 0.12 : -size * 0.06) }
+        else { left = areaL + (areaW - size) / 2 + (n > 1 ? (i % 2 ? 1 : -1) * Math.min(40, areaW * 0.06) : 0); top = (box.h - n * size) / 2 + i * size }
+        items.push({ svg: window.drawProp(id), kind: 'prop', left, top, w: size, h: size })
+      })
+    }
+    const draws = []
+    let t = at
+    // Drawing on: fit every stroke inside the scene (figure ~1s, props ~0.55s each by default).
+    const drawTotal = items.reduce((a, it) => a + (it.kind === 'fig' ? 1.0 : 0.55), 0)
+    const drawScale = Math.min(1, Math.max(0.25, ((ctx.at(1) - at) * 0.8) / Math.max(0.1, drawTotal)))
+    items.forEach((it, i) => {
+      const holder = el('div', 'ci')
+      Object.assign(holder.style, { left: it.left + 'px', top: it.top + 'px', width: it.w + 'px', height: it.h + 'px' })
+      holder.append(it.svg)
+      wrap.append(holder)
+      const start = at + i * 0.18
+      if (enter === 'draw') {
+        // Head first (it sits on top in the SVG so raised arms tuck behind it).
+        const paths = [...it.svg.querySelectorAll('.fig-head .d'), ...it.svg.querySelectorAll('.d:not(.fig-head .d)')]
+        const total = (it.kind === 'fig' ? 1.0 : 0.55) * drawScale
+        const each = total / Math.max(1, paths.length)
+        const s0 = i === 0 ? start : t
+        paths.forEach((p, k) => {
+          p.setAttribute('pathLength', '1')
+          animate(p, ['castDraw', each, s0 + k * each, 'ease-in-out'])
+          draws.push({ node: p, at: s0 + k * each, dur: each })
+        })
+        // Fills and eyes appear once the outline is drawn.
+        it.svg.querySelectorAll('.f-acc, .f-hat, .f-head, circle:not(.d), text').forEach((f) => {
+          const fadeIn = `${f.classList.contains('d') ? 'castFillIn' : 'castFade'} .3s ease-out ${(s0 + total).toFixed(3)}s 1 both`
+          f.style.animation = f.style.animation ? `${f.style.animation}, ${fadeIn}` : fadeIn
+        })
+        t = s0 + total
+      } else {
+        const name = enter === 'slide' ? (it.kind === 'fig' ? (figRight ? 'castSlideR' : 'castSlideL') : 'castPop') : enter === 'flicker' ? 'castFlicker' : enter === 'fade' ? 'castFade' : 'castPop'
+        animate(holder, [name, enter === 'flicker' ? 0.8 : 0.5, start, enter === 'pop' ? 'cubic-bezier(.3,1.3,.5,1)' : 'cubic-bezier(.2,.8,.2,1)'])
+        t = Math.max(t, start + 0.5)
+      }
+      // Idle life after the entrance.
+      const idleAt = (enter === 'draw' ? t : start + 0.55)
+      if (it.kind === 'fig') {
+        const pose = character.pose, mood = character.mood
+        if (mood === 'worried' || pose === 'worried') animate(it.svg, ['castShake', 0.5, idleAt, 'ease-in-out', 'infinite'])
+        else animate(it.svg, ['castBob', 1.6, idleAt, 'ease-in-out', 'infinite'])
+        const arms = it.svg.querySelector('.fig-arms')
+        if (arms && /happy|point|thumbs_up|shrug/.test(pose)) animate(arms, ['castWave', 0.9, idleAt, 'ease-in-out', 'infinite'])
+        const mark = it.svg.querySelector('.fig-mark')
+        if (mark && enter !== 'draw') animate(mark, ['castPop', 0.4, idleAt + 0.1, 'ease-out'])
+      } else if (enter !== 'draw') {
+        animate(it.svg, ['castFloat', 2.2 + i * 0.3, idleAt, 'ease-in-out', 'infinite'])
+      }
+    })
+    wrap.draws = draws
+    wrap.endsAt = t
+    return wrap
   }
 
   /** Creates an element with classes and optional text. */
@@ -83,8 +220,14 @@
         /** Absolute time at a fraction of this scene (0–1), or seconds after its start if > 1. */
         at: (f) => scene.start + (f <= 1 ? f * dur : f),
         dur,
+        /** Character + props for this scene in a box; see castBlock. */
+        cast: (sc, box, opts = {}) => castBlock(sc, box, { at: ctx.at(0.15), ...opts }, ctx),
+        hasCast: (sc) => !!(sc.character || (sc.props && sc.props.length)),
+        /** The product's prop (or a plain crate) for a product scene without a photo. */
+        productProp: () => (data.product && data.product.prop) || 'crate',
       }
-      const builder = style.roles[scene.role] || style.roles.proof
+      const fallback = { problem: 'hook', solution: 'product' }[scene.role]
+      const builder = style.roles[scene.role] || style.roles[fallback] || style.roles.proof
       const section = builder(scene, ctx)
       section.classList.add('scene')
       section.style.zIndex = String(index + 1)

@@ -42,6 +42,8 @@ export interface ContentSuggestion {
   reel_timeline: ReelTimeline | null
   /** Animated reel storyboard (Animated reel dialog), when one was made. */
   reel_storyboard: Storyboard | null
+  /** English or Taglish (from the idea); picks the default narration voice. */
+  language?: 'english' | 'taglish' | null
   status: SuggestionStatus
   reviewed_by: string | null
   reviewed_at: string | null

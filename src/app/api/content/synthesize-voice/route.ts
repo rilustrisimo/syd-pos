@@ -25,6 +25,7 @@ import { GoogleAuth } from 'google-auth-library'
 import { createClient } from '@/lib/supabase/server'
 import { splitIntoCaptionChunks, splitIntoSentences, captionChunksToSsml } from '@/lib/marketing/captions'
 import { logAiUsage } from '@/lib/ai-usage-log'
+import { pronunciationSsml } from '@/lib/marketing/pronunciation'
 import { getNarrationVoice } from '@/lib/marketing/voices'
 import { joinWav, parseWav, pcmSeconds } from '@/lib/marketing/wav'
 
@@ -56,11 +57,12 @@ async function callTts(accessToken: string, version: 'v1' | 'v1beta1', body: Rec
  * Neural2: one request as SSML with a mark before each caption chunk;
  * v1beta1 reports when each mark is reached, which times the captions.
  */
-async function synthesizeWithMarks(accessToken: string, voiceId: string, script: string): Promise<SynthesizedNarration> {
+async function synthesizeWithMarks(accessToken: string, voiceId: string, languageCode: string, script: string): Promise<SynthesizedNarration> {
   const chunks = splitIntoCaptionChunks(script)
   const data = await callTts(accessToken, 'v1beta1', {
-    input: { ssml: captionChunksToSsml(chunks) },
-    voice: { languageCode: 'en-US', name: voiceId },
+    // Captions keep the written words; only the audio gets pronunciation hints.
+    input: { ssml: captionChunksToSsml(chunks, pronunciationSsml) },
+    voice: { languageCode, name: voiceId },
     audioConfig: { audioEncoding: 'MP3' },
     enableTimePointing: ['SSML_MARK'],
   })
@@ -200,7 +202,7 @@ export async function POST(request: Request) {
     try {
       narration = voice.kind === 'chirp3hd'
         ? await synthesizeBySentence(accessToken, voice.id, suggestion.voice_script)
-        : await synthesizeWithMarks(accessToken, voice.id, suggestion.voice_script)
+        : await synthesizeWithMarks(accessToken, voice.id, voice.languageCode, suggestion.voice_script)
     } catch (ttsErr: any) {
       console.error('[synthesize-voice] Google TTS error', ttsErr?.message)
       await logAiUsage({

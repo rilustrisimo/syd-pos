@@ -16,6 +16,14 @@ import { isCreativeStyle } from '@/lib/marketing/creative-styles'
 import { composeCaption, loadStoreContact } from '@/lib/marketing/store-contact'
 import { productIdsByCode } from '@/lib/marketing/product-signals'
 import type { PlannedPost } from '@/lib/marketing/planner-prompts'
+import { parseNarrationLanguage } from '@/lib/marketing/narration-language'
+import { CAST } from '@/lib/marketing/cast'
+
+/** "Story: Mang Ramon · problem pig-pen-fence. " for story posts, else empty. */
+function storyNote(p: { character?: string; problem_id?: string }): string {
+  const who = CAST.find((c) => c.id === p.character)
+  return who ? `Story: ${who.name}${p.problem_id ? ` · problem ${p.problem_id}` : ''}. ` : ''
+}
 
 export async function POST(request: Request) {
   try {
@@ -23,7 +31,8 @@ export async function POST(request: Request) {
     const auth = await requireMarketingStaff(supabase as any)
     if (auth.error) return auth.error
 
-    const { posts } = await request.json() as { posts?: PlannedPost[] }
+    const { posts, language: rawLanguage } = await request.json() as { posts?: PlannedPost[]; language?: string }
+    const language = parseNarrationLanguage(rawLanguage)
     if (!Array.isArray(posts) || posts.length === 0) {
       return NextResponse.json({ error: 'Pick at least one post to save' }, { status: 400 })
     }
@@ -42,7 +51,8 @@ export async function POST(request: Request) {
         .from('content_ideas')
         .insert({
           title: p.title,
-          description: p.why,
+          description: storyNote(p) + p.why,
+          language,
           image_concept: isReel ? p.shot_list : null,
           source_product_id: productId,
           format: p.format,
@@ -77,7 +87,8 @@ export async function POST(request: Request) {
         concept_code: conceptCode,
         creative_style: isCreativeStyle(p.creative_style) ? p.creative_style : null,
         reel_stickers: isReel && p.stickers?.length ? p.stickers : null,
-        notes: `Planned for ${p.date}, post at ${p.best_time}. ${p.why}`,
+        notes: `Planned for ${p.date}, post at ${p.best_time}. ${storyNote(p)}${p.why}`,
+        language,
       })
       if (suggestionError) throw new Error(suggestionError.message)
       saved++

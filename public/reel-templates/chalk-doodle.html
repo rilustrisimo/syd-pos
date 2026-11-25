@@ -25,6 +25,9 @@
   .photo img { width:100%; height:100%; object-fit:contain; background:#fff; }
   .tape { position:absolute; width:220px; height:60px; background:rgba(247,215,116,.75); top:-26px; left:210px; transform:rotate(4deg); }
   .logo { position:absolute; left:290px; top:250px; width:500px; filter:drop-shadow(0 0 10px rgba(247,215,116,.4)); }
+  .castbox { color:var(--chalk); --fig-fill:none; --fig-accent:rgba(247,215,116,.22); --hat-fill:rgba(247,215,116,.3); --fig-logo:var(--yellow); --fig-stroke:10; --prop-stroke:5;
+    filter:drop-shadow(0 0 3px rgba(255,255,255,.35)); }
+  .castbox .fig-mark { color:var(--pink); }
 
   @keyframes erase { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
   @keyframes write { from { clip-path: inset(-20% 100% -20% -5%); } to { clip-path: inset(-20% -5% -20% -5%); } }
@@ -63,6 +66,7 @@ const underline = (left, top, w, at, ctx, color = '#F7D774') => {
 window.STYLE = {
   fonts: ['Caveat Brush', 'Patrick Hand'],
   transition: 'erase',
+  cast: { enter: 'draw' },
   afterBuild(section) {
     // Bounding boxes work for SVG too (offsetTop doesn't); measure without animation transforms.
     document.documentElement.classList.add('measuring')
@@ -75,9 +79,16 @@ window.STYLE = {
     hook(scene, ctx) {
       const { el, at, animate } = ctx
       const s = el('section'); s.append(el('div', 'board'))
-      const hl = written(ctx, scene.headline, 'chalk', { left: 100, top: 300, w: 880, h: 700, max: 220, at: at(0.08), dur: Math.min(1.4, ctx.dur * 0.5) })
+      const cast = ctx.hasCast(scene)
+      const hl = written(ctx, scene.headline, 'chalk', { left: 100, top: cast ? 220 : 300, w: 880, h: cast ? 480 : 700, max: 220, at: at(0.08), dur: Math.min(1.4, ctx.dur * 0.5) })
       const ul = follow(underline(100, 1040, 760, at(0.55), ctx), hl, 20)
       s.append(hl, ul)
+      if (cast) {
+        let sub = null
+        if (scene.sub) s.append(sub = follow(written(ctx, scene.sub, 'hand', { left: 110, top: 900, w: 860, h: 160, max: 70, at: at(0.5) }), ul, 30))
+        s.append(follow(ctx.cast(scene, { left: 100, top: 1100, w: 880, h: 600 }, { at: at(0.3) }), sub || ul, 40))
+        return s
+      }
       const arrow = doodle('<path d="M60 20 C 120 140, 60 260, 150 360 M150 360 L 95 330 M150 360 L 165 300"/>', { view: '0 0 220 400', left: 700, top: 1150, w: 220 }, '#F59A8F', 12)
       arrow.querySelectorAll('path').forEach((p) => animate(p, ['draw', .8, at(0.62), 'ease-out'])); s.append(follow(arrow, ul, 30))
       if (scene.sub) s.append(follow(written(ctx, scene.sub, 'hand', { left: 110, top: 1180, w: 560, h: 260, max: 70, at: at(0.5) }), ul, 50))
@@ -91,6 +102,9 @@ window.STYLE = {
       if (data.product.imageUrl) {
         const ph = el('div', 'photo'); const img = el('img'); img.src = data.product.imageUrl; ph.append(img, el('div', 'tape'))
         animate(ph, ['pin', .6, at(0.12), 'cubic-bezier(.3,1.3,.5,1)']); s.append(ph)
+      } else if (ctx.productProp() !== 'cement_bag') {
+        s.append(ctx.cast(scene, { left: 190, top: 450, w: 700, h: 640 }, { at: at(0.1), character: null, props: [ctx.productProp()] }))
+        if (data.product.name) s.append(written(ctx, data.product.name, 'chalk', { left: 120, top: 1110, w: 840, h: 140, max: 100, at: at(0.4), color: '#F7D774' }))
       } else {
         const bag = doodle(`<path d="M70 70 Q250 30 430 70 L460 600 Q250 640 40 600 Z"/><path d="M70 70 Q250 110 430 70"/><rect x="105" y="200" width="290" height="220" rx="20"/><path d="M130 510 H370 M160 548 H340"/>`,
           { view: '0 0 500 660', left: 290, top: 470, w: 500 }, '#F4F1E4', 12)
@@ -104,19 +118,23 @@ window.STYLE = {
         const ring = doodle('<ellipse cx="300" cy="110" rx="285" ry="95" transform="rotate(-4 300 110)"/>', { view: '0 0 600 220', left: 240, top: 1265, w: 600 }, '#F59A8F', 9)
         animate(ring.querySelector('ellipse'), ['draw', .7, at(0.68), 'ease-out']); s.append(ring)
       }
-      if (scene.sub) s.append(written(ctx, scene.sub, 'hand', { left: 110, top: 1560, w: 860, h: 140, max: 64, at: at(0.4) }))
+      if (scene.character) s.append(ctx.cast(scene, { left: 70, top: 1300, w: 250, h: 400 }, { at: at(0.45), props: [], flip: false }))
+      if (scene.sub) s.append(written(ctx, scene.sub, 'hand', { left: scene.character ? 360 : 110, top: 1560, w: scene.character ? 620 : 860, h: 140, max: 64, at: at(0.4) }))
       return s
     },
 
     proof(scene, ctx) {
       const { el, at, animate } = ctx
       const s = el('section'); s.append(el('div', 'board'))
-      const hl = written(ctx, scene.headline, 'chalk', { left: 100, top: 150, w: 880, h: 420, max: 210, at: at(0.04) })
+      const items = (scene.items || []).slice(0, 3)
+      const side = scene.character && items.length
+      const hl = written(ctx, scene.headline, 'chalk', { left: 100, top: 150, w: side ? 620 : 880, h: 420, max: 210, at: at(0.04) })
+      if (side) s.append(ctx.cast(scene, { left: 740, top: 130, w: 280, h: 420 }, { at: at(0.15), props: [] }))
+      else if (ctx.hasCast(scene)) s.append(ctx.cast(scene, { left: 100, top: 880, w: 880, h: 860 }, { at: at(0.3) }))
       const ul = follow(underline(100, 590, 620, at(0.2), ctx), hl, 10)
       s.append(hl, ul)
       if (scene.sub) s.append(follow(written(ctx, scene.sub, 'hand', { left: 110, top: 670, w: 860, h: 120, max: 64, at: at(0.14), color: '#9FD3E8' }), ul, 20))
       if (scene.stamp) s.append(written(ctx, scene.stamp, 'chalk', { left: 600, top: 520, w: 380, h: 120, max: 100, at: at(0.3), color: '#F59A8F' }))
-      const items = (scene.items || []).slice(0, 3)
       items.forEach((text, i) => {
         const t0 = at(0.36 + i * (0.5 / Math.max(1, items.length)))
         const top = 880 + i * 250
@@ -141,11 +159,43 @@ window.STYLE = {
       animate(st, [['write', .6, at(0.55), 'linear'], ['wiggle', 1, at(0.55) + .7, 'ease-in-out', 'infinite']]); s.append(st)
       const ring = doodle('<ellipse cx="300" cy="110" rx="285" ry="95" transform="rotate(3 300 110)"/>', { view: '0 0 600 220', left: 240, top: 1350, w: 600 }, '#F59A8F', 9)
       animate(ring.querySelector('ellipse'), ['draw', .7, at(0.62), 'ease-out']); s.append(ring)
+      if (scene.character) s.append(ctx.cast(scene, { left: 50, top: 1520, w: 220, h: 330 }, { at: at(0.4), props: [], flip: false }))
+      return s
+    },
+
+    problem(scene, ctx) {
+      const { el, at } = ctx
+      const s = el('section'); s.append(el('div', 'board'))
+      const hl = written(ctx, scene.headline, 'chalk', { left: 100, top: 150, w: 880, h: 400, max: 190, at: at(0.05), color: '#F59A8F' })
+      const ul = follow(underline(100, 600, 700, at(0.25), ctx, '#F59A8F'), hl, 10)
+      s.append(hl, ul)
+      if (scene.sub) s.append(follow(written(ctx, scene.sub, 'hand', { left: 110, top: 660, w: 860, h: 120, max: 64, at: at(0.2) }), ul, 20))
+      s.append(ctx.cast(scene, { left: 100, top: 800, w: 880, h: scene.stamp ? 760 : 920 }, { at: at(0.22) }) || el('div'))
+      if (scene.stamp) s.append(written(ctx, scene.stamp, 'chalk', { left: 300, top: 1600, w: 480, h: 150, max: 130, at: at(0.6), color: '#F59A8F' }))
+      return s
+    },
+
+    solution(scene, ctx) {
+      const { el, at, data } = ctx
+      const s = el('section'); s.append(el('div', 'board'))
+      const hl = written(ctx, scene.headline, 'chalk', { left: 100, top: 150, w: 880, h: 400, max: 190, at: at(0.05), color: '#F7D774' })
+      const ul = follow(underline(100, 600, 700, at(0.25), ctx), hl, 10)
+      s.append(hl, ul)
+      if (scene.sub) s.append(follow(written(ctx, scene.sub, 'hand', { left: 110, top: 660, w: 860, h: 120, max: 64, at: at(0.2), color: '#9FD3E8' }), ul, 20))
+      const props = scene.props && scene.props.length ? undefined : (data.product.prop ? [data.product.prop] : undefined)
+      s.append(ctx.cast(scene, { left: 100, top: 800, w: 880, h: scene.stamp ? 760 : 920 }, { at: at(0.22), props }) || el('div'))
+      if (scene.stamp) {
+        s.append(written(ctx, scene.stamp, 'chalk', { left: 300, top: 1600, w: 480, h: 150, max: 130, at: at(0.6), color: '#F59A8F' }))
+        const ring = doodle('<ellipse cx="300" cy="100" rx="285" ry="88" transform="rotate(-3 300 100)"/>', { view: '0 0 600 200', left: 240, top: 1575, w: 600 }, '#F59A8F', 9)
+        ctx.animate(ring.querySelector('ellipse'), ['draw', .7, at(0.66), 'ease-out']); s.append(ring)
+      }
       return s
     },
   },
 }
 </script>
+<script src="_cast.js"></script>
+<script src="_props.js"></script>
 <script src="_runtime.js"></script>
 </body>
 </html>

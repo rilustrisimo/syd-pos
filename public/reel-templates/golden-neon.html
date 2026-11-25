@@ -27,6 +27,10 @@
   .photo { position:absolute; left:240px; top:520px; width:600px; height:600px; border-radius:50%; overflow:hidden; background:#fff;
     box-shadow:0 0 0 10px var(--gold), 0 0 50px var(--gold); }
   .photo img { width:100%; height:100%; object-fit:contain; }
+  .castbox { color:var(--gold2); --fig-fill:none; --fig-accent:none; --hat-fill:none; --fig-logo:var(--gold); --fig-stroke:8; --prop-stroke:4;
+    filter:drop-shadow(0 0 6px var(--gold)) drop-shadow(0 0 18px rgba(255,201,77,.6)); }
+  .castbox.rose { color:#FFD0DA; filter:drop-shadow(0 0 6px var(--rose)) drop-shadow(0 0 18px rgba(255,107,139,.6)); }
+  .castbox .fig-mark { color:#FFD0DA; }
   .logo { position:absolute; left:290px; top:260px; width:500px; filter:drop-shadow(0 0 12px var(--gold)) drop-shadow(0 0 30px rgba(255,201,77,.6)); }
 
   @keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
@@ -69,16 +73,22 @@ function sweep(ctx) { const s = ctx.el('div', 'sweep'); ctx.animate(s, ['sweep',
 window.STYLE = {
   fonts: ['Bebas Neue', '600 Inter', '800 Inter'],
   transition: 'fadeIn',
+  cast: { enter: 'draw' },
   roles: {
     hook(scene, ctx) {
       const { el, at, animate } = ctx
       const s = el('section'); s.append(el('div', 'bg'), ...sparkles(ctx, 10, 1))
-      const frame = tube('<rect x="10" y="10" width="940" height="900" rx="60"/>', { left: 60, top: 330, w: 960, view: '0 0 960 920' })
+      // With a character the frame is shorter and the cast stands below it.
+      const cast = ctx.hasCast(scene)
+      const fh = cast ? 640 : 900, ftop = cast ? 200 : 330
+      const frame = tube(`<rect x="10" y="10" width="940" height="${fh}" rx="60"/>`, { left: 60, top: ftop, w: 960, view: `0 0 960 ${fh + 20}` })
       animate(frame.querySelector('rect'), ['draw', 1.3, at(0.02), 'ease-in-out']); s.append(frame)
-      const hl = neon(ctx, scene.headline, { left: 120, top: 420, w: 840, h: 720, max: 260, at: at(0.2), center: true })
-      Object.assign(hl.style, { height: '720px', display: 'flex', alignItems: 'center', justifyContent: 'center' })
+      const hl = neon(ctx, scene.headline, { left: 120, top: ftop + 90, w: 840, h: fh - 180, max: 260, at: at(0.2), center: true })
+      Object.assign(hl.style, { height: (fh - 180) + 'px', display: 'flex', alignItems: 'center', justifyContent: 'center' })
       s.append(hl)
-      if (scene.sub) { const sub = el('div', 'inter', scene.sub); Object.assign(sub.style, { position: 'absolute', left: '100px', top: '1330px', textAlign: 'center' }); animate(sub, ['rise', .5, at(0.5)]); ctx.fit(sub, { w: 880, h: 200, max: 64, min: 36 }); s.append(sub) }
+      const subTop = ftop + fh + 70
+      if (scene.sub) { const sub = el('div', 'inter', scene.sub); Object.assign(sub.style, { position: 'absolute', left: '100px', top: subTop + 'px', textAlign: 'center' }); animate(sub, ['rise', .5, at(0.5)]); ctx.fit(sub, { w: 880, h: cast ? 110 : 200, max: 64, min: 36 }); s.append(sub) }
+      if (cast) { const top = subTop + (scene.sub ? 140 : 10); s.append(ctx.cast(scene, { left: 90, top, w: 900, h: 1800 - top }, { at: at(0.3) })) }
       s.append(sweep(ctx))
       return s
     },
@@ -90,7 +100,14 @@ window.STYLE = {
       const ring = tube('<circle cx="370" cy="370" r="355"/>', { left: 170, top: 450, w: 740, view: '0 0 740 740' })
       animate(ring.querySelector('circle'), ['draw', 1.1, at(0.08), 'ease-in-out']); s.append(ring)
       if (data.product.imageUrl) { const ph = el('div', 'photo'); const img = el('img'); img.src = data.product.imageUrl; ph.append(img); animate(ph, ['zoomIn', .6, at(0.2)]); s.append(ph) }
-      else {
+      else if (ctx.productProp() !== 'cement_bag') {
+        s.append(ctx.cast(scene, { left: 300, top: 560, w: 480, h: 420 }, { at: at(0.18), character: null, props: [ctx.productProp()] }))
+        if (data.product.name) {
+          const name = el('div', 'neon', data.product.name)
+          Object.assign(name.style, { position: 'absolute', left: '290px', top: '990px', height: '130px', display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center' })
+          animate(name, ['flickerOn', .7, at(0.45), 'linear']); s.append(name); ctx.fit(name, { w: 500, h: 130, max: 90, min: 36 })
+        }
+      } else {
         const bag = tube('<path d="M70 70 Q250 30 430 70 L460 600 Q250 640 40 600 Z"/><path d="M70 70 Q250 110 430 70"/><path d="M130 510 H370"/>', { left: 350, top: 540, w: 380, view: '0 0 500 660' })
         bag.querySelectorAll('path').forEach((p, i) => animate(p, ['draw', 1.0, at(0.18) + i * .15, 'ease-out'])); s.append(bag)
         const name = el('div', 'neon', data.product.name || scene.headline)
@@ -102,7 +119,8 @@ window.STYLE = {
         animate(box.querySelector('rect'), ['draw', .7, at(0.58), 'ease-out'])
         s.append(box, neon(ctx, scene.stamp, { left: 210, top: 1300, w: 660, h: 170, max: 160, at: at(0.62), rose: true, center: true }))
       }
-      if (scene.sub) { const sub = el('div', 'inter', scene.sub); Object.assign(sub.style, { position: 'absolute', left: '100px', top: '1580px', textAlign: 'center' }); animate(sub, ['rise', .5, at(0.4)]); ctx.fit(sub, { w: 880, h: 160, max: 60, min: 34 }); s.append(sub) }
+      if (scene.character) s.append(ctx.cast(scene, { left: 40, top: 1520, w: 230, h: 340 }, { at: at(0.45), props: [], flip: false }))
+      if (scene.sub) { const sub = el('div', 'inter', scene.sub); Object.assign(sub.style, { position: 'absolute', left: scene.character ? '290px' : '100px', top: '1580px', textAlign: 'center' }); animate(sub, ['rise', .5, at(0.4)]); ctx.fit(sub, { w: scene.character ? 700 : 880, h: 160, max: 60, min: 34 }); s.append(sub) }
       s.append(sweep(ctx))
       return s
     },
@@ -110,10 +128,13 @@ window.STYLE = {
     proof(scene, ctx) {
       const { el, at, animate } = ctx
       const s = el('section'); s.append(el('div', 'bg'), ...sparkles(ctx, 8, 3))
-      s.append(neon(ctx, scene.headline, { left: 90, top: 160, w: 900, h: 460, max: 260, at: at(0.03), center: true }))
+      const items = (scene.items || []).slice(0, 3)
+      const side = scene.character && items.length
+      s.append(neon(ctx, scene.headline, { left: 90, top: 160, w: side ? 620 : 900, h: 460, max: 260, at: at(0.03), center: true }))
+      if (side) s.append(ctx.cast(scene, { left: 730, top: 150, w: 290, h: 440 }, { at: at(0.15), props: [] }))
+      else if (ctx.hasCast(scene)) s.append(ctx.cast(scene, { left: 100, top: 930, w: 880, h: 820 }, { at: at(0.3) }))
       if (scene.sub) { const sub = el('div', 'inter', scene.sub); Object.assign(sub.style, { position: 'absolute', left: '100px', top: '660px', textAlign: 'center', letterSpacing: '.08em', textTransform: 'uppercase' }); animate(sub, ['rise', .5, at(0.12)]); ctx.fit(sub, { w: 880, h: 120, max: 54, min: 30 }); s.append(sub) }
       if (scene.stamp) s.append(neon(ctx, scene.stamp, { left: 90, top: 760, w: 900, h: 130, max: 110, at: at(0.28), rose: true, center: true }))
-      const items = (scene.items || []).slice(0, 3)
       items.forEach((text, i) => {
         const p = el('div', 'pill'); p.style.top = (930 + i * 250) + 'px'
         const t = el('div', 'neon', text); t.style.textAlign = 'center'; p.append(t)
@@ -137,11 +158,42 @@ window.STYLE = {
       const box = tube('<rect x="8" y="8" width="764" height="244" rx="40"/>', { left: 150, top: 1370, w: 780, view: '0 0 780 260', rose: true })
       animate(box.querySelector('rect'), ['draw', .7, at(0.5), 'ease-out'])
       s.append(box, btn, sweep(ctx))
+      if (scene.character) s.append(ctx.cast(scene, { left: 40, top: 1640, w: 200, h: 260 }, { at: at(0.4), props: [], flip: false }))
+      return s
+    },
+
+    problem(scene, ctx) {
+      const { el, at, animate } = ctx
+      const s = el('section'); s.append(el('div', 'bg'), ...sparkles(ctx, 5, 5))
+      s.append(neon(ctx, scene.headline, { left: 90, top: 160, w: 900, h: 420, max: 220, at: at(0.03), rose: true, center: true }))
+      let top = 700
+      if (scene.sub) { const sub = el('div', 'inter', scene.sub); Object.assign(sub.style, { position: 'absolute', left: '100px', top: '630px', textAlign: 'center' }); animate(sub, ['rise', .5, at(0.15)]); ctx.fit(sub, { w: 880, h: 110, max: 58, min: 32 }); s.append(sub); top = 780 }
+      const c = ctx.cast(scene, { left: 90, top, w: 900, h: (scene.stamp ? 1560 : 1780) - top }, { at: at(0.2) }); if (c) { c.classList.add('rose'); s.append(c) }
+      if (scene.stamp) s.append(neon(ctx, scene.stamp, { left: 190, top: 1610, w: 700, h: 170, max: 140, at: at(0.6), rose: true, center: true }))
+      return s
+    },
+
+    solution(scene, ctx) {
+      const { el, at, animate, data } = ctx
+      const s = el('section'); s.append(el('div', 'bg'), ...sparkles(ctx, 10, 6))
+      s.append(neon(ctx, scene.headline, { left: 90, top: 160, w: 900, h: 420, max: 220, at: at(0.03), center: true }))
+      let top = 700
+      if (scene.sub) { const sub = el('div', 'inter', scene.sub); Object.assign(sub.style, { position: 'absolute', left: '100px', top: '630px', textAlign: 'center' }); animate(sub, ['rise', .5, at(0.15)]); ctx.fit(sub, { w: 880, h: 110, max: 58, min: 32 }); s.append(sub); top = 780 }
+      const props = scene.props && scene.props.length ? undefined : (data.product.prop ? [data.product.prop] : undefined)
+      const c = ctx.cast(scene, { left: 90, top, w: 900, h: (scene.stamp ? 1530 : 1780) - top }, { at: at(0.2), props }); if (c) s.append(c)
+      if (scene.stamp) {
+        const box = tube('<rect x="8" y="8" width="704" height="194" rx="30"/>', { left: 180, top: 1580, w: 720, view: '0 0 720 210', rose: true })
+        animate(box.querySelector('rect'), ['draw', .7, at(0.58), 'ease-out'])
+        s.append(box, neon(ctx, scene.stamp, { left: 210, top: 1605, w: 660, h: 160, max: 140, at: at(0.62), rose: true, center: true }))
+      }
+      s.append(sweep(ctx))
       return s
     },
   },
 }
 </script>
+<script src="_cast.js"></script>
+<script src="_props.js"></script>
 <script src="_runtime.js"></script>
 </body>
 </html>

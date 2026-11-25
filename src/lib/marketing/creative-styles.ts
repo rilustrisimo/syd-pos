@@ -17,6 +17,7 @@ export type CreativeStyle =
   | 'behind_the_scenes'
   | 'customer_story'
   | 'how_to'
+  | 'story'
 
 export interface CreativeStyleSpec {
   label: string
@@ -99,6 +100,13 @@ export const CREATIVE_STYLES: Record<CreativeStyle, CreativeStyleSpec> = {
     still: 'Carousel with one step per slide.',
     source: 'syd',
   },
+  story: {
+    label: 'Story (problem → fix)',
+    recipe: 'A mini story with one of the recurring cast: they hit a real problem from the PROBLEM BANK, worry or try the wrong fix, then fix it the right way with SYD materials. Name the character, keep it local and relatable, end on the relief + a soft call to action.',
+    reel: 'Narrated mini story in 4 beats — setup (who and where), problem (what went wrong), fix (the right materials from SYD), result + call to action; one shot or animated scene per beat.',
+    still: '3–4 slide carousel comic: problem → wrong fix → right fix with the product → happy result.',
+    source: 'syd',
+  },
 }
 
 export const CREATIVE_STYLE_KEYS = Object.keys(CREATIVE_STYLES) as CreativeStyle[]
@@ -120,6 +128,7 @@ export function parseCreativeStyle(value: string | undefined): CreativeStyle | n
   if (v.startsWith('types')) return 'types_of'
   if (v.startsWith('customer') || v.startsWith('testimonial')) return 'customer_story'
   if (v.startsWith('how') || v.startsWith('tutorial')) return 'how_to'
+  if (v.startsWith('story') || v.startsWith('kuwento') || v.startsWith('problem')) return 'story'
   return null
 }
 

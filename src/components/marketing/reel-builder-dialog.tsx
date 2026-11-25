@@ -35,7 +35,7 @@ import { CREATIVE_STYLES, isCreativeStyle } from '@/lib/marketing/creative-style
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ReelClipRow } from '@/components/marketing/reel-clip-row'
 import { VoiceSelect } from '@/components/marketing/voice-select'
-import { DEFAULT_NARRATION_VOICE } from '@/lib/marketing/voices'
+import { defaultVoiceFor } from '@/lib/marketing/voices'
 import { NarrationLanguageSelect } from '@/components/marketing/narration-language-select'
 import { DEFAULT_NARRATION_LANGUAGE, type NarrationLanguage } from '@/lib/marketing/narration-language'
 import { ReelCaptionsEditor } from '@/components/marketing/reel-captions-editor'
@@ -83,7 +83,7 @@ function NarrationStep({ suggestion }: { suggestion: ContentSuggestion }) {
   const generate = useGenerateVoiceScript()
   const save = useSaveVoiceScript()
   const synthesize = useSynthesizeVoice()
-  const [voice, setVoice] = useState(DEFAULT_NARRATION_VOICE)
+  const [voice, setVoice] = useState(() => defaultVoiceFor(suggestion.language))
   const [scriptLanguage, setScriptLanguage] = useState<NarrationLanguage>(DEFAULT_NARRATION_LANGUAGE)
   const [voiceScript, setVoiceScript] = useState(suggestion.voice_script ?? '')
   const busy = generate.isPending || save.isPending || synthesize.isPending

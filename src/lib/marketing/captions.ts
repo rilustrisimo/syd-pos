@@ -57,6 +57,6 @@ function escapeXml(text: string): string {
 
 // SSML with a <mark name="cN"/> before chunk N, so Google TTS reports when
 // each chunk starts speaking.
-export function captionChunksToSsml(chunks: string[]): string {
-  return `<speak>${chunks.map((c, i) => `<mark name="c${i}"/>${escapeXml(c)}`).join(' ')}</speak>`
+export function captionChunksToSsml(chunks: string[], transform: (escaped: string) => string = (t) => t): string {
+  return `<speak>${chunks.map((c, i) => `<mark name="c${i}"/>${transform(escapeXml(c))}`).join(' ')}</speak>`
 }

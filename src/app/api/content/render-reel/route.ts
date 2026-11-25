@@ -13,42 +13,11 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { requireMarketingStaff } from '@/lib/marketing/staff-auth'
-import {
-  buildReelData, formatPhoneForReel, isReelStyle, MAX_SCENES,
-  type Storyboard, type StoryboardScene, type SceneRole,
-} from '@/lib/marketing/reel-styles'
+import { buildReelData, formatPhoneForReel, isReelStyle, sanitizeStoryboard, MAX_SCENES } from '@/lib/marketing/reel-styles'
 
 /** Keeps GitHub Actions inside the free 2,000 min/month (~2 min per render). */
 const MAX_RENDERS_PER_MONTH = 300
-const ROLES: SceneRole[] = ['hook', 'product', 'proof', 'cta']
 const SITE = 'sydconstruct.com'
-
-function sanitizeStoryboard(raw: any): Storyboard | null {
-  if (!raw || !Array.isArray(raw.scenes) || raw.scenes.length === 0 || raw.scenes.length > MAX_SCENES) return null
-  const text = (s: unknown, max: number) => (typeof s === 'string' ? s.trim().slice(0, max) : '')
-  const scenes: StoryboardScene[] = []
-  for (const s of raw.scenes) {
-    const start = Number(s?.start)
-    if (!Number.isFinite(start) || start < 0) return null
-    const items = Array.isArray(s.items) ? s.items.map((x: unknown) => text(x, 40)).filter(Boolean).slice(0, 3) : []
-    scenes.push({
-      role: ROLES.includes(s.role) ? s.role : 'proof',
-      spoken: text(s.spoken, 300),
-      start,
-      headline: text(s.headline, 60) || ' ',
-      ...(text(s.sub, 60) ? { sub: text(s.sub, 60) } : {}),
-      ...(text(s.stamp, 20) ? { stamp: text(s.stamp, 20) } : {}),
-      ...(items.length ? { items } : {}),
-    })
-  }
-  scenes.sort((a, b) => a.start - b.start)
-  return {
-    version: 1,
-    scenes,
-    productName: text(raw.productName, 80) || null,
-    productImageUrl: typeof raw.productImageUrl === 'string' && /^https:\/\//.test(raw.productImageUrl) ? raw.productImageUrl : null,
-  }
-}
 
 export async function POST(request: Request) {
   try {

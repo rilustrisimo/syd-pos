@@ -6,6 +6,25 @@
 import { AUDIENCE_BRIEFS, BUSINESS_CONTEXT, CALL_CTA, CALL_MENTION, CONTENT_RULES } from '@/lib/marketing/brand'
 import { CREATIVE_STYLE_KEYS, creativeStylesBrief, type CreativeStyle } from '@/lib/marketing/creative-styles'
 import type { ContentAudience } from '@/hooks/useContentIdeas'
+import { CAST_IDS, castBrief } from '@/lib/marketing/cast'
+import { problemsForPrompt } from '@/lib/marketing/problem-bank'
+import { NARRATION_LANGUAGE_RULES, type NarrationLanguage } from '@/lib/marketing/narration-language'
+
+/** Story posts: the recurring cast + this season's problem bank (built per request). */
+function storyContext(): string {
+  return [
+    'RECURRING CAST for "story" posts (use their names; one character per story, Ate Lyn can appear as the helpful SYD staff):',
+    castBrief(),
+    '',
+    'PROBLEM BANK — real local problems with the wrong fix people try and the right fix (use these for "story" posts and tips; pick products from PRODUCT SIGNALS that match the right fix):',
+    problemsForPrompt(),
+  ].join('\n')
+}
+
+/** Language for everything written in the plan: captions, scripts, voiceovers, on-screen text. */
+function languageRule(language: NarrationLanguage): string {
+  return `LANGUAGE for captions, scripts, voiceovers and on-screen text: ${NARRATION_LANGUAGE_RULES[language]}`
+}
 
 const ROLE = `You are SYD Construction Supplies' social media manager and Meta ads
 specialist. You plan content for the Facebook Page and Instagram account,
@@ -61,6 +80,9 @@ export interface PlannedPost {
   voice_script: string
   stock_keywords: string
   why: string
+  /** Story posts: cast id ('none' otherwise) and problem bank id. */
+  character?: string
+  problem_id?: string
 }
 
 export const PLAN_SCHEMA = {
@@ -79,30 +101,38 @@ export const PLAN_SCHEMA = {
           product_code: { type: 'STRING', description: 'Code of the featured product from PRODUCT SIGNALS (the text in [brackets]), or empty if the post is not about one product.' },
           angle: { type: 'STRING', description: 'The hook / problem / proof this post is built on, one line.' },
           best_time: { type: 'STRING', description: 'Posting time copied from the BEST TIMES list for that weekday, e.g. "Tue 8:00 PM".' },
-          caption: { type: 'STRING', description: 'Ready-to-post caption, taglish allowed, 2-5 short sentences, ends with a call to action (request a quote on sydconstruct.com, or ' + CALL_MENTION + '). No phone number, no hashtags inside.' },
+          caption: { type: 'STRING', description: 'Ready-to-post caption in the requested LANGUAGE, 2-5 short sentences, ends with a call to action (request a quote on sydconstruct.com, or ' + CALL_MENTION + '). No phone number, no hashtags inside.' },
           hashtags: { type: 'ARRAY', items: { type: 'STRING' }, description: '5-8 hashtags incl. local ones (e.g. #TalakagBukidnon), each with #.' },
           tags: { type: 'ARRAY', items: { type: 'STRING' }, description: 'Tagging suggestions: location tag, product tags, collaborator/supplier accounts to tag if relevant.' },
           creative_prompt: { type: 'STRING', description: 'Image/carousel only: paste-ready Canva prompt (1080x1350; carousel = slide by slide; brand colors; logo top-left; on-screen text; CTA strip with "Request a quote at sydconstruct.com" and "' + CALL_CTA + '" — the only phone number allowed on a creative). Empty for reels.' },
           shot_list: { type: 'STRING', description: 'Reel only: numbered shots following the creative style recipe (transition = 8-12 quick shots, others 4-6). Empty otherwise.' },
           stickers: { type: 'ARRAY', items: { type: 'STRING' }, description: 'Reel only: short on-screen text sticker per shot (max 6 words each, taglish ok), same count and order as the shot list; empty strings for shots without text. Empty array for non-reels.' },
-          voice_script: { type: 'STRING', description: 'Reel only: casual Taglish voiceover (no Bisaya), 50-80 words, ending with sydconstruct.com or a call ("the number\'s on screen" — never say the digits). Empty otherwise.' },
+          voice_script: { type: 'STRING', description: 'Reel only: casual voiceover in the requested LANGUAGE (no Bisaya), 50-80 words; story posts are narrated as the mini story; ending with sydconstruct.com or a call ("the number\'s on screen" — never say the digits). Empty otherwise.' },
           stock_keywords: { type: 'STRING', description: 'Reel only: stock video search terms separated by semicolons. Empty otherwise.' },
           why: { type: 'STRING', description: 'One sentence: why this post, today, at this time — cite the data when there is some.' },
+          character: { type: 'STRING', enum: [...CAST_IDS, 'none'], description: 'Story posts: the cast member the story is about. "none" otherwise.' },
+          problem_id: { type: 'STRING', description: 'Story posts: the PROBLEM BANK id in [brackets], or empty.' },
         },
-        required: ['date', 'format', 'audience', 'creative_style', 'title', 'product_code', 'angle', 'best_time', 'caption', 'hashtags', 'tags', 'creative_prompt', 'shot_list', 'stickers', 'voice_script', 'stock_keywords', 'why'],
-        propertyOrdering: ['date', 'format', 'audience', 'creative_style', 'title', 'product_code', 'angle', 'best_time', 'caption', 'hashtags', 'tags', 'creative_prompt', 'shot_list', 'stickers', 'voice_script', 'stock_keywords', 'why'],
+        required: ['date', 'format', 'audience', 'creative_style', 'title', 'product_code', 'angle', 'best_time', 'caption', 'hashtags', 'tags', 'creative_prompt', 'shot_list', 'stickers', 'voice_script', 'stock_keywords', 'why', 'character', 'problem_id'],
+        propertyOrdering: ['date', 'format', 'audience', 'creative_style', 'title', 'product_code', 'angle', 'best_time', 'caption', 'hashtags', 'tags', 'creative_prompt', 'shot_list', 'stickers', 'voice_script', 'stock_keywords', 'why', 'character', 'problem_id'],
       },
     },
   },
   required: ['posts'],
 }
 
-export function planPrompt(digest: string, dates: string[], note?: string): string {
+export function planPrompt(digest: string, dates: string[], note?: string, language: NarrationLanguage = 'taglish'): string {
   const week = dates.length > 1
   return [
     'PERFORMANCE DATA AND CONTEXT:',
     digest,
     '',
+    storyContext(),
+    '',
+    languageRule(language),
+    week
+      ? 'Stories: make about 1 in 3 posts creative_style "story" — a recurring cast member with a problem from the PROBLEM BANK, the wrong fix, then the right fix with SYD products. Use different characters and problems; set character and problem_id for them (character "none" and empty problem_id for the rest).'
+      : 'If a story fits today, use creative_style "story" with a cast member and a PROBLEM BANK problem; otherwise character "none".',
     week
       ? `Plan one organic post for each of these dates: ${dates.join(', ')}. Balance the week: about 2-3 reels, 2 carousels, 2-3 single images; rotate audiences (contractor, business_farm, family_build) with at most 1 general post; no two posts on the same topic or hook. Creative styles: use at least 4 different styles across the week, no style more than twice, and never the same style on two consecutive days.`
       : `Plan today's single best organic post for ${dates[0]}. Pick the format and audience that the data (and this week's plan, if any) suggests is most needed now, and a creative style different from the last 2 posts listed in the data.`,
@@ -138,6 +168,9 @@ export interface AdConcept {
   creative_prompt: string
   stock_keywords: string
   concept_code: string
+  /** Story concepts: cast id ('none' otherwise) and problem bank id. */
+  character?: string
+  problem_id?: string
   /** Set by the concepts route from product_code (not part of the schema). */
   source_product_id?: string | null
 }
@@ -172,12 +205,14 @@ export const CONCEPTS_SCHEMA = {
           stickers: { type: 'ARRAY', items: { type: 'STRING' }, description: 'Reel only: short on-screen text per shot (max 6 words), in shot order. Empty array otherwise.' },
           description: { type: 'STRING', description: 'What the ad shows and says, and its call to action (request a quote on sydconstruct.com, or call the store — the number is on the creative).' },
           image_concept: { type: 'STRING', description: 'The visual in one line; for reels a numbered shot list.' },
-          creative_prompt: { type: 'STRING', description: 'Image/carousel: paste-ready Canva prompt (1080x1350, brand colors, logo top-left, on-screen taglish text, CTA strip with "Request a quote at sydconstruct.com" and "' + CALL_CTA + '" — the only phone number allowed on a creative). Reel: a casual Taglish voiceover script (no Bisaya) of 50-80 words, ending with sydconstruct.com or a call ("the number\'s on screen" — never say the digits).' },
+          creative_prompt: { type: 'STRING', description: 'Image/carousel: paste-ready Canva prompt (1080x1350, brand colors, logo top-left, on-screen text in the requested LANGUAGE, CTA strip with "Request a quote at sydconstruct.com" and "' + CALL_CTA + '" — the only phone number allowed on a creative). Reel: a casual voiceover script in the requested LANGUAGE (no Bisaya) of 50-80 words — narrated as the mini story for "story" concepts — ending with sydconstruct.com or a call ("the number\'s on screen" — never say the digits).' },
           stock_keywords: { type: 'STRING', description: 'Reel: stock video search terms separated by semicolons. Empty otherwise.' },
           concept_code: { type: 'STRING', description: 'Unique lowercase slug: audience prefix (ctr / biz / fam / gen) + 2-3 word topic + format, e.g. "ctr-one-quote-reel".' },
+          character: { type: 'STRING', enum: [...CAST_IDS, 'none'], description: 'Story concepts: the cast member the story is about. "none" otherwise.' },
+          problem_id: { type: 'STRING', description: 'Story concepts: the PROBLEM BANK id in [brackets], or empty.' },
         },
-        required: ['title', 'goal', 'product_code', 'audience', 'angle', 'proof_type', 'format', 'creative_style', 'stickers', 'description', 'image_concept', 'creative_prompt', 'stock_keywords', 'concept_code'],
-        propertyOrdering: ['title', 'goal', 'product_code', 'audience', 'angle', 'proof_type', 'format', 'creative_style', 'stickers', 'description', 'image_concept', 'creative_prompt', 'stock_keywords', 'concept_code'],
+        required: ['title', 'goal', 'product_code', 'audience', 'angle', 'proof_type', 'format', 'creative_style', 'stickers', 'description', 'image_concept', 'creative_prompt', 'stock_keywords', 'concept_code', 'character', 'problem_id'],
+        propertyOrdering: ['title', 'goal', 'product_code', 'audience', 'angle', 'proof_type', 'format', 'creative_style', 'stickers', 'description', 'image_concept', 'creative_prompt', 'stock_keywords', 'concept_code', 'character', 'problem_id'],
       },
     },
   },
@@ -186,13 +221,17 @@ export const CONCEPTS_SCHEMA = {
 
 export function conceptsPrompt(
   digest: string,
-  opts: { topic: string; productName?: string | null; audiences: ContentAudience[]; count: number; kind?: ConceptKind }
+  opts: { topic: string; productName?: string | null; audiences: ContentAudience[]; count: number; kind?: ConceptKind; language?: NarrationLanguage }
 ): string {
   if (opts.kind === 'post') return postConceptsPrompt(digest, opts)
   return [
     'PERFORMANCE DATA AND CONTEXT:',
     digest,
     '',
+    storyContext(),
+    '',
+    languageRule(opts.language ?? 'taglish'),
+    'A "story" concept (cast member + PROBLEM BANK problem → right fix with SYD products) is welcome for one of the concepts when it fits the goal; set character and problem_id for it, character "none" for the rest.',
     `Create ${opts.count} DISTINCT Meta ad concepts${opts.topic ? ` about: ${opts.topic}` : ''}${opts.productName ? ` (product: ${opts.productName})` : ''}.`,
     'Ads exist to get results: each concept targets one goal — leads (quote requests on sydconstruct.com, calls or texts to the store, or messages), page_follows, interactions (comments, shares, reactions) or sales — with a clear, direct call to action for that goal. Spread the goals, with leads the most common.',
     `Spread them across these audiences as evenly as possible: ${opts.audiences.join(', ')}.`,
@@ -206,12 +245,17 @@ export function conceptsPrompt(
 // Everyday organic posts: build the audience and trust, not hard selling.
 function postConceptsPrompt(
   digest: string,
-  opts: { topic: string; productName?: string | null; audiences: ContentAudience[]; count: number }
+  opts: { topic: string; productName?: string | null; audiences: ContentAudience[]; count: number; language?: NarrationLanguage }
 ): string {
+  const stories = Math.max(1, Math.round(opts.count / 3))
   return [
     'PERFORMANCE DATA AND CONTEXT:',
     digest,
     '',
+    storyContext(),
+    '',
+    languageRule(opts.language ?? 'taglish'),
+    `Stories: make ${stories} of the ${opts.count} concepts creative_style "story" — each with a DIFFERENT cast member and a DIFFERENT problem from the PROBLEM BANK (matching its audience), told as setup → problem → wrong fix → right fix with SYD products → result. Set character and problem_id on them; character "none" and empty problem_id on the rest. The story goes in description, and for reels the voiceover narrates it.`,
     `Create ${opts.count} DISTINCT everyday (organic) post concepts for the Facebook Page and Instagram${opts.topic ? ` about: ${opts.topic}` : ''}${opts.productName ? ` (product: ${opts.productName})` : ''}.`,
     'These are NOT ads. Their job is reach and engagement so people follow and remember SYD: each targets one goal — reach, saves, shares, comments or trust. Mix post types: useful tips and how-tos (how much cement/sand for a slab, choosing roofing), product knowledge (types and uses), behind the scenes at the store and yard, deliveries and finished projects, relatable situations (POV), questions that invite comments, local Talakag/Bukidnon pride. At most one in four can be product-focused; keep the call to action soft (save, share, comment, follow) and mention sydconstruct.com or calling the store only when it fits naturally.',
     `Spread them across these audiences: ${opts.audiences.join(', ')}.`,

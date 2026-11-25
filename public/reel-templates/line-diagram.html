@@ -27,6 +27,8 @@
   .photo img { width:100%; height:100%; object-fit:contain; }
   .logo-box { position:absolute; left:290px; top:240px; width:500px; padding:40px; border:4px solid var(--line); }
   .logo-box img { width:100%; display:block; }
+  .castbox { color:var(--line); --fig-fill:var(--bp); --fig-accent:rgba(255,193,7,.18); --hat-fill:rgba(255,193,7,.35); --fig-logo:var(--accent); --fig-stroke:7; --prop-stroke:3.5; }
+  .castbox .fig-mark { color:var(--accent); }
   .corner { position:absolute; width:50px; height:50px; border-color:var(--accent); border-style:solid; }
 
   @keyframes gridWipe { from { clip-path: inset(0 0 100% 0); } to { clip-path: inset(0 0 0 0); } }
@@ -64,12 +66,18 @@ function dimension(ctx, { left, top, w, label, at }) {
 window.STYLE = {
   fonts: ['700 Space Grotesk', '500 IBM Plex Mono', '700 IBM Plex Mono'],
   transition: 'gridWipe',
+  cast: { enter: 'draw' },
   roles: {
     hook(scene, ctx) {
       const { el, at } = ctx
       const s = el('section'); s.append(el('div', 'grid'))
-      s.append(tag(ctx, 'FIG. 01', 80, 140, at(0.02)))
+      s.append(tag(ctx, `FIG. ${String(ctx.index + 1).padStart(2, '0')}`, 80, 140, at(0.02)))
       s.append(typed(ctx, scene.headline, 'title', { left: 80, top: 230, w: 920, h: 560, max: 190, at: at(0.08), dur: Math.min(1, ctx.dur * .4) }))
+      if (ctx.hasCast(scene)) {
+        s.append(ctx.cast(scene, { left: 100, top: 940, w: 880, h: 780 }, { at: at(0.25) }))
+        if (scene.sub) s.append(typed(ctx, scene.sub, 'mono', { left: 80, top: 820, w: 920, h: 90, max: 46, at: at(0.4) }))
+        return s
+      }
       const house = lines('<path d="M60 300 L400 60 L740 300"/><rect x="120" y="270" width="560" height="360"/><rect x="330" y="430" width="140" height="200"/><rect x="180" y="340" width="110" height="90"/><rect x="510" y="340" width="110" height="90"/><line x1="0" y1="630" x2="800" y2="630"/>', { left: 140, top: 920, w: 800, view: '0 0 800 660', width: 6 })
       drawAll(ctx, house, at(0.25), 1, .1); s.append(house)
       s.append(...dimension(ctx, { left: 260, top: 1610, w: 560, label: 'W = YOUR BUILD', at: at(0.6) }))
@@ -80,12 +88,14 @@ window.STYLE = {
     product(scene, ctx) {
       const { el, at, animate, data } = ctx
       const s = el('section'); s.append(el('div', 'grid'))
-      s.append(tag(ctx, 'FIG. 02 · MATERIAL', 80, 130, at(0.02)))
+      s.append(tag(ctx, `FIG. ${String(ctx.index + 1).padStart(2, '0')} · MATERIAL`, 80, 130, at(0.02)))
       s.append(typed(ctx, scene.headline, 'title', { left: 80, top: 210, w: 920, h: 230, max: 160, at: at(0.06) }))
       if (data.product.imageUrl) {
         const ph = el('div', 'photo'); const img = el('img'); img.src = data.product.imageUrl; ph.append(img); animate(ph, ['fade', .5, at(0.15)]); s.append(ph)
         ;[[200, 500, '4px 0 0 4px'], [830, 500, '4px 4px 0 0'], [200, 1130, '0 0 4px 4px'], [830, 1130, '0 4px 4px 0']].forEach(([l, t, b]) => {
           const c = el('div', 'corner'); Object.assign(c.style, { left: l + 'px', top: t + 'px', borderWidth: b }); animate(c, ['fade', .3, at(0.12)]); s.append(c) })
+      } else if (ctx.productProp() !== 'cement_bag') {
+        s.append(ctx.cast(scene, { left: 240, top: 500, w: 600, h: 600 }, { at: at(0.1), character: null, props: [ctx.productProp()] }))
       } else {
         const bag = lines('<path d="M70 70 Q250 30 430 70 L460 600 Q250 640 40 600 Z"/><path d="M70 70 Q250 110 430 70"/><rect x="105" y="200" width="290" height="220"/><line x1="130" y1="510" x2="370" y2="510"/>', { left: 290, top: 520, w: 500, view: '0 0 500 660', width: 5 })
         drawAll(ctx, bag, at(0.1), 1, .12); s.append(bag)
@@ -98,18 +108,22 @@ window.STYLE = {
       drawAll(ctx, leader, at(0.55), .5, .1); s.append(leader)
       if (scene.stamp) { const st = el('div', 'stampbox', scene.stamp); Object.assign(st.style, { left: '470px', top: '1250px' }); animate(st, ['stamp', .35, at(0.66), 'ease-out']); ctx.fit(st, { w: 540, max: 100, min: 40 }); st.style.width = 'auto'; s.append(st) }
       s.append(...dimension(ctx, { left: 290, top: 1250 - (scene.stamp ? -200 : 0), w: 500, label: data.product.name ? 'SPEC: ' + data.product.name.toUpperCase().slice(0, 22) : 'SPEC', at: at(0.3) }))
-      if (scene.sub) s.append(typed(ctx, scene.sub, 'mono', { left: 80, top: 1640, w: 920, h: 120, max: 46, at: at(0.45) }))
+      if (scene.character) s.append(ctx.cast(scene, { left: 50, top: 1320, w: 240, h: 360 }, { at: at(0.45), props: [], flip: false }))
+      if (scene.sub) s.append(typed(ctx, scene.sub, 'mono', { left: scene.character ? 320 : 80, top: 1700, w: scene.character ? 680 : 920, h: 120, max: 46, at: at(0.45) }))
       return s
     },
 
     proof(scene, ctx) {
       const { el, at, animate } = ctx
       const s = el('section'); s.append(el('div', 'grid'))
-      s.append(tag(ctx, 'FIG. 03 · SPECS', 80, 130, at(0.02)))
-      s.append(typed(ctx, scene.headline, 'title', { left: 80, top: 210, w: 920, h: 400, max: 210, at: at(0.05) }))
+      s.append(tag(ctx, `FIG. ${String(ctx.index + 1).padStart(2, '0')} · SPECS`, 80, 130, at(0.02)))
+      const items = (scene.items || []).slice(0, 3)
+      const side = scene.character && items.length
+      s.append(typed(ctx, scene.headline, 'title', { left: 80, top: 210, w: side ? 620 : 920, h: 400, max: 210, at: at(0.05) }))
+      if (side) s.append(ctx.cast(scene, { left: 730, top: 170, w: 290, h: 440 }, { at: at(0.15), props: [] }))
+      else if (ctx.hasCast(scene)) s.append(ctx.cast(scene, { left: 100, top: 900, w: 880, h: 840 }, { at: at(0.3) }))
       if (scene.sub) s.append(typed(ctx, scene.sub, 'mono', { left: 80, top: 640, w: 920, h: 110, max: 48, at: at(0.14), color: 'var(--dim)' }))
       if (scene.stamp) { const st = el('div', 'stampbox', scene.stamp); Object.assign(st.style, { left: '560px', top: '760px' }); animate(st, ['stamp', .35, at(0.28), 'ease-out']); ctx.fit(st, { w: 420, max: 70, min: 34 }); st.style.width = 'auto'; s.append(st) }
-      const items = (scene.items || []).slice(0, 3)
       items.forEach((text, i) => {
         const b = el('div', 'block'); Object.assign(b.style, { top: (900 + i * 240) + 'px', height: '200px' })
         const no = el('div', 'no', String(i + 1).padStart(2, '0')); const t = el('div', 't title', text); b.append(no, t)
@@ -130,11 +144,39 @@ window.STYLE = {
       animate(st, [['stamp', .35, at(0.52), 'ease-out']]); s.append(st)
       const cur = el('div', 'mono', '▌'); Object.assign(cur.style, { position: 'absolute', left: '80px', top: '1600px', fontSize: '60px', color: 'var(--accent)' })
       animate(cur, ['blink', 1, at(0.6), 'linear', 'infinite']); s.append(cur)
+      if (scene.character) s.append(ctx.cast(scene, { left: 820, top: 1520, w: 220, h: 330 }, { at: at(0.4), props: [] }))
+      return s
+    },
+
+    problem(scene, ctx) {
+      const { el, at, animate } = ctx
+      const s = el('section'); s.append(el('div', 'grid'))
+      const t = tag(ctx, `FIG. ${String(ctx.index + 1).padStart(2, '0')} · PROBLEM`, 80, 130, at(0.02)); t.style.background = '#FF6B6B'; s.append(t)
+      s.append(typed(ctx, scene.headline, 'title', { left: 80, top: 210, w: 920, h: 380, max: 190, at: at(0.05) }))
+      let top = 700
+      if (scene.sub) { s.append(typed(ctx, scene.sub, 'mono', { left: 80, top: 620, w: 920, h: 100, max: 46, at: at(0.15), color: 'var(--dim)' })); top = 760 }
+      s.append(ctx.cast(scene, { left: 100, top, w: 880, h: (scene.stamp ? 1560 : 1760) - top }, { at: at(0.2) }) || el('div'))
+      if (scene.stamp) { const st = el('div', 'stampbox', scene.stamp); Object.assign(st.style, { left: '300px', top: '1620px', borderColor: '#FF6B6B', color: '#FF6B6B' }); animate(st, ['stamp', .35, at(0.6), 'ease-out']); ctx.fit(st, { w: 480, max: 80, min: 34 }); st.style.width = 'auto'; s.append(st) }
+      return s
+    },
+
+    solution(scene, ctx) {
+      const { el, at, animate, data } = ctx
+      const s = el('section'); s.append(el('div', 'grid'))
+      s.append(tag(ctx, `FIG. ${String(ctx.index + 1).padStart(2, '0')} · FIX`, 80, 130, at(0.02)))
+      s.append(typed(ctx, scene.headline, 'title', { left: 80, top: 210, w: 920, h: 380, max: 190, at: at(0.05) }))
+      let top = 700
+      if (scene.sub) { s.append(typed(ctx, scene.sub, 'mono', { left: 80, top: 620, w: 920, h: 100, max: 46, at: at(0.15), color: 'var(--dim)' })); top = 760 }
+      const props = scene.props && scene.props.length ? undefined : (data.product.prop ? [data.product.prop] : undefined)
+      s.append(ctx.cast(scene, { left: 100, top, w: 880, h: (scene.stamp ? 1560 : 1760) - top }, { at: at(0.2), props }) || el('div'))
+      if (scene.stamp) { const st = el('div', 'stampbox', scene.stamp); Object.assign(st.style, { left: '300px', top: '1620px' }); animate(st, ['stamp', .35, at(0.6), 'ease-out']); ctx.fit(st, { w: 480, max: 80, min: 34 }); st.style.width = 'auto'; s.append(st) }
       return s
     },
   },
 }
 </script>
+<script src="_cast.js"></script>
+<script src="_props.js"></script>
 <script src="_runtime.js"></script>
 </body>
 </html>

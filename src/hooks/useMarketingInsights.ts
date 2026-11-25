@@ -40,7 +40,7 @@ export function useImportInsights() {
 
 export function usePlanPosts() {
   return useMutation({
-    mutationFn: (input: { mode: 'today' | 'week'; note?: string }) =>
+    mutationFn: (input: { mode: 'today' | 'week'; note?: string; language?: 'english' | 'taglish' }) =>
       postJson<{ posts: PlannedPost[]; confidence: string }>('/api/marketing/plan', input),
   })
 }
@@ -48,7 +48,8 @@ export function usePlanPosts() {
 export function useSavePlannedPosts() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (posts: PlannedPost[]) => postJson<{ saved: number }>('/api/marketing/plan/save', { posts }),
+    mutationFn: ({ posts, language }: { posts: PlannedPost[]; language?: 'english' | 'taglish' }) =>
+      postJson<{ saved: number }>('/api/marketing/plan/save', { posts, language }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['content_suggestions'] })
       qc.invalidateQueries({ queryKey: ['content_ideas'] })
@@ -59,7 +60,7 @@ export function useSavePlannedPosts() {
 
 export function useGenerateConcepts() {
   return useMutation({
-    mutationFn: (input: { topic: string; source_product_id?: string; audiences: ContentAudience[]; count: number; kind?: 'ad' | 'post' }) =>
+    mutationFn: (input: { topic: string; source_product_id?: string; audiences: ContentAudience[]; count: number; kind?: 'ad' | 'post'; language?: 'english' | 'taglish' }) =>
       postJson<{ concepts: AdConcept[] }>('/api/marketing/concepts', input),
   })
 }

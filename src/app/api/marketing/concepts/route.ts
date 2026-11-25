@@ -15,6 +15,7 @@ import { geminiJson, GeminiError } from '@/lib/marketing/gemini'
 import { toConceptCode } from '@/lib/marketing/concept-code'
 import { PLANNER_SYSTEM, conceptsSchema, conceptsPrompt, type AdConcept, type ConceptKind } from '@/lib/marketing/planner-prompts'
 import type { ContentAudience } from '@/hooks/useContentIdeas'
+import { parseNarrationLanguage } from '@/lib/marketing/narration-language'
 
 // Gemini fallback (lib/marketing/gemini.ts) may try several models within 55 s.
 export const maxDuration = 60
@@ -27,7 +28,8 @@ export async function POST(request: Request) {
     const auth = await requireMarketingStaff(supabase as any)
     if (auth.error) return auth.error
 
-    const body = await request.json() as { topic?: string; source_product_id?: string; audiences?: string[]; count?: number; kind?: string }
+    const body = await request.json() as { topic?: string; source_product_id?: string; audiences?: string[]; count?: number; kind?: string; language?: string }
+    const language = parseNarrationLanguage(body.language)
     const kind: ConceptKind = body.kind === 'post' ? 'post' : 'ad'
     const audiences = (body.audiences ?? []).filter((a): a is ContentAudience => VALID_AUDIENCES.includes(a as ContentAudience))
     if (!audiences.length) return NextResponse.json({ error: 'Pick at least one audience' }, { status: 400 })
@@ -48,7 +50,7 @@ export async function POST(request: Request) {
     const result = await geminiJson<{ concepts: AdConcept[] }>({
       feature: 'concepts',
       system: PLANNER_SYSTEM,
-      prompt: conceptsPrompt(buildDigest(data) + productDigest, { topic: body.topic?.trim().slice(0, 200) ?? '', productName, audiences, count, kind }),
+      prompt: conceptsPrompt(buildDigest(data) + productDigest, { topic: body.topic?.trim().slice(0, 200) ?? '', productName, audiences, count, kind, language }),
       schema: conceptsSchema(kind),
       maxOutputTokens: 9000,
     })

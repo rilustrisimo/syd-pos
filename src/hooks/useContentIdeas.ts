@@ -3,6 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { getClient } from '@/lib/supabase/client'
 import type { CreativeStyle } from '@/lib/marketing/creative-styles'
+import type { NarrationLanguage } from '@/lib/marketing/narration-language'
 
 export type ContentIdeaStatus = 'idea' | 'created' | 'posted'
 export type ContentFormat = 'image' | 'carousel' | 'reel'
@@ -29,6 +30,7 @@ export interface ContentIdea {
   tags: string | null
   creative_style: CreativeStyle | null
   reel_stickers: string[] | null
+  language?: NarrationLanguage
   source_product_id: string | null
   status: ContentIdeaStatus
   created_by: string | null
@@ -80,6 +82,7 @@ export interface NewContentIdeaInput {
   tags?: string
   creative_style?: CreativeStyle
   reel_stickers?: string[]
+  language?: NarrationLanguage
 }
 
 export function useCreateContentIdea() {
