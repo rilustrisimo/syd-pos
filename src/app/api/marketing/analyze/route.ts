@@ -13,6 +13,9 @@ import { buildDigest, loadInsights } from '@/lib/marketing/insights-data'
 import { geminiJson, GeminiError } from '@/lib/marketing/gemini'
 import { PLANNER_SYSTEM, ANALYSIS_SCHEMA, analysisPrompt, type InsightsAnalysis } from '@/lib/marketing/planner-prompts'
 
+// Gemini fallback (lib/marketing/gemini.ts) may try several models within 55 s.
+export const maxDuration = 60
+
 export async function POST() {
   try {
     const supabase = await createClient()

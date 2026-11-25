@@ -19,6 +19,26 @@ export interface AiUsageEntry {
   error?: string | null
 }
 
+/**
+ * Gemini models that answered 429 (free-tier limit) within the last `withinMs`,
+ * so the fallback can skip them instead of waiting on another refusal.
+ * Best-effort: an empty set if the log can't be read.
+ */
+export async function recentlyRateLimitedModels(withinMs: number): Promise<Set<string>> {
+  try {
+    const supabase = await createClient()
+    const { data } = await supabase
+      .from('ai_usage_log' as never)
+      .select('model')
+      .eq('provider', 'gemini')
+      .eq('status', 'rate_limited')
+      .gte('created_at', new Date(Date.now() - withinMs).toISOString())
+    return new Set(((data ?? []) as { model: string }[]).map((r) => r.model))
+  } catch {
+    return new Set()
+  }
+}
+
 export async function logAiUsage(entry: AiUsageEntry): Promise<void> {
   try {
     const supabase = await createClient()

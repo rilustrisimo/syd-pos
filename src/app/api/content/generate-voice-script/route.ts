@@ -15,6 +15,9 @@ import { createClient } from '@/lib/supabase/server'
 import { NARRATION_LANGUAGE_RULES, parseNarrationLanguage } from '@/lib/marketing/narration-language'
 import { geminiGenerate, GeminiError } from '@/lib/marketing/gemini'
 
+// Gemini fallback (lib/marketing/gemini.ts) may try several models within 55 s.
+export const maxDuration = 60
+
 const VOICE_BRIEF = `You rewrite a social media post's script into a short voiceover
 script for SYD Construction Supplies Trading, a hardware/construction
 supplies store in Talakag, Bukidnon, Philippines. Spoken cadence: short

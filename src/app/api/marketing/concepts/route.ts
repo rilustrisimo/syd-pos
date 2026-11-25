@@ -16,6 +16,9 @@ import { toConceptCode } from '@/lib/marketing/concept-code'
 import { PLANNER_SYSTEM, conceptsSchema, conceptsPrompt, type AdConcept, type ConceptKind } from '@/lib/marketing/planner-prompts'
 import type { ContentAudience } from '@/hooks/useContentIdeas'
 
+// Gemini fallback (lib/marketing/gemini.ts) may try several models within 55 s.
+export const maxDuration = 60
+
 const VALID_AUDIENCES: ContentAudience[] = ['contractor', 'business_farm', 'family_build', 'general']
 
 export async function POST(request: Request) {

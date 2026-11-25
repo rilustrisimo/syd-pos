@@ -22,6 +22,9 @@ import { composeCaption, loadStoreContact } from '@/lib/marketing/store-contact'
 import { CREATIVE_STYLES, isCreativeStyle, type CreativeStyle } from '@/lib/marketing/creative-styles'
 import { geminiGenerate, GeminiError } from '@/lib/marketing/gemini'
 
+// Gemini fallback (lib/marketing/gemini.ts) may try several models within 55 s.
+export const maxDuration = 60
+
 const BRAND_BRIEF = `You write social media content for SYD Construction Supplies Trading, a
 hardware/construction supplies store in Talakag, Bukidnon, Philippines. The
 audience is a mix of DIY homeowners and contractors/bulk buyers. Tone:

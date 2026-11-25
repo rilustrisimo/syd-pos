@@ -16,6 +16,9 @@ import { loadProductDigest } from '@/lib/marketing/product-signals'
 import { geminiJson, GeminiError } from '@/lib/marketing/gemini'
 import { PLANNER_SYSTEM, PLAN_SCHEMA, planPrompt, type PlannedPost } from '@/lib/marketing/planner-prompts'
 
+// Gemini fallback (lib/marketing/gemini.ts) may try several models within 55 s.
+export const maxDuration = 60
+
 export async function POST(request: Request) {
   try {
     const supabase = await createClient()
