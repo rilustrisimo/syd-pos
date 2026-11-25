@@ -19,7 +19,8 @@ export const CAST: CastMember[] = [
   { id: 'ramon', name: 'Mang Ramon', role: 'farmer (piggery and poultry in Talakag)', look: 'straw hat', stories: 'pig pens, poultry houses, farm fences, farm roofing, rainy-season farm problems' },
   { id: 'joy', name: 'Engr. Joy', role: 'contractor / site engineer', look: 'hard hat', stories: 'slabs, columns, bulk orders, mixing ratios, project timelines, delivery to site' },
   { id: 'ben', name: 'Kuya Ben', role: 'homeowner building or repairing his family house', look: 'cap', stories: 'roof leaks, small repairs, first house, budget, DIY fixes' },
-  { id: 'lyn', name: 'Ate Lyn', role: 'SYD Construction Supplies staff', look: 'SYD cap', stories: 'gives the right fix, quotes, delivery, product tips' },
+  // Id stays 'lyn' (saved storyboards/ideas use it); shown and written as Boss J.
+  { id: 'lyn', name: 'Boss J', role: 'SYD Construction Supplies staff', look: 'SYD cap', stories: 'gives the right fix, quotes, delivery, product tips' },
 ]
 
 export const CAST_IDS = CAST.map((c) => c.id)

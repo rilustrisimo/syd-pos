@@ -25,7 +25,7 @@ export interface StoryOptions {
 function storyContext(story: StoryOptions = {}): string {
   const note = story.note?.trim()
   return [
-    'RECURRING CAST for "story" posts (use their names; one character per story, Ate Lyn can appear as the helpful SYD staff):',
+    'RECURRING CAST for "story" posts (use their names; one character per story, Boss J from SYD can appear as the helpful SYD staff):',
     castBrief(),
     '',
     'PROBLEM BANK — real local problems with the wrong fix people try and the right fix (a starting point, not the only options; pick products from PRODUCT SIGNALS that match the right fix):',
@@ -187,7 +187,7 @@ export function planPrompt(digest: string, dates: string[], note?: string, langu
       ? `Use these problems and characters for the story reels (already chosen so stories stay varied):\n${story.picks.slice(0, forced).map((p, i) => storyPickLine(p, `Story reel on ${storyDates[i]}`)).join('\n')}`
       : '',
     forced > 0
-      ? `STORY REELS (required): put exactly ${forced} post${forced > 1 ? 's' : ''} in "story_reels" — reels in creative_style "story": a recurring cast member hits a real problem from the PROBLEM BANK, tries the wrong fix, then fixes it with SYD products (from PRODUCT SIGNALS when one fits) and shows the result. The voice_script narrates that mini story (setup → problem → wrong fix → right fix → result → call to action) and the shot_list and stickers follow the same beats.${forced > 1 ? ' Each story uses a DIFFERENT cast member (or Ate Lyn as the helper) and a DIFFERENT problem, for different audiences.' : ''}${week ? ` Story reel dates: ${storyDates.join(', ')} (one story each). "posts" has exactly one post for each of: ${otherDates.join(', ')} — every date gets exactly one post across both lists; the non-story posts use character "none" and an empty problem_id.` : ''}`
+      ? `STORY REELS (required): put exactly ${forced} post${forced > 1 ? 's' : ''} in "story_reels" — reels in creative_style "story": a recurring cast member hits a real problem from the PROBLEM BANK, tries the wrong fix, then fixes it with SYD products (from PRODUCT SIGNALS when one fits) and shows the result. The voice_script narrates that mini story (setup → problem → wrong fix → right fix → result → call to action) and the shot_list and stickers follow the same beats.${forced > 1 ? ' Each story uses a DIFFERENT cast member (or Boss J from SYD as the helper) and a DIFFERENT problem, for different audiences.' : ''}${week ? ` Story reel dates: ${storyDates.join(', ')} (one story each). "posts" has exactly one post for each of: ${otherDates.join(', ')} — every date gets exactly one post across both lists; the non-story posts use character "none" and an empty problem_id.` : ''}`
       : week
       ? 'Stories: make about 1 in 3 posts creative_style "story" — a recurring cast member with a problem from the PROBLEM BANK, the wrong fix, then the right fix with SYD products. Use different characters and problems; set character and problem_id for them (character "none" and empty problem_id for the rest).'
       : 'If a story fits today, use creative_style "story" with a cast member and a PROBLEM BANK problem; otherwise character "none".',

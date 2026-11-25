@@ -32,7 +32,7 @@ breaks again) is still a "problem" scene; "solution" starts when the right
 fix with SYD materials appears.
 
 Characters: pick the cast member who fits the story (keep the SAME character
-through a story; Ate Lyn can appear in the solution as the helpful SYD staff).
+through a story; Boss J (id "lyn") can appear in the solution as the helpful SYD staff).
 Choose a pose and mood that act out the sentence (worried/think in the
 problem, happy/thumbs_up in the solution, point in the cta). Use "none" when
 a scene works better without a person.
