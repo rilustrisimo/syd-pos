@@ -29,8 +29,10 @@ export type Pose = (typeof POSES)[number]
 export const MOODS = ['worried', 'happy', 'surprised', 'thinking'] as const
 export type Mood = (typeof MOODS)[number]
 export const PROP_IDS = [
-  'gi_sheet', 'gi_pipe', 'cyclone_wire', 'tie_wire', 'hollow_block', 'cement_bag', 'rebar', 'plywood',
-  'paint_can', 'pvc_pipe', 'nails', 'hammer', 'shovel', 'wheelbarrow', 'truck', 'house', 'roof', 'fence',
+  'gi_sheet', 'gi_pipe', 'cyclone_wire', 'tie_wire', 'hollow_block', 'cement_bag', 'sand', 'gravel', 'rebar', 'plywood',
+  'board', 'lumber', 'wall', 'tiles', 'angle_bar', 'purlin', 'door',
+  'paint_can', 'paint_roller', 'sealant', 'pvc_pipe', 'faucet', 'electrical_wire', 'bulb',
+  'nails', 'hammer', 'shovel', 'wheelbarrow', 'truck', 'house', 'roof', 'fence',
   'pig', 'chicken', 'rain_cloud', 'sun', 'water_drop', 'crack', 'rust', 'phone',
 ] as const
 export type PropId = (typeof PROP_IDS)[number]
@@ -43,15 +45,30 @@ export interface SceneCharacter {
 
 /** Product name → the prop that draws it (product scene without a photo). */
 const PRODUCT_PROP_RULES: [RegExp, PropId][] = [
+  // Most specific first (e.g. "angle bar" before the generic "bar" of rebar).
   [/cyclone|chicken wire|wire mesh/i, 'cyclone_wire'],
-  [/tie wire|alambre/i, 'tie_wire'],
+  [/tie wire|alambre|g\.?i\.? ?wire/i, 'tie_wire'],
+  [/thhn|electrical wire|royal cord|\bpdx\b|\bwire #?\d/i, 'electrical_wire'],
+  [/angle ?bar/i, 'angle_bar'],
+  [/purlin|c-?channel/i, 'purlin'],
   [/g\.?i\.? ?(tube|pipe)|steel pipe|tubular/i, 'gi_pipe'],
   [/g\.?i\.? ?sheet|roofing|yero|corrugated|pre-?painted/i, 'gi_sheet'],
   [/hollow ?block|chb/i, 'hollow_block'],
+  [/tile/i, 'tiles'],
+  [/skim ?coat|putty/i, 'wall'],
   [/cement|semento/i, 'cement_bag'],
+  [/gravel|graba|aggregate|crushed|escombro/i, 'gravel'],
+  [/\bsand\b|buhangin/i, 'sand'],
   [/deformed|rebar|bar\b/i, 'rebar'],
-  [/plywood|marine|board/i, 'plywood'],
-  [/paint|primer|enamel|elastomeric/i, 'paint_can'],
+  [/plywood|marine/i, 'plywood'],
+  [/hardiflex|fiber ?cement|ficem|gypsum|\bboard\b/i, 'board'],
+  [/lumber|kahoy|coco|\b2 ?x ?\d/i, 'lumber'],
+  [/\bdoor\b|pinto/i, 'door'],
+  [/roller|brush/i, 'paint_roller'],
+  [/paint|primer|enamel|elastomeric|latex/i, 'paint_can'],
+  [/sealant|silicone|vulcaseal|caulk|epoxy/i, 'sealant'],
+  [/faucet|gripo|shower|\btap\b/i, 'faucet'],
+  [/bulb|\bled\b|lamp|light/i, 'bulb'],
   [/pvc|ppr|pipe|fitting/i, 'pvc_pipe'],
   [/nail|screw|bolt/i, 'nails'],
   [/hammer/i, 'hammer'],

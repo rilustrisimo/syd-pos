@@ -39,7 +39,7 @@ a scene works better without a person.
 
 Props: 0–3 objects from the list that are literally in the sentence or its
 action (a leaking roof → roof, rain_cloud, water_drop; pig fence → pig,
-fence, cyclone_wire; delivery → truck). Use the product's own prop for the
+fence, cyclone_wire; delivery → truck; mixing concrete → cement_bag, sand, gravel). Use the product's own prop for the
 product/solution scene. No unrelated props.`
 
 export const STORYBOARD_SCHEMA = {

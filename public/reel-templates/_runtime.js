@@ -113,7 +113,7 @@
       const areaL = hasFig ? (figRight ? 0 : box.w * 0.5) : 0
       const areaW = hasFig ? box.w * 0.5 : box.w
       const wide = areaW > box.h * 1.3
-      const size = Math.min(wide ? areaW / n * 0.86 : areaW * 0.86, wide ? box.h * 0.8 : (box.h / n) * 0.92, 340)
+      const size = Math.min(wide ? areaW / n * 0.86 : areaW * 0.86, wide ? box.h * 0.8 : (box.h / n) * 0.92, !hasFig && n === 1 ? 560 : 340)
       propIds.forEach((id, i) => {
         let left, top
         if (wide) { left = areaL + (areaW / n) * (i + 0.5) - size / 2; top = (box.h - size) / 2 + (i % 2 ? size * 0.12 : -size * 0.06) }
