@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
@@ -79,6 +79,8 @@ import {
 import { Label } from '@/components/ui/label'
 import { TrendingUp, TrendingDown, Minus, CheckCheck, RotateCcw, PiggyBank } from 'lucide-react'
 import { TagInvestmentDialog } from '@/components/investments/tag-investment-dialog'
+import { POInvestorsCard, LineInvestorTags } from '@/components/investments/po-investors'
+import { usePOInvestmentShares } from '@/hooks/useInvestments'
 
 const statusConfig: Record<POStatus, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline'; icon: typeof FileText; color: string }> = {
   draft: { label: 'Draft', variant: 'outline', icon: FileText, color: 'text-gray-500' },
@@ -129,21 +131,11 @@ export default function PurchaseOrderDetailPage() {
   const [isPriceReviewOpen, setIsPriceReviewOpen] = useState(false)
   const [priceReviewItems, setPriceReviewItems] = useState<PriceReviewItem[]>([])
   const [isApplyingPriceReview, setIsApplyingPriceReview] = useState(false)
-  // Investments: admins are offered tagging after each receive, once the
-  // price review (if any) is closed. Tagging is optional.
+  // Investments: only an admin tags stock, on purpose, with "Tag to
+  // Investment" (no automatic prompt after receiving, to avoid mistakes).
   const isAdmin = user?.role === 'admin'
   const [isTagOpen, setIsTagOpen] = useState(false)
-  const [tagPromptPending, setTagPromptPending] = useState(false)
-  useEffect(() => {
-    if (tagPromptPending && !isPriceReviewOpen) {
-      // Wait for the price review's close animation so the dialogs don't overlap.
-      const t = setTimeout(() => {
-        setTagPromptPending(false)
-        setIsTagOpen(true)
-      }, 300)
-      return () => clearTimeout(t)
-    }
-  }, [tagPromptPending, isPriceReviewOpen])
+  const { data: investorShares = [] } = usePOInvestmentShares(poId, isAdmin)
 
   if (isLoading) {
     return (
@@ -281,7 +273,6 @@ export default function PurchaseOrderDetailPage() {
       const receivedLine = receivingLine
       setReceivingLine(null)
       openPriceReview([receivedLine])
-      if (isAdmin) setTagPromptPending(true)
     } catch (err: any) {
       toast.error(err.message || 'Failed to receive items')
     }
@@ -298,7 +289,6 @@ export default function PurchaseOrderDetailPage() {
         (line) => Number(line.quantity_received) < Number(line.quantity_ordered)
       )
       openPriceReview(remainingLines)
-      if (isAdmin) setTagPromptPending(true)
     } catch (err: any) {
       toast.error(err.message || 'Failed to receive all items')
     }
@@ -603,6 +593,7 @@ export default function PurchaseOrderDetailPage() {
                               <div className="text-xs text-muted-foreground font-mono">
                                 {(line.product as any)?.code}
                               </div>
+                              {isAdmin && <LineInvestorTags shares={investorShares} lineId={line.id} productId={line.product_id} />}
                             </div>
                           </TableCell>
                           <TableCell>{(line.uom as any)?.code}</TableCell>
@@ -701,6 +692,11 @@ export default function PurchaseOrderDetailPage() {
               })()}
             </CardContent>
           </Card>
+
+          {/* Investors this PO's stock is tagged to (admins only) */}
+          {isAdmin && hasReceivedItems && (
+            <POInvestorsCard shares={investorShares} onTag={() => setIsTagOpen(true)} />
+          )}
 
           {/* Supplier Info */}
           <Card>

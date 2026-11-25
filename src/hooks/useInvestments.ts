@@ -11,6 +11,7 @@ import {
   getInvestmentShares,
   getInvestmentSales,
   getTaggableLots,
+  getPOInvestmentShares,
   tagInvestment,
   untagInvestment,
   type InvestmentInput,
@@ -42,6 +43,11 @@ export function useInvestmentSales(id: string) {
 
 export function useTaggableLots(poId: string, enabled = true) {
   return useQuery({ queryKey: [KEY, 'taggable', poId], queryFn: () => getTaggableLots(poId), enabled: !!poId && enabled })
+}
+
+/** Which investors this PO's received stock is tagged to (admins only). */
+export function usePOInvestmentShares(poId: string, enabled = true) {
+  return useQuery({ queryKey: [KEY, 'po', poId], queryFn: () => getPOInvestmentShares(poId), enabled: !!poId && enabled })
 }
 
 /** Anything that changes tags or money changes every investment's figures. */

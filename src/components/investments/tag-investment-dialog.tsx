@@ -1,7 +1,7 @@
 'use client'
 
-// Tag received stock from one PO to investments. Used right after receiving
-// (opens automatically for admins) and any time later. Only units still
+// Tag received stock from one PO to investments (admins only, opened from
+// the PO page's "Tag to Investment" button). Only units still
 // unsold and not already tagged can be tagged; the database enforces that
 // and the investment's available amount (lots_private.tag, migration 00108).
 

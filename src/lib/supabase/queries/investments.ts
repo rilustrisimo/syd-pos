@@ -261,6 +261,43 @@ export async function getInvestmentSales(investmentId: string): Promise<Investme
   }))
 }
 
+/** An investor's tag on a product received through one PO (PO page, admins only). */
+export interface POInvestmentShare {
+  id: string
+  qty_tagged: number
+  /** Tagged units not sold yet. */
+  qty_remaining: number
+  unit_cost: number
+  tagged_at: string
+  po_line_id: string | null
+  product: { id: string; code: string; name: string } | null
+  investment: { id: string; code: string; investor_name: string; profit_share_pct: number; status: string } | null
+}
+
+export async function getPOInvestmentShares(poId: string): Promise<POInvestmentShare[]> {
+  const { data, error } = await db()
+    .from('investment_lot_shares')
+    .select(`
+      id, qty_tagged, qty_remaining, unit_cost, tagged_at,
+      investment:investments(id, code, investor_name, profit_share_pct, status),
+      lot:inventory_lots!inner(po_id, po_line_id, product:products(id, code, name))
+    `)
+    .eq('lot.po_id', poId)
+    .gt('qty_tagged', 0)
+    .order('tagged_at', { ascending: true })
+  if (error) throw error
+  return (data ?? []).map((r: any) => ({
+    id: r.id,
+    qty_tagged: num(r.qty_tagged),
+    qty_remaining: num(r.qty_remaining),
+    unit_cost: num(r.unit_cost),
+    tagged_at: r.tagged_at,
+    po_line_id: r.lot?.po_line_id ?? null,
+    product: r.lot?.product ?? null,
+    investment: r.investment ? { ...r.investment, profit_share_pct: num(r.investment.profit_share_pct) } : null,
+  }))
+}
+
 export async function getTaggableLots(poId: string): Promise<TaggableLot[]> {
   const { data, error } = await db().rpc('get_taggable_lots', { p_po_id: poId, p_product_id: null })
   if (error) throw error
