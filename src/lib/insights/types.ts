@@ -22,7 +22,9 @@ export interface SeriesRow { product_id: string; qty: number[]; out: number[]; r
 export interface CategoryMonthRow { category: string; month: string; revenue: number }
 export interface CustomerRow {
   customer_id: string; name: string; customer_type: string | null; phone: string | null
-  credit_limit: number; is_walkin: boolean
+  credit_limit: number; is_walkin: boolean; is_internal: boolean
+  /** Median days between buying bursts (>7-day gaps) and number of bursts. */
+  episode_gap_days: number | null; episodes: number
   first_date: string | null; last_date: string | null
   orders: number; buy_days: number; revenue: number; profit: number
   rev_90: number; rev_prev_90: number
@@ -35,13 +37,20 @@ export interface InventoryRow {
   unit_cost: number; selling_price: number; sell_conv: number
   reorder_point: number; last_sale: string | null; last_received: string | null
   lead_days: number | null; lead_samples: number
+  /** Where the delivery time came from: the supplier setting, real PO gaps, or unknown. */
+  lead_source: 'supplier' | 'measured' | null
 }
 export interface LeadTimeRow {
   po_id: string; po_number: string; supplier: string; po_date: string
   expected: string | null; actual: string; lead_days: number; late_days: number | null; total: number
+  supplier_lead_days: number | null
 }
 export interface BasketPairRow { product_a: string; product_b: string; together: number }
-export interface AdjustmentRow { month: string; product_id: string; qty_lost: number; qty_found: number; value_lost: number }
+export interface AdjustmentRow {
+  month: string; product_id: string; qty_lost: number; qty_found: number; value_lost: number
+  /** value_lost split by the adjustment reason: damage/theft/expired, stocktake count, correction/other. */
+  value_loss: number; value_count: number; value_fix: number
+}
 export interface QuotationRow { month: string; quotes: number; quoted_amount: number; converted: number; converted_amount: number }
 export interface DeliveryRow { place: string; distance_km: number | null; revenue: number; delivery_fee: number }
 export interface ExpenseRow { ph_date: string; category_name: string; total_amount: number }

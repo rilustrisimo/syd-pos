@@ -151,6 +151,7 @@ function EditCustomerDialog({
     customer_type: customer?.customer_type || 'cash',
     credit_limit: customer?.credit_limit || 0,
     payment_terms: customer?.payment_terms || null,
+    is_internal: customer?.is_internal ?? false,
   })
 
   const handleSave = async () => {
@@ -253,6 +254,18 @@ function EditCustomerDialog({
               />
             </div>
           )}
+          <label className="flex items-start gap-2 text-sm cursor-pointer">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={!!form.is_internal}
+              onChange={(e) => setForm({ ...form, is_internal: e.target.checked })}
+            />
+            <span>
+              Internal / own account
+              <span className="block text-xs text-muted-foreground">SYD&apos;s own use or the owner&apos;s account. Still counted in sales, but left out of customer insights and call lists.</span>
+            </span>
+          </label>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>

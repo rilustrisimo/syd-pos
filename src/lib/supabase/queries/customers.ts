@@ -24,6 +24,7 @@ export interface CustomerInput {
   credit_limit?: number
   payment_terms?: number | null
   is_active?: boolean
+  is_internal?: boolean
 }
 
 export interface CustomerFilters {
@@ -167,6 +168,7 @@ export async function updateCustomer(id: string, input: Partial<CustomerInput>) 
   if (input.credit_limit !== undefined) updateData.credit_limit = input.credit_limit
   if (input.payment_terms !== undefined) updateData.payment_terms = input.payment_terms
   if (input.is_active !== undefined) updateData.is_active = input.is_active
+  if (input.is_internal !== undefined) updateData.is_internal = input.is_internal
 
   const { data, error } = await supabase
     .from('customers')

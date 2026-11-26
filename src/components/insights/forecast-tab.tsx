@@ -136,7 +136,7 @@ export function ForecastTab({ b }: { b: InsightsBundle }) {
         <MiniTable head={['Product', 'Pattern', 'Wk 1', 'Wk 2', 'Wk 3', 'Wk 4', 'On hand', 'Reorder pt', 'Order', 'Status']}
           rows={reorder.slice(0, 60).map((p) => [
             <span key="n"><Link href={`/products/${p.product_id}`} className="hover:underline">{p.name}</Link> <span className="text-[10px] text-muted-foreground">{p.uom}</span></span>,
-            <span key="c" className="text-xs text-muted-foreground">{CLS[p.cls]}</span>,
+            <span key="c" className="text-xs text-muted-foreground" title={p.method === 'cautious' ? 'Out of stock for long stretches: forecast spreads past sales over at least 8 weeks' : p.method === 'average' ? 'Recent average tested more accurate than the model for this product' : 'Demand model tested more accurate than a recent average'}>{CLS[p.cls]}{p.method === 'cautious' ? ' · little data' : ''}</span>,
             ...p.weeks.map((w) => <span key={w.week} title={`${num(w.lo, 1)} – ${num(w.hi, 1)}`}>{num(w.qty, 1)}</span>),
             num(p.r?.onHand, 1), num(p.r?.reorderPoint, 1), p.r?.suggestQty ? <b key="o">{num(p.r.suggestQty)}</b> : '—',
             p.r ? <Pill key="s" tone={STATUS[p.r.status].tone}>{STATUS[p.r.status].label}</Pill> : '',

@@ -144,6 +144,8 @@ export interface SupplierRow {
   email: string | null
   address: string | null
   payment_terms: string | null
+  /** Typical days from ordering to delivery (used by Insights reorder points). */
+  lead_time_days?: number | null
   is_active: boolean
   created_at: string
 }
@@ -158,6 +160,8 @@ export interface CustomerRow {
   credit_limit: number
   outstanding_balance: number
   payment_terms: number | null
+  /** SYD's own/internal account: excluded from customer insights. */
+  is_internal?: boolean
   is_active: boolean
   created_at: string
   updated_at: string

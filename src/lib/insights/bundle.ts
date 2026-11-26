@@ -89,11 +89,13 @@ export function buildBundle(raw: RawInsights) {
     meta: { from, to, today, branchId: raw.branchId, refreshedAt: raw.refreshedAt, branches: raw.branches, prevFrom: prev.from, prevTo: prev.to, rangeDays, generatedAt: new Date().toISOString() },
     overview: {
       current: cur, previous: before,
-      growth: {
+      // No comparison when the previous period had no trading (e.g. before the store opened).
+      hasPrevious: before.sales > 0,
+      growth: before.sales > 0 ? {
         revenue: growth(cur.revenue, before.revenue), grossProfit: growth(cur.grossProfit, before.grossProfit),
         netProfit: growth(cur.netProfit, before.netProfit), sales: growth(cur.sales, before.sales),
         avgTicket: growth(cur.avgTicket, before.avgTicket), newCustomers: growth(cur.newCustomers, before.newCustomers),
-      },
+      } : { revenue: null, grossProfit: null, netProfit: null, sales: null, avgTicket: null, newCustomers: null },
       cash,
     },
     sales: {
@@ -131,6 +133,7 @@ export function buildBundle(raw: RawInsights) {
       list: cust,
       segments: segmentSummary(cust),
       slipping: slipping(cust),
+      projects: cust.filter((c) => c.segment === 'Project').sort((a, b) => b.revenue - a.revenue).slice(0, 20),
       top: cust.slice(0, 20).map((c) => ({ ...c, sharePct: pct(c.revenue, cust.reduce((a, x) => a + x.revenue, 0)) })),
       ar: arAging(cust, walkinAr),
       cohorts: cohorts(raw),

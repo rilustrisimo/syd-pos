@@ -24,26 +24,40 @@ const PH_PRIOR = (() => { const m = PH_PRIOR_RAW.reduce((a, b) => a + b, 0) / 12
 
 const mean = (a: number[]) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0)
 
+// ── Ramp-up ─────────────────────────────────────────────────────────────────
+/**
+ * Full months after the opening ramp-up: starts at the first month whose
+ * revenue reaches 70% of the recent typical month (median of the last 6 full
+ * months). A new store's climbing first months would otherwise look like a
+ * deep "slow season" and a steep trend.
+ */
+export function matureMonths<T extends { revenue: number; partial: boolean }>(rows: T[]): T[] {
+  const full = rows.filter((m) => !m.partial && m.revenue > 0)
+  if (full.length < 4) return full
+  const recent = full.slice(-6).map((m) => m.revenue).sort((a, b) => a - b)
+  const typical = recent[Math.floor(recent.length / 2)]
+  const start = full.findIndex((m) => m.revenue >= 0.7 * typical)
+  return start > 0 ? full.slice(start) : full
+}
+
 // ── Seasonality ─────────────────────────────────────────────────────────────
 export interface Seasonality { index: number[]; own: (number | null)[]; prior: number[]; ownWeight: number[] }
 
-/** Monthly index (mean 1). Own month ratios vs a log-linear trend, shrunk toward the PH prior by n/(n+1). */
+/**
+ * Monthly index (mean 1): each month's revenue vs the average mature month,
+ * shrunk toward the PH construction prior by n/(n+1) (n = years of that
+ * month seen). With under 2 years, trend and season can't be separated
+ * reliably, so the trend is left to the level model and the own pattern is
+ * only half-trusted.
+ */
 export function seasonality(months: MonthRow[]): Seasonality {
-  const full = months.filter((m) => !m.partial && m.revenue > 0)
+  const full = matureMonths(months)
   const own: (number | null)[] = new Array(12).fill(null)
   const ownWeight = new Array(12).fill(0)
   if (full.length >= 4) {
-    // Fit the trend on prior-deseasonalised log revenue so the prior shape isn't absorbed by the trend line.
-    const xs = full.map((_, i) => i)
-    const ys = full.map((m) => Math.log(m.revenue / PH_PRIOR[monthIndex(m.month + '-01')]))
-    const mx = mean(xs), my = mean(ys)
-    const slope = xs.reduce((a, x, i) => a + (x - mx) * (ys[i] - my), 0) / (xs.reduce((a, x) => a + (x - mx) ** 2, 0) || 1)
+    const avg = mean(full.map((m) => m.revenue))
     const sums = new Array(12).fill(0), counts = new Array(12).fill(0)
-    full.forEach((m, i) => {
-      const trend = Math.exp(my + slope * (i - mx))
-      const mi = monthIndex(m.month + '-01')
-      sums[mi] += m.revenue / trend; counts[mi]++
-    })
+    for (const m of full) { const mi = monthIndex(m.month + '-01'); sums[mi] += m.revenue / avg; counts[mi]++ }
     for (let i = 0; i < 12; i++) if (counts[i]) { own[i] = sums[i] / counts[i]; ownWeight[i] = counts[i] / (counts[i] + 1) }
   }
   let index = PH_PRIOR.map((p, i) => (own[i] != null ? ownWeight[i] * own[i]! + (1 - ownWeight[i]) * p : p))
@@ -171,6 +185,50 @@ export function classify(y: number[]): { cls: DemandClass; adi: number; cv2: num
 
 const fitFor = (cls: DemandClass, y: number[]) => (cls === 'intermittent' || cls === 'lumpy' ? sba(y) : holtDamped(y))
 
+const validOf = (y: number[]) => y.filter((v) => !Number.isNaN(v))
+
+/** Average of the last n in-stock weeks. */
+function movingAvg(y: number[], n = 8): Fit {
+  const v = validOf(y)
+  const errs: number[] = []
+  for (let i = n; i < v.length; i++) errs.push(v[i] - mean(v.slice(i - n, i)))
+  const f = mean(v.slice(-n))
+  return { forecast: () => f, sigma: errs.length ? Math.sqrt(mean(errs.map((e) => e * e))) : f }
+}
+
+/** Little in-stock history: spread what sold over at least 8 weeks, so one big order isn't read as the weekly rate. */
+function cautiousAvg(y: number[]): Fit {
+  const v = validOf(y.slice(-26))
+  const f = v.reduce((a, b) => a + b, 0) / Math.max(v.length, 8)
+  const m = mean(v)
+  return { forecast: () => f, sigma: v.length > 1 ? Math.sqrt(v.reduce((a, x) => a + (x - m) ** 2, 0) / (v.length - 1)) : f }
+}
+
+export type ForecastMethod = 'model' | 'average' | 'cautious'
+
+/**
+ * Pick the forecast for one product: with fewer than 8 in-stock weeks in the
+ * last 26, a cautious average; otherwise whichever of the demand model or a
+ * recent average had the smaller one-week error over the last weeks.
+ */
+export function chooseFit(y: number[]): { fit: Fit; method: ForecastMethod; cls: DemandClass } {
+  const { cls } = classify(y.slice(-26))
+  if (validOf(y.slice(-26)).length < 8) return { fit: cautiousAvg(y), method: 'cautious', cls }
+  const model = fitFor(cls, y)
+  const avg = movingAvg(y)
+  const tests = Math.min(8, validOf(y).length - 8)
+  if (tests < 3) return { fit: avg, method: 'average', cls }
+  let eModel = 0, eAvg = 0
+  for (let o = y.length - tests; o < y.length; o++) {
+    const a = y[o]
+    if (Number.isNaN(a)) continue
+    const hist = y.slice(0, o)
+    eModel += Math.abs(a - fitFor(cls, hist).forecast(1))   // test the same model that will be used
+    eAvg += Math.abs(a - movingAvg(hist).forecast(1))
+  }
+  return eModel < eAvg ? { fit: model, method: 'model', cls } : { fit: avg, method: 'average', cls }
+}
+
 // ── Weekly product series (stockout-adjusted) ───────────────────────────────
 export interface ProductSeries { product_id: string; weeks: string[]; qty: number[]; outDays: number[]; avgPrice: number }
 
@@ -199,7 +257,7 @@ function cleanSeries(s: ProductSeries): number[] {
 
 // ── Forecast outputs ────────────────────────────────────────────────────────
 export interface ProductForecast {
-  product_id: string; cls: DemandClass
+  product_id: string; cls: DemandClass; method: ForecastMethod
   weeks: { week: string; qty: number; lo: number; hi: number }[]
   total4w: number; value4w: number; last4w: number; avgWeekly: number; sigmaWeekly: number
   changePct: number | null
@@ -221,11 +279,11 @@ export function forecastProducts(raw: RawInsights, season: Seasonality, fx: Cale
   for (const s of series.values()) {
     const y = cleanSeries(s)
     if (!y.length) continue
-    const recent = y.slice(-26)
-    const { cls } = classify(recent)
-    const fit = fitFor(cls, y)
+    const { fit, method, cls } = chooseFit(y)
+    // Never forecast more than 1.25× the best in-stock week of the last 26.
+    const cap = 1.25 * Math.max(0, ...validOf(y.slice(-26)))
     const weeks = targets.map((w, k) => {
-      const base = fit.forecast(k + 1)
+      const base = Math.min(fit.forecast(k + 1), cap)
       const qty = base * targetFactor[k]
       const band = Z80 * fit.sigma * Math.sqrt(k + 1)
       return { week: w, qty, lo: Math.max(0, qty - band), hi: qty + band }
@@ -233,7 +291,7 @@ export function forecastProducts(raw: RawInsights, season: Seasonality, fx: Cale
     const total4w = weeks.reduce((a, w) => a + w.qty, 0)
     const last4 = s.qty.slice(-4).reduce((a, b) => a + b, 0)
     list.push({
-      product_id: s.product_id, cls, weeks, total4w, value4w: total4w * s.avgPrice, last4w: last4,
+      product_id: s.product_id, cls, method, weeks, total4w, value4w: total4w * s.avgPrice, last4w: last4,
       avgWeekly: total4w / 4, sigmaWeekly: fit.sigma,
       changePct: last4 > 0 ? ((total4w - last4) / last4) * 100 : null,
     })
@@ -248,7 +306,7 @@ export function forecastMonthly(
   monthRevenue: { month: string; revenue: number; partial: boolean }[],
   season: Seasonality, horizon: number, today: string, marginPct: number, fx: CalendarEffects
 ): { months: MonthForecast[]; sigma: number } {
-  const full = monthRevenue.filter((m) => !m.partial && m.revenue > 0)
+  const full = matureMonths(monthRevenue)
   const des = full.map((m) => m.revenue / season.index[monthIndex(m.month + '-01')])
   const fit = holtDamped(des, 0.5, 0.15, 0.85)
   // Log-scale error for multiplicative bands.
@@ -291,7 +349,7 @@ export function backtest(series: Map<string, ProductSeries>, topIds: string[]): 
     products++
     for (let o = y.length - ORIGINS; o < y.length; o++) {
       const hist = y.slice(0, o)
-      const fit = fitFor(classify(hist.slice(-26)).cls, hist)
+      const { fit } = chooseFit(hist)
       const lastVals = hist.filter((v) => !Number.isNaN(v)).slice(-4)
       const naive = mean(lastVals)
       const a = y[o]

@@ -14,14 +14,14 @@ export function InventoryTab({ b }: { b: InsightsBundle }) {
   const cash = b.overview.cash
   const counts = inv.statusCounts
   const overValue = inv.overstock.reduce((a, r) => a + r.stockValue, 0)
-  const shrinkTotal = inv.shrinkage.months.reduce((a, m) => a + m.valueLost, 0)
+  const sh = inv.shrinkage
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Kpi label="Stock value (at cost)" value={peso(cash.inventoryValue, { compact: true })} sub={cash.investorValue > 0 ? `${peso(cash.investorValue, { compact: true })} investor-owned` : `${Math.round(cash.dio)} days of stock`} />
         <Kpi label="Sales lost to stockouts" value={peso(inv.lostSales90, { compact: true })} sub="estimated, last 90 days" hint="Days out of stock × usual daily sales when in stock × price." />
         <Kpi label="Dead stock (90+ days)" value={peso(inv.dead.buckets[1].value, { compact: true })} sub={`${num(inv.dead.buckets[1].items)} items unsold`} />
-        <Kpi label="Shrinkage (adjustments)" value={peso(shrinkTotal, { compact: true })} sub="lost/damaged/missing at cost, year to date" />
+        <Kpi label="Stock losses" value={peso(sh.totalLosses + sh.totalCount, { compact: true })} sub={`damage/theft ${peso(sh.totalLosses, { compact: true })} · stocktake ${peso(sh.totalCount, { compact: true })}`} hint="From stock adjustments by reason. Data-entry corrections are shown separately and not counted as losses." />
       </div>
 
       <Panel title="Stock health" takeaway={`${counts.order_now ?? 0} to order now · ${counts.order_soon ?? 0} soon · ${counts.overstock ?? 0} overstocked (${peso(overValue, { compact: true })}) · ${counts.dead ?? 0} dead.`}>
@@ -49,16 +49,16 @@ export function InventoryTab({ b }: { b: InsightsBundle }) {
           <MiniTable head={['Product', 'On hand', 'Days of supply', 'Value']}
             rows={inv.overstock.slice(0, 12).map((r) => [r.name, `${num(r.onHand, 1)} ${r.uom}`, r.daysOfCover == null ? '∞' : num(r.daysOfCover), peso(r.stockValue)])} empty="Nothing overstocked." />
         </Panel>
-        <Panel title="Suppliers: lead time & on-time" takeaway="From received POs (ordered → received). Used for reorder points.">
-          <MiniTable head={['Supplier', 'POs', 'Avg lead', 'On time', 'Bought']}
-            rows={inv.suppliers.slice(0, 12).map((s) => [s.supplier, num(s.pos), `${s.avgLeadDays.toFixed(1)}d`, s.onTimePct == null ? '—' : pctText(s.onTimePct, 0), peso(s.total, { compact: true })])} empty="No received POs with delivery dates yet." />
+        <Panel title="Suppliers: delivery time & on-time" takeaway="Set each supplier's usual delivery time (Suppliers → Edit). Until set, reorder points assume 2 days, because POs are usually entered on the day stock arrives.">
+          <MiniTable head={['Supplier', 'POs', 'Delivery time', 'On time', 'Bought']}
+            rows={inv.suppliers.slice(0, 12).map((s) => [s.supplier, num(s.pos), s.setLeadDays != null ? `${s.setLeadDays}d (set)` : <span key="l" className="text-amber-600">not set</span>, s.onTimePct == null ? '—' : pctText(s.onTimePct, 0), peso(s.total, { compact: true })])} empty="No received POs with delivery dates yet." />
         </Panel>
       </div>
 
-      <Panel title="Shrinkage by month" takeaway="Negative stock adjustments (damage, loss, theft, count differences) at cost.">
+      <Panel title="Stock adjustments by reason" takeaway={`Damage/theft/expired: ${peso(sh.totalLosses)} · stocktake differences: ${peso(sh.totalCount)} · corrections/other (not counted as losses): ${peso(sh.totalCorrections)}. Pick the right reason when adjusting so these stay meaningful.`}>
         <div className="grid md:grid-cols-2 gap-4">
-          <MiniTable head={['Month', 'Value lost']} rows={inv.shrinkage.months.map((m) => [monthName(m.month), peso(m.valueLost)])} empty="No adjustments." />
-          <MiniTable head={['Product', 'Qty lost', 'Value']} rows={inv.shrinkage.top.slice(0, 10).map((p) => [p.name, num(p.qtyLost, 1), peso(p.valueLost)])} empty="No losses." />
+          <MiniTable head={['Month', 'Damage/theft', 'Stocktake', 'Corrections']} rows={sh.months.map((m) => [monthName(m.month), peso(m.losses), peso(m.count), peso(m.corrections)])} empty="No adjustments." />
+          <MiniTable head={['Product', 'Qty lost', 'Value']} rows={sh.top.slice(0, 10).map((p) => [p.name, num(p.qtyLost, 1), peso(p.losses + p.count)])} empty="No losses." />
         </div>
       </Panel>
     </div>

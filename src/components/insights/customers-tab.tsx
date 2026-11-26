@@ -5,7 +5,7 @@ import type { InsightsBundle } from '@/lib/insights/bundle'
 import { Kpi, MiniTable, Panel, Pill, monthName, num, peso, pctText } from './ui'
 
 const SEG_TONE: Record<string, 'green' | 'blue' | 'violet' | 'amber' | 'red' | 'muted'> = {
-  Champion: 'green', Loyal: 'blue', New: 'violet', Slipping: 'amber', 'At risk': 'red', Occasional: 'muted', Lost: 'muted',
+  Champion: 'green', Loyal: 'blue', New: 'violet', Slipping: 'amber', 'At risk': 'red', Project: 'blue', Occasional: 'muted', Lost: 'muted',
 }
 
 export function CustomersTab({ b }: { b: InsightsBundle }) {
@@ -43,6 +43,16 @@ export function CustomersTab({ b }: { b: InsightsBundle }) {
             c.trendPct == null ? '—' : `${c.trendPct > 0 ? '+' : ''}${c.trendPct.toFixed(0)}%`, c.phone ?? '',
           ])} empty="Nobody is slipping right now." />
       </Panel>
+
+      {cu.projects.length > 0 && (
+        <Panel title={`Past project buyers (${cu.projects.length})`} takeaway="Bought heavily during one job (or a school/government budget), then stopped. Not lapsed regulars — ask when their next project starts.">
+          <MiniTable head={['Customer', 'Type', 'Last buy', 'Buying days', 'Total', 'Phone']} align={['l', 'l', 'r', 'r', 'r', 'l']}
+            rows={cu.projects.slice(0, 15).map((c) => [
+              <Link key={c.customer_id} href={`/customers/${c.customer_id}`} className="hover:underline">{c.name}</Link>,
+              c.customer_type ?? '', `${c.recencyDays}d ago`, num(c.buy_days), peso(c.revenue), c.phone ?? '',
+            ])} />
+        </Panel>
+      )}
 
       <div className="grid lg:grid-cols-2 gap-4">
         <Panel title="Top 20 customers">

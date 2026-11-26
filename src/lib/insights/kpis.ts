@@ -62,7 +62,10 @@ export function monthly(daily: DailyRow[], expenses: ExpenseRow[], purchases: Pu
   for (const r of daily) { const m = get(monthKey(r.ph_date)); m.revenue += r.revenue; m.cogs += r.cogs; m.sales += r.sales_count; m.newCustomers += r.new_customers }
   for (const e of expenses) get(monthKey(e.ph_date)).expenses += e.total_amount
   for (const p of purchases) get(monthKey(p.ph_date)).purchases += p.total_purchases
-  const rows = [...by.values()].sort((a, b) => a.month.localeCompare(b.month))
+  // Start at the first month with sales (expenses recorded before opening are not a "month").
+  const all = [...by.values()].sort((a, b) => a.month.localeCompare(b.month))
+  const firstSales = all.findIndex((m) => m.sales > 0)
+  const rows = firstSales > 0 ? all.slice(firstSales) : all
   rows.forEach((m, i) => {
     m.grossProfit = m.revenue - m.cogs
     m.marginPct = pct(m.grossProfit, m.revenue)

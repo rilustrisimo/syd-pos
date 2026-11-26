@@ -5,7 +5,7 @@
 import type { CustomerRow, RawInsights } from './types'
 import { addMonths, daysBetween, monthKey } from './dates'
 
-export type Segment = 'Champion' | 'Loyal' | 'New' | 'Slipping' | 'At risk' | 'Lost' | 'Occasional'
+export type Segment = 'Champion' | 'Loyal' | 'New' | 'Slipping' | 'At risk' | 'Project' | 'Lost' | 'Occasional'
 
 export interface CustomerInsight extends CustomerRow {
   recencyDays: number; cadenceDays: number | null; overdueRatio: number | null
@@ -19,6 +19,7 @@ export const SEGMENT_HELP: Record<Segment, string> = {
   New: 'First bought in the last 60 days — follow up to make them regulars.',
   Slipping: 'Regulars now late vs their own usual gap, or spending much less — call them.',
   'At risk': 'Valuable customers gone quiet for a long time — win back with an offer.',
+  Project: 'Bought heavily during one job (or a government budget), then stopped — not a lapsed regular. Ask about their next project.',
   Lost: 'No purchase in a long time.',
   Occasional: 'One-off or irregular buyers.',
 }
@@ -32,7 +33,8 @@ function quintile(sorted: number[], v: number): number {
 }
 
 export function customerInsights(raw: RawInsights): CustomerInsight[] {
-  const named = raw.customers.filter((c) => !c.is_walkin && c.orders > 0 && c.last_date)
+  // Walk-ins and SYD's own/internal accounts are left out of customer insights.
+  const named = raw.customers.filter((c) => !c.is_walkin && !c.is_internal && c.orders > 0 && c.last_date)
   const revs = named.map((c) => c.revenue).sort((a, b) => a - b)
   const freqs = named.map((c) => c.buy_days).sort((a, b) => a - b)
   const recencies = named.map((c) => daysBetween(c.last_date!, raw.today)).sort((a, b) => a - b)
@@ -42,7 +44,15 @@ export function customerInsights(raw: RawInsights): CustomerInsight[] {
 
   return named.map((c) => {
     const recencyDays = daysBetween(c.last_date!, raw.today)
-    const cadenceDays = c.median_gap_days != null && c.buy_days >= 3 ? Math.max(1, c.median_gap_days) : null
+    const dayGap = c.median_gap_days != null && c.buy_days >= 3 ? Math.max(1, c.median_gap_days) : null
+    const spanDays = daysBetween(c.first_date!, c.last_date!)
+    // Project buyers: bought almost daily within one or two short bursts (a job), or
+    // government accounts (budget-driven). Their gap is between projects, not days.
+    const projectLike = c.customer_type === 'government'
+      || (dayGap != null && dayGap <= 4 && (c.episodes ?? 1) <= 2 && spanDays <= 120)
+    // Repeat project buyers: judge them by the gap between bursts.
+    const cadenceDays = dayGap != null && dayGap <= 4 && (c.episodes ?? 1) >= 3 && c.episode_gap_days
+      ? Math.max(dayGap, c.episode_gap_days) : dayGap
     const overdueRatio = cadenceDays ? recencyDays / Math.max(cadenceDays, 7) : null
     const trendPct = c.rev_prev_90 > 0 ? ((c.rev_90 - c.rev_prev_90) / c.rev_prev_90) * 100 : null
     const isNew = daysBetween(c.first_date!, raw.today) <= 60 && c.buy_days <= 2
@@ -50,6 +60,7 @@ export function customerInsights(raw: RawInsights): CustomerInsight[] {
 
     let segment: Segment
     if (isNew) segment = 'New'
+    else if (projectLike && recencyDays > 21) segment = 'Project'
     else if (recencyDays > lostAfter) segment = c.revenue >= top40 ? 'At risk' : 'Lost'
     else if (cadenceDays && overdueRatio! > 3 && c.revenue >= top40) segment = 'At risk'
     else if (cadenceDays && (overdueRatio! > 1.5 || (trendPct != null && trendPct < -50 && c.rev_prev_90 > 5000))) segment = 'Slipping'
@@ -68,7 +79,7 @@ export function customerInsights(raw: RawInsights): CustomerInsight[] {
 }
 
 export function segmentSummary(list: CustomerInsight[]) {
-  const order: Segment[] = ['Champion', 'Loyal', 'New', 'Slipping', 'At risk', 'Occasional', 'Lost']
+  const order: Segment[] = ['Champion', 'Loyal', 'New', 'Slipping', 'At risk', 'Project', 'Occasional', 'Lost']
   return order.map((s) => {
     const xs = list.filter((c) => c.segment === s)
     return { segment: s, count: xs.length, revenue: xs.reduce((a, c) => a + c.revenue, 0), rev90: xs.reduce((a, c) => a + c.rev_90, 0), help: SEGMENT_HELP[s] }
@@ -101,7 +112,7 @@ export function cohorts(raw: RawInsights) {
   const oldest = monthKey(addMonths(raw.today, -11))
   const first = new Map<string, string>()
   for (const c of raw.customers) {
-    if (c.is_walkin || !c.first_date) continue
+    if (c.is_walkin || c.is_internal || !c.first_date) continue
     const m = monthKey(c.first_date)
     if (m >= oldest) first.set(c.customer_id, m)
   }

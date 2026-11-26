@@ -44,6 +44,7 @@ export function buildMarkdown(b: InsightsBundle, opts: { compact?: boolean; stor
   }
 
   out.push(`## Headline KPIs`)
+  if (!b.overview.hasPrevious) out.push(`_The previous period has no sales (before the store opened), so there is no comparison._\n`)
   out.push(table(['Metric', 'This period', 'Previous', 'Change'], [
     ['Revenue', peso(c.revenue), peso(pv.revenue), p1(g.revenue)],
     ['Gross profit', peso(c.grossProfit), peso(pv.grossProfit), p1(g.grossProfit)],
@@ -105,6 +106,10 @@ export function buildMarkdown(b: InsightsBundle, opts: { compact?: boolean; stor
   out.push(`### Top customers`)
   out.push(table(['Customer', 'Type', 'Segment', 'Revenue', 'Share', 'Profit', 'Purchase days', 'Last purchase', 'Usual gap (days)', 'Trend 90d', 'Owes'],
     b.customers.top.slice(0, opts.compact ? 10 : 20).map((x) => [x.name, x.customer_type, x.segment, peso(x.revenue), p1(x.sharePct), peso(x.profit), x.buy_days, x.last_date, x.cadenceDays ?? '—', p1(x.trendPct), peso(x.open_ar)])))
+  if (b.customers.projects.length) {
+    out.push(`### Past project buyers (bought during one job or a government budget, then stopped — not lapsed regulars)`)
+    out.push(table(['Customer', 'Type', 'Days since last buy', 'Buying days', 'Revenue (YTD)', 'Phone'], b.customers.projects.slice(0, lim).map((x) => [x.name, x.customer_type, x.recencyDays, x.buy_days, peso(x.revenue), x.phone ?? ''])))
+  }
   out.push(`### Slipping / at-risk regulars (call list)`)
   out.push(table(['Customer', 'Segment', 'Days since last buy', 'Usual gap', 'Revenue (YTD)', 'Trend 90d', 'Phone'],
     b.customers.slipping.slice(0, lim).map((x) => [x.name, x.segment, x.recencyDays, x.cadenceDays ?? '—', peso(x.revenue), p1(x.trendPct), x.phone ?? ''])))
@@ -119,7 +124,8 @@ export function buildMarkdown(b: InsightsBundle, opts: { compact?: boolean; stor
   const inv = b.inventory
   out.push(`## Inventory`)
   out.push(`- Estimated sales lost to stockouts (90d): ${peso(inv.lostSales90)}. Dead stock: ${inv.dead.buckets.map((x) => `${x.days}+ days ${peso(x.value)} (${x.items} items)`).join('; ')}.`)
-  out.push(`- Shrinkage (negative adjustments at cost) by month: ${inv.shrinkage.months.map((m) => `${m.month} ${peso(m.valueLost)}`).join(', ') || 'none'}.\n`)
+  out.push(`- Stock adjustments by reason (at cost), whole history: damage/theft/expired ${peso(inv.shrinkage.totalLosses)}; stocktake count differences ${peso(inv.shrinkage.totalCount)}; data-entry corrections/other ${peso(inv.shrinkage.totalCorrections)} (corrections are not real losses).`)
+  out.push(`- By month (damage+theft / stocktake / corrections): ${inv.shrinkage.months.map((m) => `${m.month} ${peso(m.losses)} / ${peso(m.count)} / ${peso(m.corrections)}`).join('; ') || 'none'}.\n`)
   out.push(`### Needs ordering now`)
   out.push(table(['Product', 'Class', 'On hand', 'Daily demand', 'Lead days', 'Reorder point', 'Suggested order', 'Order value'],
     inv.reorder.filter((r) => r.status === 'order_now').sort((a, x) => x.suggestValue - a.suggestValue).slice(0, lim)
@@ -131,7 +137,8 @@ export function buildMarkdown(b: InsightsBundle, opts: { compact?: boolean; stor
   out.push(`### Overstock (120+ days of supply)`)
   out.push(table(['Product', 'On hand', 'Days of supply', 'Value'], inv.overstock.slice(0, opts.compact ? 8 : 25).map((r) => [r.name, `${n1(r.onHand)} ${r.uom}`, n1(r.daysOfCover), peso(r.stockValue)])))
   out.push(`### Suppliers`)
-  out.push(table(['Supplier', 'POs', 'Avg lead (days)', 'On-time', 'Total bought'], inv.suppliers.slice(0, 15).map((s) => [s.supplier, s.pos, n1(s.avgLeadDays), p1(s.onTimePct), peso(s.total)])))
+  out.push(`Delivery time = the supplier's set "delivery time (days)"; POs are usually entered on arrival, so PO dates don't show real ordering lead time. Not set → reorder points assume 2 days.\n`)
+  out.push(table(['Supplier', 'POs', 'Delivery time (set)', 'On-time', 'Total bought'], inv.suppliers.slice(0, 15).map((s) => [s.supplier, s.pos, s.setLeadDays != null ? `${s.setLeadDays} days` : 'not set', p1(s.onTimePct), peso(s.total)])))
 
   const f = b.forecast
   out.push(`## Forecast`)
@@ -143,8 +150,8 @@ export function buildMarkdown(b: InsightsBundle, opts: { compact?: boolean; stor
   out.push(`### Categories, next months`)
   out.push(table(['Category', 'Avg last 3 months', ...(f.categories[0]?.months ?? []).map((m) => m.month)], f.categories.map((x) => [x.category, peso(x.last3Avg), ...x.months.map((m) => peso(m.revenue))])))
   out.push(`### Products, next 4 weeks`)
-  out.push(table(['Product', 'Pattern', 'Wk1', 'Wk2', 'Wk3', 'Wk4', '4-wk total', 'Last 4 wks', 'Change'],
-    f.products.slice(0, opts.compact ? 15 : 60).map((p) => [p.name, p.cls, ...p.weeks.map((w) => n1(w.qty)), `${n1(p.total4w)} ${p.uom}`, n1(p.last4w), p1(p.changePct)])))
+  out.push(table(['Product', 'Pattern / method', 'Wk1', 'Wk2', 'Wk3', 'Wk4', '4-wk total', 'Last 4 wks', 'Change'],
+    f.products.slice(0, opts.compact ? 15 : 60).map((p) => [p.name, `${p.cls} / ${p.method}`, ...p.weeks.map((w) => n1(w.qty)), `${n1(p.total4w)} ${p.uom}`, n1(p.last4w), p1(p.changePct)])))
   out.push(`Weather next days (mm rain): ${f.rain.map((r) => `${r.day.slice(5)} ${Math.round(r.rain_mm)}${r.holiday ? ' (holiday)' : ''}`).join(', ') || 'unavailable'}`)
   out.push(`Upcoming holidays: ${f.holidays.map((h) => `${h.day} ${h.name}`).join('; ')}\n`)
 
@@ -156,6 +163,9 @@ export function buildMarkdown(b: InsightsBundle, opts: { compact?: boolean; stor
 - Less than 2 years of history: monthly seasonality is partly from industry patterns, not yet proven in our own data.
 - Cost before late Nov 2026 comes from the product's cost at time of sale; FIFO lot costing started 2026-11-23.
 - Walk-in customers are one combined record, so customer metrics cover named customers only.
+- SYD's internal/own accounts are excluded from customer metrics. "Project" customers (one job or a government budget, then nothing) are listed separately and are not lapsed regulars.
+- The first months after opening (sales ramp-up) are excluded from the seasonal pattern and trend, so they don't look like a "slow season".
+- Per-product forecasts use whichever method tested better for that product (model vs recent average); with long stockouts they fall back to a conservative average.
 - Expenses only include what was recorded in the system.
 
 ## Questions to explore

@@ -183,6 +183,7 @@ function EditSupplierDialog({ supplier, open, onClose }: {
     email: supplier.email || '',
     address: supplier.address || '',
     payment_terms: supplier.payment_terms || '',
+    lead_time_days: supplier.lead_time_days != null ? String(supplier.lead_time_days) : '',
   })
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -197,6 +198,7 @@ function EditSupplierDialog({ supplier, open, onClose }: {
           email: form.email.trim() || null,
           address: form.address.trim() || null,
           payment_terms: form.payment_terms.trim() || null,
+          lead_time_days: form.lead_time_days.trim() === '' ? null : Math.max(0, Math.round(Number(form.lead_time_days)) || 0),
         } as UpdateTables<'suppliers'>,
       })
       toast.success('Supplier updated')
@@ -238,6 +240,11 @@ function EditSupplierDialog({ supplier, open, onClose }: {
           <div className="space-y-1">
             <Label>Payment Terms</Label>
             <Input value={form.payment_terms} onChange={e => setForm({ ...form, payment_terms: e.target.value })} placeholder="e.g. Net 30, COD" />
+          </div>
+          <div className="space-y-1">
+            <Label>Delivery time (days)</Label>
+            <Input type="number" min={0} value={form.lead_time_days} onChange={e => setForm({ ...form, lead_time_days: e.target.value })} placeholder="e.g. 2" />
+            <p className="text-xs text-muted-foreground">Usual days from ordering to receiving. Insights uses this to decide when to reorder.</p>
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
