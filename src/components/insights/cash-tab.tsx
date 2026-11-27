@@ -16,6 +16,7 @@ export function CashTab({ b }: { b: InsightsBundle }) {
     { label: '…of which unsold 90+ days', amount: b.inventory.dead.buckets[1].value },
     { label: 'Customer utang (AR)', amount: cash.arOpen },
     { label: 'Owed to suppliers (AP)', amount: -cash.apOpen },
+    { label: 'Loans still to pay', amount: -b.debts.totals.remainingDue },
   ]
   return (
     <div className="space-y-4">
@@ -45,6 +46,28 @@ export function CashTab({ b }: { b: InsightsBundle }) {
           <MiniTable head={['Month', 'Revenue', 'MoM', 'Gross profit', 'Margin', 'Expenses', 'Net', 'Purchases', 'Sales', 'Avg ticket']}
             rows={[...months].reverse().map((m) => [m.label, peso(m.revenue), m.momGrowth == null ? '—' : `${m.momGrowth > 0 ? '+' : ''}${m.momGrowth.toFixed(0)}%`, peso(m.grossProfit), pctText(m.marginPct), peso(m.expenses), <span key="n" className={m.netProfit < 0 ? 'text-red-600' : ''}>{peso(m.netProfit)}</span>, peso(m.purchases), num(m.sales), peso(m.avgTicket)])} />
         </div>
+      </Panel>
+
+      <Panel
+        title="Next 12 months: cash left after expenses and loans"
+        takeaway={`Expected gross profit (forecast) − regular expenses (₱${Math.round(b.debts.monthlyExpenses).toLocaleString('en-PH')}/mo, incl. owner pay, last 3 months) − loan payments. "If slow" uses the low end of the forecast range.`}
+      >
+        <MiniTable head={['Month', 'Gross profit', 'Expenses', 'Loan payments', 'Cash left', 'If slow']}
+          rows={b.debts.projection.map((m) => [monthName(m.month), peso(m.grossProfit), peso(m.expenses), peso(m.debt),
+            <span key="c" className={m.cashLeft < 0 ? 'text-red-600 font-semibold' : ''}>{peso(m.cashLeft)}</span>,
+            <span key="l" className={m.cashLeftLow < 0 ? 'text-red-600' : 'text-muted-foreground'}>{peso(m.cashLeftLow)}</span>])} />
+      </Panel>
+
+      <Panel
+        title={`Loans (${b.debts.totals.count})`}
+        takeaway={b.debts.totals.count
+          ? `Balance ${peso(b.debts.totals.balance)} · ${peso(b.debts.totals.remainingDue)} still to pay (incl. ${peso(b.debts.totals.remainingInterest)} interest) · debt-free by ${b.debts.totals.debtFreeBy ?? '—'}.`
+          : 'No active loans recorded. Add loans in Liabilities → Loans so cash planning includes them.'}
+      >
+        <MiniTable head={['Lender', 'Monthly', 'Balance', 'Left to pay', 'Next due', 'Paid off by']}
+          rows={b.debts.loans.map((l) => [l.lender, peso(l.monthly_payment), peso(l.outstanding_balance), `${peso(l.remaining_due)} (${l.remaining_installments} left)`,
+            <span key="n" className={l.overdue_installments ? 'text-red-600' : ''}>{l.next_due ?? '—'}{l.overdue_installments ? ` · ${l.overdue_installments} overdue` : ''}</span>, l.final_due ?? '—'])}
+          empty="No active loans." />
       </Panel>
 
       <div className="grid lg:grid-cols-2 gap-4">

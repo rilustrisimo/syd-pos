@@ -55,6 +55,15 @@ export interface QuotationRow { month: string; quotes: number; quoted_amount: nu
 export interface DeliveryRow { place: string; distance_km: number | null; revenue: number; delivery_fee: number }
 export interface ExpenseRow { ph_date: string; category_name: string; total_amount: number }
 export interface PurchaseRow { ph_date: string; total_purchases: number }
+export interface DebtLoan {
+  id: string; loan_number: string; lender: string; principal: number; rate_monthly: number; rate_type: string
+  term_months: number; start_date: string; monthly_payment: number; outstanding_balance: number; status: string
+  next_due: string | null; final_due: string | null; remaining_installments: number
+  remaining_due: number; remaining_interest: number; overdue_installments: number
+}
+export interface DebtMonth { month: string; principal: number; interest: number; total: number }
+export interface DebtPaidDay { ph_date: string; interest: number; principal: number; total: number }
+export interface Debts { loans: DebtLoan[]; schedule: DebtMonth[]; paid: DebtPaidDay[] }
 export interface WeatherDay { day: string; rain_mm: number; tmax: number | null; is_forecast: boolean }
 
 export interface RawInsights {
@@ -82,4 +91,6 @@ export interface RawInsights {
   apOpen: { open_ap: number; due_30: number }
   weather: WeatherDay[]
   refreshedAt: string | null
+  /** Active loans (Liabilities module): payoff dates, remaining repayments, interest paid. */
+  debts: Debts
 }

@@ -10,6 +10,7 @@ import { backtest, calendarEffects, forecastMonthly, forecastProducts, rainOutlo
 import { deadStock, reorderPlan, shrinkage, supplierPerformance } from './reorder'
 import { buildAlerts } from './alerts'
 import { holidaysFor } from './holidays'
+import { debtSummary } from './debts'
 
 export function buildBundle(raw: RawInsights) {
   const { from, to, today } = raw
@@ -56,6 +57,7 @@ export function buildBundle(raw: RawInsights) {
   })
 
   // Reorder / inventory
+  const debts = debtSummary(raw, total12.months)
   const reorder = reorderPlan(raw, productFc, series, stats)
   const dead = deadStock(reorder)
   const lostSales90 = reorder.reduce((a, r) => a + r.lostSales90, 0)
@@ -79,6 +81,8 @@ export function buildBundle(raw: RawInsights) {
     months: total12.months, marginNow: m4.marginPct, marginPrev: m4prev.marginPct,
     rain, deadValue: dead.buckets[1].value, apDue30: cash.apDue30,
     cashIn30: (last90.grossProfit / 90) * 30,
+    loanOverdue: debts.totals.overdue,
+    tightMonth: debts.projection.slice(0, 6).reduce<{ month: string; cashLeft: number } | null>((a, m) => (!a || m.cashLeft < a.cashLeft ? { month: m.month, cashLeft: m.cashLeft } : a), null),
   })
 
   const invByName = new Map(raw.inventory.map((i) => [i.product_id, i]))
@@ -161,6 +165,7 @@ export function buildBundle(raw: RawInsights) {
       historyMonths: months.filter((m) => !m.partial).length,
       upcomingDays: eachDay(today, addDays(today, 13)).length,
     },
+    debts,
     alerts,
   }
 }

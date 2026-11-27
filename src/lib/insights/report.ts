@@ -121,6 +121,17 @@ export function buildMarkdown(b: InsightsBundle, opts: { compact?: boolean; stor
     out.push(table(['Cohort', 'New', ...Array.from({ length: 11 }, (_, i) => `+${i + 1}`)], b.customers.cohorts.map((x) => [x.cohort, x.size, ...x.retention.map((r) => (r == null ? '' : `${r.toFixed(0)}%`))])))
   }
 
+  const dt = b.debts
+  out.push(`## Loans and cash projection`)
+  out.push(dt.totals.count
+    ? `Active loans: ${dt.totals.count}; balance ${peso(dt.totals.balance)}; still to pay ${peso(dt.totals.remainingDue)} (incl. ${peso(dt.totals.remainingInterest)} interest); debt-free by ${dt.totals.debtFreeBy ?? '—'}. Loan interest paid is included in expenses/net profit; principal is not.\n`
+    : `No active loans recorded in the system.\n`)
+  if (dt.loans.length) out.push(table(['Lender', 'Principal', 'Rate/month', 'Type', 'Monthly payment', 'Balance', 'Left to pay', 'Installments left', 'Next due', 'Paid off by'],
+    dt.loans.map((l) => [l.lender, peso(l.principal), `${l.rate_monthly}%`, l.rate_type, peso(l.monthly_payment), peso(l.outstanding_balance), peso(l.remaining_due), l.remaining_installments, l.next_due ?? '—', l.final_due ?? '—'])))
+  out.push(`12-month cash projection = forecast gross profit − regular expenses (${peso(dt.monthlyExpenses)}/month incl. owner pay, last 3 full months, excl. loan interest) − scheduled loan payments. "If slow" = low end of the 80% forecast range.\n`)
+  out.push(table(['Month', 'Gross profit', 'Expenses', 'Loan payments', 'Cash left', 'Cash left if slow'],
+    dt.projection.map((m) => [m.month, peso(m.grossProfit), peso(m.expenses), peso(m.debt), peso(m.cashLeft), peso(m.cashLeftLow)])))
+
   const inv = b.inventory
   out.push(`## Inventory`)
   out.push(`- Estimated sales lost to stockouts (90d): ${peso(inv.lostSales90)}. Dead stock: ${inv.dead.buckets.map((x) => `${x.days}+ days ${peso(x.value)} (${x.items} items)`).join('; ')}.`)

@@ -22,6 +22,7 @@ export function buildAlerts(input: {
   months: MonthForecast[]; marginNow: number; marginPrev: number
   rain: { day: string; rain_mm: number; heavy: boolean }[]
   deadValue: number; apDue30: number; cashIn30: number
+  loanOverdue?: number; tightMonth?: { month: string; cashLeft: number } | null
 }): InsightAlert[] {
   const out: InsightAlert[] = []
 
@@ -90,6 +91,9 @@ export function buildAlerts(input: {
   // Cash.
   if (input.deadValue > 20000) out.push({ key: 'cash:dead', level: 'info', area: 'cash', title: `${peso(input.deadValue)} tied up in stock unsold for 90+ days`, message: 'Consider a promo, bundle, or return to supplier.' })
   if (input.apDue30 > input.cashIn30 && input.apDue30 > 0) out.push({ key: 'cash:ap', level: 'warning', area: 'cash', title: `${peso(input.apDue30)} due to suppliers in 30 days`, message: `More than the ~${peso(input.cashIn30)} gross profit expected in the same period.` })
+
+  if (input.loanOverdue) out.push({ key: 'cash:loan_overdue', level: 'critical', area: 'cash', title: `${input.loanOverdue} loan installment(s) overdue`, message: 'Pay or update the loan schedule in Liabilities → Loans.', href: '/liabilities/loans' })
+  if (input.tightMonth && input.tightMonth.cashLeft < 0) out.push({ key: `cash:tight:${input.tightMonth.month}`, level: 'warning', area: 'cash', title: `Cash may run short in ${input.tightMonth.month}`, message: `Expected gross profit minus expenses and loan payments: ${peso(input.tightMonth.cashLeft)}. Plan purchases and payments ahead.` })
 
   const rank = { critical: 0, warning: 1, info: 2 }
   return out.sort((a, b) => rank[a.level] - rank[b.level])

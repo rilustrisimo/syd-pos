@@ -5,9 +5,12 @@
 // (insights_data), so the cost stays flat as years of data accumulate.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { RawInsights, SeriesRow } from './types'
+import type { Debts, RawInsights, SeriesRow } from './types'
 import { loadWeather } from './weather'
 import { ALL_HISTORY } from './dates'
+
+/** Expense category used for interest paid on loans. */
+export const LOAN_INTEREST = 'Loan interest'
 
 const NUMERIC_TEXT = /^-?\d+(\.\d+)?(e-?\d+)?$/i
 const TEXT_KEYS = new Set(['code', 'po_number', 'name', 'phone', 'place', 'supplier', 'customer', 'category', 'category_name', 'base_uom', 'method', 'customer_type'])
@@ -57,10 +60,12 @@ export async function loadRawInsights(
   // Top up the rollups first (cheap; a no-op when fresh or when another refresh is running).
   await rpc(db, 'insights_refresh', { p_force: false })
 
-  const [branchesRes, bulk, weather] = await Promise.all([
+  const [branchesRes, bulk, weather, debtsRaw] = await Promise.all([
     (db as any).from('branches').select('id, name').eq('is_active', true).order('name'),
     rpc<any>(db, 'insights_data', { p_hist_from: ALL_HISTORY, p_to: today, p_range_from: from, p_range_to: to, p_branch: branch }),
     loadWeather(db, today).catch((e) => { console.warn('[insights] weather unavailable:', e?.message); return [] }),
+    // Loans (migration 00116). Missing function → no loans, rather than failing the page.
+    rpc<any>(db, 'insights_debts', { p_to: today }).catch((e) => { console.warn('[insights] loans unavailable:', e?.message); return null }),
   ])
   if (branchesRes.error) throw new Error(`branches: ${branchesRes.error.message}`)
 
@@ -83,10 +88,20 @@ export async function loadRawInsights(
     adjustments: normalise(bulk.adjustments),
     quotations: normalise(bulk.quotations),
     deliveries: normalise(bulk.deliveries),
-    expensesAll: normalise(bulk.expenses),
+    // Loan interest paid counts as an expense (same as the P&L report); principal does not.
+    expensesAll: [
+      ...normalise<any>(bulk.expenses),
+      ...normalise<any>(debtsRaw?.paid).filter((p) => p.interest > 0)
+        .map((p) => ({ ph_date: p.ph_date, category_name: LOAN_INTEREST, total_amount: p.interest })),
+    ],
     purchasesAll: normalise(bulk.purchases),
     apOpen: { open_ap: Number(bulk.ap_open?.open_ap ?? 0), due_30: Number(bulk.ap_open?.due_30 ?? 0) },
     weather,
     refreshedAt: bulk.refreshed_at ?? null,
+    debts: {
+      loans: normalise(debtsRaw?.loans),
+      schedule: normalise(debtsRaw?.schedule),
+      paid: normalise(debtsRaw?.paid),
+    } as Debts,
   }
 }
